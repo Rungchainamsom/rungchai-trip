@@ -605,23 +605,6 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <p class="hint" id="imgStat" style="grid-column:1/-1; margin:0"></p>
       </div>
 
-      <div class="sec-title">แจ้งเตือน Telegram</div>
-      <div class="card pad stack">
-        <p class="hint" style="margin:0">เมื่อคนขับปิดงาน ระบบจะส่งข้อความเตือนเจ้าของให้เข้ามาใส่ค่าเที่ยว</p>
-        <div class="grid g2">
-          <label class="f">Bot Token<input type="text" id="tgToken" placeholder="123456:ABC-DEF..."></label>
-          <label class="f">Chat ID<input type="text" id="tgChat" placeholder="-1001234567890"></label>
-        </div>
-        <div class="row">
-          <button class="btn" id="tgSave">บันทึก</button>
-          <span class="hint" id="tgState"></span>
-        </div>
-        <div class="card pad" style="box-shadow:none; background:var(--surface2)">
-          <div class="hint" style="font-weight:600; color:var(--ink2); margin-bottom:6px">ข้อความล่าสุดที่ระบบจะส่ง</div>
-          <div class="hint" id="tgPreview" style="white-space:pre-wrap">–</div>
-        </div>
-      </div>
-
       <div class="sec-title">พนักงาน</div>
       <div class="tablewrap"><table id="empTable"></table></div>
       <div class="card pad row" style="margin-top:10px">
@@ -634,7 +617,8 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="tablewrap"><table id="truckTable"></table></div>
       <div class="card pad row" style="margin-top:10px">
         <label class="f" style="flex:2; min-width:160px">ทะเบียน<input type="text" id="tPlate" placeholder="82-1234 อด"></label>
-        <label class="f" style="flex:1; min-width:130px">ขนาด<select id="tSize"></select></label>
+        <label class="f" style="flex:1; min-width:130px">ประเภทรถ<select id="tSize"></select></label>
+        <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="tSizeAdd" style="border-style:dashed">＋ ประเภท</button></label>
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="tAdd">เพิ่ม</button></label>
       </div>
 
@@ -835,11 +819,67 @@ function loginMsg(t,bad){
   var el=document.getElementById("loginState");
   if(el){ el.textContent=t||""; el.className="hint"+(bad?" bad":""); }
 }
-function lineLogin(){
-  loginMsg("กำลังเชื่อมกับ LINE…");
+/* ---------- จำการล็อกอินไว้ในเครื่อง จะได้ไม่ต้องเข้า LINE ใหม่ทุกครั้ง ----------
+   เก็บบัตรผ่านอายุ 12 ชม. ไว้ในเครื่องคนใช้เอง เปิดแอปครั้งต่อไปเข้าได้เลย
+   หมดอายุเมื่อไหร่ค่อยไปขอใหม่จาก LINE แบบเงียบๆ ไม่ต้องกดอะไร */
+var SESSION_KEY = "rc-trip-session";
+function saveSession(){
+  try{ localStorage.setItem(SESSION_KEY, JSON.stringify({token:AUTH.token, exp:AUTH.exp, me:me})); }catch(e){}
+}
+function loadSession(){
+  try{
+    var s=JSON.parse(localStorage.getItem(SESSION_KEY)||"null");
+    /* เหลืออายุน้อยกว่า 5 นาที ถือว่าใช้ไม่ได้ กันหมดอายุกลางคัน */
+    if(s && s.token && s.me && s.exp > Date.now()+300000) return s;
+  }catch(e){}
+  return null;
+}
+function clearSession(){ try{ localStorage.removeItem(SESSION_KEY); }catch(e){} }
+
+/* LINE เด้งกลับมาพร้อม ?code=... ถ้าโหลดหน้าซ้ำโดยที่ code ยังค้างอยู่
+   LIFF จะเอา code เดิมไปแลกอีกรอบแล้วขึ้น "invalid authorization code" */
+function cleanUrl(){
+  if(location.search && /[?&](code|state|liffRedirectUri|liffClientId)=/.test(location.search)){
+    try{ history.replaceState({}, "", location.pathname); }catch(e){}
+  }
+}
+var LIFF_RETRY="rc-liff-retry";
+function liffReady(){
+  return liff.init({liffId:CFG.liffId}).then(function(v){
+    try{ sessionStorage.removeItem(LIFF_RETRY); }catch(e){}
+    cleanUrl();
+    return v;
+  }).catch(function(e){
+    var m=String((e&&e.message)||e);
+    if(/authorization code|invalid_request/i.test(m) && location.search){
+      var tried=null;
+      try{ tried=sessionStorage.getItem(LIFF_RETRY); }catch(_){}
+      if(!tried){
+        try{ sessionStorage.setItem(LIFF_RETRY,"1"); }catch(_){}
+        location.replace(location.pathname);   /* โหลดใหม่โดยตัด code เก่าทิ้ง */
+        return new Promise(function(){});      /* ค้างไว้ เดี๋ยวหน้าใหม่ทำต่อเอง */
+      }
+    }
+    throw e;
+  });
+}
+
+function enterWith(s){
+  AUTH.token=s.token; AUTH.exp=s.exp; me=s.me;
+  loginMsg("กำลังโหลดข้อมูล…");
+  return bootstrap().then(function(){ loginMsg(""); enterApp(); });
+}
+
+/* silent=true คือพยายามเข้าเองตอนเปิดแอป ถ้ายังไม่เคยเข้า LINE ก็เงียบไว้รอกดปุ่ม */
+function lineLogin(opts){
+  opts = opts || {};
+  loginMsg(opts.silent ? "กำลังเข้าสู่ระบบ…" : "กำลังเชื่อมกับ LINE…");
   if(typeof liff==="undefined"){ loginMsg("โหลดตัวเชื่อม LINE ไม่ได้ ลองเปิดใหม่อีกครั้ง",1); return; }
-  liff.init({liffId:CFG.liffId}).then(function(){
-    if(!liff.isLoggedIn()){ liff.login(); return null; }
+  liffReady().then(function(){
+    if(!liff.isLoggedIn()){
+      if(opts.silent){ loginMsg(""); return null; }
+      liff.login(); return null;
+    }
     var idt=liff.getIDToken();
     if(!idt) throw new Error("LINE ไม่ได้ส่งบัตรประจำตัวมา (ตรวจว่าเปิดสิทธิ์ openid แล้ว)");
     loginMsg("กำลังตรวจสิทธิ์…");
@@ -856,9 +896,11 @@ function lineLogin(){
     }
     AUTH.token=res.token; AUTH.exp=res.expires_at;
     me={id:res.employee.id, name:res.employee.name, nickname:res.employee.nickname, role:res.employee.role};
+    saveSession();
     loginMsg("กำลังโหลดข้อมูล…");
     return bootstrap().then(function(){ loginMsg(""); enterApp(); });
   }).catch(function(e){
+    clearSession();
     loginMsg("เข้าไม่ได้ — "+(e&&e.message?e.message:e),1);
   });
 }
@@ -894,6 +936,7 @@ function bootstrap(){
              imgq: S.image_quality || "ประหยัด" };
     DB.tg={ token:(S.telegram&&S.telegram.token)||"", chat:(S.telegram&&S.telegram.chat_id)||"", log:[] };
     DB.lastTruck = S.last_truck || {};
+    DB.sizes = (S.truck_sizes && S.truck_sizes.length) ? S.truck_sizes : SIZES.slice();
     return signPhotos();
   }).then(takeSnapshot);
 }
@@ -962,7 +1005,7 @@ function takeSnapshot(){
   });
   SNAP._mats   = JSON.stringify(DB.mats);
   SNAP._absent = JSON.stringify(DB.absent);
-  SNAP._set    = JSON.stringify([DB.set, DB.tg.token, DB.tg.chat, DB.lastTruck]);
+  SNAP._set    = JSON.stringify([DB.set, DB.lastTruck, DB.sizes]);
 }
 
 function save(){
@@ -1081,15 +1124,15 @@ function runSync(){
   }
 
   function syncSettings(){
-    if(SNAP._set===JSON.stringify([DB.set, DB.tg.token, DB.tg.chat, DB.lastTruck])) return Promise.resolve();
+    if(SNAP._set===JSON.stringify([DB.set, DB.lastTruck, DB.sizes])) return Promise.resolve();
     var rows=[
       {key:"allowance_per_month",   value:DB.set.allow},
       {key:"deduct_per_absent_day", value:DB.set.deduct},
       {key:"night_rate_default",    value:DB.set.night},
       {key:"fuel_price_default",    value:DB.set.fuelPrice},
       {key:"image_quality",         value:DB.set.imgq},
-      {key:"telegram",              value:{token:DB.tg.token||"", chat_id:DB.tg.chat||""}},
-      {key:"last_truck",            value:DB.lastTruck||{}}
+      {key:"last_truck",            value:DB.lastTruck||{}},
+      {key:"truck_sizes",           value:DB.sizes||SIZES}
     ];
     return rest("settings", {method:"POST", body:rows,
       headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
@@ -1098,13 +1141,24 @@ function runSync(){
 
 /* ---------- โครงว่างตอนหน้าเว็บเพิ่งเปิด (ยังไม่ล็อกอิน) ---------- */
 function load(){
-  return {emp:[], truck:[], rate:[], job:[], fuel:[], absent:{}, lastTruck:{},
+  return {emp:[], truck:[], rate:[], job:[], fuel:[], absent:{}, lastTruck:{}, sizes:SIZES.slice(),
           mats:[], set:{allow:3000, deduct:100, night:200, imgq:"ประหยัด", fuelPrice:31.94},
           tg:{token:"", chat:"", log:[]}};
 }
 function renderLogin(){
   var b=document.getElementById("lineBtn");
-  if(b) b.onclick=lineLogin;
+  if(b) b.onclick=function(){ lineLogin(); };
+
+  /* เปิดแอปมา ถ้ายังมีบัตรผ่านที่ไม่หมดอายุ เข้าให้เลย ไม่ต้องผ่าน LINE */
+  var s=loadSession();
+  if(s){
+    enterWith(s).catch(function(){
+      clearSession();
+      lineLogin({silent:true});   /* บัตรใช้ไม่ได้แล้ว ลองขอใหม่แบบเงียบๆ */
+    });
+    return;
+  }
+  lineLogin({silent:true});
 }
 
 
@@ -1846,9 +1900,6 @@ function renderSettings(){
   DB.job.forEach(function(j){ var a=allShots(j); pics+=a.length; bytes+=sizeOf(a); });
   $("imgStat").textContent="เก็บรูปไว้แล้ว "+pics+" รูป รวม "+bytes+" KB (เฉลี่ย "+(pics?Math.round(bytes/pics):0)+" KB/รูป) · โหมด "+
     (DB.set.imgq||"ประหยัด")+" ย่อด้านยาวเหลือ "+imgProfile().max+" px";
-  $("tgToken").value=DB.tg.token||""; $("tgChat").value=DB.tg.chat||"";
-  $("tgState").textContent=(DB.tg.token&&DB.tg.chat)?"ตั้งค่าแล้ว (เดโม่ยังไม่ส่งจริง)":"ยังไม่ได้ตั้งค่า";
-  $("tgPreview").textContent=DB.tg.log.length?DB.tg.log[0].msg:"– ยังไม่มีงานที่ต้องแจ้ง –";
   var h='<thead><tr><th>ชื่อ</th><th>บทบาท</th><th>LINE</th><th></th></tr></thead><tbody>';
   DB.emp.forEach(function(e){
     h+='<tr><td>'+e.name+'</td><td>'+(e.role==="owner"?"เจ้าของ":"คนขับ")+'</td>' +
@@ -1862,7 +1913,7 @@ function renderSettings(){
        '<td class="r"><button class="btn sm ghost" data-del-t="'+x.id+'">ลบ</button></td></tr>';
   });
   $("truckTable").innerHTML=t+'</tbody>';
-  fillSelect($("tSize"), SIZES, function(x){return x;}, function(x){return x;}, true);
+  fillSelect($("tSize"), (DB.sizes&&DB.sizes.length?DB.sizes:SIZES), function(x){return x;}, function(x){return x;}, true);
   wireDel("data-del-e", DB.emp); wireDel("data-del-t", DB.truck);
 }
 function wireDel(attr,arr){
@@ -2079,7 +2130,7 @@ function csvJobs(){
 /* ---------- ผูกปุ่ม ---------- */
 $("lineBtn").onclick=lineLogin;
 $("logoutBtn").onclick=function(){
-  AUTH.token=null; AUTH.exp=0; me=null;
+  AUTH.token=null; AUTH.exp=0; me=null; clearSession();
   try{ if(typeof liff!=="undefined" && liff.isLoggedIn && liff.isLoggedIn()) liff.logout(); }catch(e){}
   location.reload();
 };
@@ -2156,9 +2207,15 @@ $("sSave").onclick=function(){
   DB.set.fuelPrice=parseFloat($("sFuel").value)||0;
   save(); toast("บันทึกค่าตั้งต้นแล้ว"); render();
 };
-$("tgSave").onclick=function(){
-  DB.tg.token=$("tgToken").value.trim(); DB.tg.chat=$("tgChat").value.trim();
-  save(); toast("บันทึกค่า Telegram แล้ว"); renderSettings();
+$("tSizeAdd").onclick=function(){
+  var n=window.prompt("ประเภทรถที่จะเพิ่ม เช่น 4 ล้อ, พ่วง 22 ล้อ, รถกระบะ");
+  if(n==null) return;
+  n=n.trim(); if(!n) return;
+  DB.sizes=(DB.sizes&&DB.sizes.length?DB.sizes:SIZES.slice());
+  if(DB.sizes.indexOf(n)<0) DB.sizes.push(n);
+  save(); renderSettings();
+  $("tSize").value=n;
+  toast("เพิ่ม \""+n+"\" แล้ว ครั้งหน้าเลือกได้เลย");
 };
 $("eAdd").onclick=function(){
   var n=$("eName").value.trim(); if(!n){ toast("กรอกชื่อก่อน"); return; }
