@@ -224,6 +224,14 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 .hidden{display:none!important}
 @media (max-width:560px){ .tile .v{font-size:25px} .g2{grid-template-columns:1fr} }
 </style>
+<style>
+.syncdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-left:6px;
+         background:#22c55e;vertical-align:middle;flex:none}
+.syncdot.busy{background:#f59e0b}
+.syncdot.bad{background:#ef4444}
+.hint.bad{color:#b91c1c;font-weight:600}
+</style>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
 
@@ -235,8 +243,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
     <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12 2C6.5 2 2 5.7 2 10.2c0 4 3.6 7.4 8.4 8 .3.07.8.2.9.5.1.3.07.7.03 1l-.14.9c-.04.26-.2 1.05.9.57 1.1-.47 6-3.5 8.2-6C21.7 13.5 22 12 22 10.2 22 5.7 17.5 2 12 2z"/></svg>
     เข้าสู่ระบบด้วย LINE
   </button>
-  <p class="hint" style="margin:12px 0 4px">ตัวเดโม่ — เลือกว่าจะเข้าเป็นใคร</p>
-  <div class="pickuser" id="pickUser"></div>
+  <p class="hint" id="loginState" style="margin:14px 0 4px; min-height:22px"></p>
 </div>
 
 <div id="appView" class="hidden">
@@ -250,6 +257,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="who">
         <span class="avatar" id="meAvatar">–</span>
         <span id="meName" style="max-width:96px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap"></span>
+        <span id="syncDot" class="syncdot ok" title="บันทึกแล้ว"></span>
         <button class="btn sm ghost" id="logoutBtn">ออก</button>
       </div>
     </div>
@@ -630,10 +638,10 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="tAdd">เพิ่ม</button></label>
       </div>
 
-      <div class="sec-title">ข้อมูลเดโม่</div>
+      <div class="sec-title">ข้อมูล</div>
       <div class="card pad row">
-        <button class="btn" id="resetDemo">ล้างข้อมูลแล้วเริ่มใหม่</button>
-        <span class="hint">ตัวเดโม่เก็บข้อมูลไว้ในเครื่องนี้เท่านั้น</span>
+        <button class="btn" id="reloadCloud">ดึงข้อมูลล่าสุดจากคลาวด์</button>
+        <span class="hint">ใช้เมื่อมีคนอื่นเพิ่งบันทึกงานเข้ามา</span>
       </div>
     </section>
   </div>
@@ -729,11 +737,7 @@ function job(date,emp,truck,type,label,mat,bill,price,sla,sln,ela,eln,km,dest,ni
 }
 
 var DB=load();
-function load(){
-  try{ var raw=localStorage.getItem(KEY); if(raw){ var d=JSON.parse(raw); if(!d.fuel) d.fuel=[]; return d; } }catch(e){}
-  return seed();
-}
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify(DB)); }catch(e){ toast("พื้นที่เก็บเต็ม — รูปบางส่วนอาจไม่ถูกบันทึก"); } }
+/* load() กับ save() ย้ายไปอยู่ในชั้นเชื่อม Supabase ท้ายไฟล์ */
 
 function find(arr,id){ for(var i=0;i<arr.length;i++) if(arr[i].id===id) return arr[i]; return null; }
 function emp(id){ return find(DB.emp,id)||{name:"?"}; }
@@ -807,16 +811,7 @@ function tabsFor(){
   if(me.role!=="owner") return [["home","หน้าหลัก"],["fuel","เติมน้ำมัน"],["mine","ยอดของฉัน"]];
   return [["wait","รอใส่ราคา"],["today","วันนี้"],["jobs","งานทั้งหมด"],["ofuel","ค่าน้ำมัน"],["rates","สมุดราคางาน"],["month","สรุปสิ้นเดือน"],["set","ตั้งค่า"]];
 }
-function renderLogin(){
-  var box=$("pickUser"); box.innerHTML="";
-  DB.emp.forEach(function(e){
-    var b=document.createElement("button");
-    b.innerHTML='<span class="avatar">'+initials(e.name)+'</span><span>'+e.name+
-                '</span><span class="rolechip">'+(e.role==="owner"?"เจ้าของ":"คนขับ")+'</span>';
-    b.onclick=function(){ me=e; enterApp(); };
-    box.appendChild(b);
-  });
-}
+/* renderLogin() อยู่ในชั้นเชื่อม Supabase ท้ายไฟล์ */
 function enterApp(){
   $("loginView").classList.add("hidden");
   $("appView").classList.remove("hidden");
@@ -1714,8 +1709,12 @@ function csvJobs(){
 }
 
 /* ---------- ผูกปุ่ม ---------- */
-$("lineBtn").onclick=function(){ toast("ตัวเดโม่ยังไม่ได้ต่อ LINE จริง — เลือกชื่อด้านล่างได้เลย"); };
-$("logoutBtn").onclick=function(){ me=null; $("appView").classList.add("hidden"); $("loginView").classList.remove("hidden"); };
+$("lineBtn").onclick=lineLogin;
+$("logoutBtn").onclick=function(){
+  AUTH.token=null; AUTH.exp=0; me=null; DB=load();
+  try{ if(typeof liff!=="undefined" && liff.isLoggedIn && liff.isLoggedIn()) liff.logout(); }catch(e){}
+  location.reload();
+};
 $("btnNew").onclick=openNew;
 $("cancelNew").onclick=function(){ go("home"); };
 $("fDate").onchange=function(){ $("dateLabel").textContent=fmtDate(this.value); };
@@ -1803,7 +1802,11 @@ $("tAdd").onclick=function(){
   DB.truck.push({id:uid("t"), plate:n, size:$("tSize").value});
   save(); $("tPlate").value=""; render();
 };
-$("resetDemo").onclick=function(){ DB=seed(); save(); toast("ล้างข้อมูลแล้ว"); renderLogin(); render(); };
+$("reloadCloud").onclick=function(){
+  toast("กำลังดึงข้อมูล…");
+  bootstrap().then(function(){ render(); buildTabs(); toast("ข้อมูลล่าสุดแล้ว"); })
+             .catch(function(e){ toast("ดึงข้อมูลไม่สำเร็จ — "+(e&&e.message?e.message:e)); });
+};
 
 $("dayPick").value=today();
 $("fDate").value=today();
@@ -1823,6 +1826,377 @@ monthOptions($("ofuelPick"));
 buildChoices();
 renderLogin();
 })();
+
+
+/* ================================================================= */
+/* =====================================================================
+   ชั้นเชื่อม Supabase — แทนที่ localStorage ของเวอร์ชันเดโม่
+   แนวคิด: DB ในหน่วยความจำยังหน้าตาเดิมทุกอย่าง หน้าจอทั้งหมดไม่ต้องแก้
+           เปลี่ยนแค่ load() ให้ดึงจากคลาวด์ และ save() ให้ส่งเฉพาะแถวที่เปลี่ยน
+   ===================================================================== */
+var CFG = {
+  url:    "https://gsruyrjdjbjjxoaxkbcq.supabase.co",
+  key:    "sb_publishable_NegFEfaR3s0wUf99K_24zQ_yj3wDuEH",
+  liffId: "2011304570-LQ01qot7",
+  bucket: "trip-photos"
+};
+var AUTH = { token:null, exp:0 };
+var SNAP = {};          /* สำเนาแถวล่าสุดที่ตรงกับคลาวด์ ใช้หาว่าอะไรเปลี่ยน */
+var SYNC_TIMER = null, SYNC_RUNNING = false, SYNC_AGAIN = false;
+
+/* ---------- เครื่องมือพื้นฐาน ---------- */
+function isUuid(s){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s||""); }
+function num(v,d){ var n=parseFloat(v); return isNaN(n)?d:n; }
+function iso(ts){ return ts? new Date(ts).toISOString() : null; }
+function ms(s){ return s? Date.parse(s) : null; }
+
+function sbHead(extra){
+  var h={ apikey:CFG.key, "Content-Type":"application/json" };
+  if(AUTH.token) h.Authorization="Bearer "+AUTH.token;
+  if(extra) for(var k in extra) h[k]=extra[k];
+  return h;
+}
+function rest(path,opt){
+  opt=opt||{};
+  return fetch(CFG.url+"/rest/v1/"+path,{
+    method: opt.method||"GET",
+    headers: sbHead(opt.headers),
+    body: opt.body? JSON.stringify(opt.body) : undefined
+  }).then(function(r){
+    return r.text().then(function(t){
+      if(!r.ok) throw new Error("["+r.status+"] "+t.slice(0,200));
+      return t? JSON.parse(t) : null;
+    });
+  });
+}
+
+/* ---------- แปลงแถวจากฐานข้อมูล → รูปแบบที่หน้าจอใช้ ---------- */
+function rowEmp(r){   return {id:r.id, name:r.name, nickname:r.nickname, role:r.role, line:r.line_user_id, active:r.active, phone:r.phone}; }
+function rowTruck(r){ return {id:r.id, plate:r.plate, size:r.size, active:r.active}; }
+function rowRate(r){  return {id:r.id, type:r.job_type, label:r.label, price:num(r.price,0), unit:r.unit||"เที่ยว", at:r.updated_at}; }
+function rowJob(r){
+  return {id:r.id, date:r.job_date, emp:r.emp_id, truck:r.truck_id, type:r.job_type, label:r.label||"",
+    mat:r.material||"", bill:r.bill_no||"", dest:r.dest||"",
+    price:num(r.price,0), priced:!!r.priced, nights:r.nights||0, nightRate:r.night_rate==null?null:num(r.night_rate,0),
+    km:num(r.km,0), note:r.note||"", status:r.status,
+    payMode:r.pay_mode||"เที่ยว", days:r.days||1, returnOf:r.return_of||null,
+    incomplete:!!r.incomplete, incompleteReason:r.incomplete_reason||"",
+    start: r.start_at? {lat:r.start_lat, lng:r.start_lng, at:ms(r.start_at)} : null,
+    end:   r.end_at?   {lat:r.end_lat,   lng:r.end_lng,   at:ms(r.end_at)}   : null,
+    at: ms(r.created_at),
+    shots:[], shotsEnd:[], _ps:(r.photos_start||[]), _pe:(r.photos_end||[])};
+}
+function rowFuel(r){
+  return {id:r.id, date:r.fuel_date, emp:r.emp_id, truck:r.truck_id,
+    amount:num(r.amount,0), price:num(r.price_per_l,0), liters:num(r.liters,0),
+    odo:r.odo, prevOdo:r.prev_odo||0, note:r.note||"", lat:r.lat, lng:r.lng, at:ms(r.created_at),
+    shots:[], odoShots:[], _pr:(r.photos_receipt||[]), _po:(r.photos_odo||[])};
+}
+
+/* ---------- แปลงกลับ: รูปแบบหน้าจอ → แถวสำหรับฐานข้อมูล ---------- */
+/* ไม่ส่งช่องที่ฐานข้อมูลคำนวณเอง (liters, dist, prev_odo, total_pay) */
+var TOROW = {
+  emp: function(o){ return {name:o.name, nickname:o.nickname||null, role:o.role,
+                            line_user_id:o.line||null, phone:o.phone||null, active:o.active!==false}; },
+  truck: function(o){ return {plate:o.plate, size:o.size, active:o.active!==false}; },
+  rate: function(o){ return {job_type:o.type, label:o.label, price:o.price, unit:o.unit||"เที่ยว"}; },
+  job: function(o){ return {
+      job_date:o.date, emp_id:o.emp, truck_id:o.truck, job_type:o.type, label:o.label||"",
+      material:o.mat||null, bill_no:o.bill||null, dest:o.dest||null,
+      price:o.price||0, priced:!!o.priced, nights:o.nights||0,
+      night_rate:(o.nightRate==null?null:o.nightRate),
+      km:o.km||0, note:o.note||"", status:o.status||"active",
+      pay_mode:o.payMode||"เที่ยว", days:o.days||1, return_of:o.returnOf||null,
+      incomplete:!!o.incomplete, incomplete_reason:o.incompleteReason||null,
+      start_lat:o.start?o.start.lat:null, start_lng:o.start?o.start.lng:null, start_at:o.start?iso(o.start.at):null,
+      end_lat:o.end?o.end.lat:null, end_lng:o.end?o.end.lng:null, end_at:o.end?iso(o.end.at):null,
+      photos_start:o._ps||[], photos_end:o._pe||[] }; },
+  fuel: function(o){ return {
+      fuel_date:o.date, emp_id:o.emp, truck_id:o.truck,
+      amount:o.amount, price_per_l:o.price, odo:o.odo,
+      note:o.note||"", lat:o.lat||null, lng:o.lng||null,
+      photos_receipt:o._pr||[], photos_odo:o._po||[] }; }
+};
+var TABLE = { emp:"employees", truck:"trucks", rate:"job_rates", job:"jobs", fuel:"fuel" };
+var LISTS = ["emp","truck","rate","job","fuel"];
+
+/* ---------- ล็อกอินด้วย LINE ---------- */
+function loginMsg(t,bad){
+  var el=document.getElementById("loginState");
+  if(el){ el.textContent=t||""; el.className="hint"+(bad?" bad":""); }
+}
+function lineLogin(){
+  loginMsg("กำลังเชื่อมกับ LINE…");
+  if(typeof liff==="undefined"){ loginMsg("โหลดตัวเชื่อม LINE ไม่ได้ ลองเปิดใหม่อีกครั้ง",1); return; }
+  liff.init({liffId:CFG.liffId}).then(function(){
+    if(!liff.isLoggedIn()){ liff.login(); return null; }
+    var idt=liff.getIDToken();
+    if(!idt) throw new Error("LINE ไม่ได้ส่งบัตรประจำตัวมา (ตรวจว่าเปิดสิทธิ์ openid แล้ว)");
+    loginMsg("กำลังตรวจสิทธิ์…");
+    return fetch(CFG.url+"/functions/v1/login",{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({id_token:idt})
+    }).then(function(r){ return r.json(); });
+  }).then(function(res){
+    if(!res) return null;
+    if(!res.ok) throw new Error(res.error||"เข้าสู่ระบบไม่สำเร็จ");
+    if(res.status==="pending"){
+      loginMsg("บัญชีนี้ยังไม่ได้รับอนุญาต — แจ้งเจ้าของให้เปิดใช้งานให้ในหน้าตั้งค่า");
+      return null;
+    }
+    AUTH.token=res.token; AUTH.exp=res.expires_at;
+    me={id:res.employee.id, name:res.employee.name, nickname:res.employee.nickname, role:res.employee.role};
+    loginMsg("กำลังโหลดข้อมูล…");
+    return bootstrap().then(function(){ loginMsg(""); enterApp(); });
+  }).catch(function(e){
+    loginMsg("เข้าไม่ได้ — "+(e&&e.message?e.message:e),1);
+  });
+}
+
+/* ---------- ดึงข้อมูลทั้งหมดลงมาไว้ในเครื่องครั้งเดียว ---------- */
+function bootstrap(){
+  return Promise.all([
+    rest("employees?select=*&order=name"),
+    rest("trucks?select=*&order=plate"),
+    rest("materials?select=*&order=sort_order"),
+    rest("job_rates?select=*&order=label"),
+    rest("jobs?select=*&order=created_at.desc&limit=800"),
+    rest("fuel?select=*&order=created_at.desc&limit=400"),
+    rest("absences?select=*"),
+    rest("settings?select=*")
+  ]).then(function(a){
+    DB.emp   = a[0].map(rowEmp);
+    DB.truck = a[1].map(rowTruck);
+    DB.mats  = a[2].map(function(m){ return m.name; });
+    DB.rate  = a[3].map(rowRate);
+    DB.job   = a[4].map(rowJob).reverse();   /* หน้าจอคาดว่าเรียงเก่า→ใหม่ */
+    DB.fuel  = a[5].map(rowFuel).reverse();
+
+    DB.absent={};
+    a[6].forEach(function(x){
+      DB.absent[x.emp_id]=DB.absent[x.emp_id]||{};
+      DB.absent[x.emp_id][x.ym]=x.days;
+    });
+
+    var S={}; a[7].forEach(function(s){ S[s.key]=s.value; });
+    DB.set={ allow:num(S.allowance_per_month,3000), deduct:num(S.deduct_per_absent_day,100),
+             night:num(S.night_rate_default,200), fuelPrice:num(S.fuel_price_default,31.94),
+             imgq: S.image_quality || "ประหยัด" };
+    DB.tg={ token:(S.telegram&&S.telegram.token)||"", chat:(S.telegram&&S.telegram.chat_id)||"", log:[] };
+    DB.lastTruck = S.last_truck || {};
+    return signPhotos();
+  }).then(takeSnapshot);
+}
+
+/* ---------- ขอลิงก์ชั่วคราวให้รูปทุกใบ (ถังปิด เปิดตรงๆ ไม่ได้) ---------- */
+function signPhotos(){
+  var paths=[];
+  DB.job.forEach(function(j){ (j._ps||[]).forEach(function(p){paths.push(p);}); (j._pe||[]).forEach(function(p){paths.push(p);}); });
+  DB.fuel.forEach(function(f){ (f._pr||[]).forEach(function(p){paths.push(p);}); (f._po||[]).forEach(function(p){paths.push(p);}); });
+  if(!paths.length){ return Promise.resolve(); }
+  return fetch(CFG.url+"/storage/v1/object/sign/"+CFG.bucket,{
+    method:"POST", headers:sbHead(),
+    body: JSON.stringify({expiresIn:43200, paths:paths})
+  }).then(function(r){ return r.json(); }).then(function(list){
+    var map={};
+    (list||[]).forEach(function(x){
+      var u=x.signedURL||x.signedUrl;
+      if(u) map[x.path]=CFG.url+"/storage/v1"+u;
+    });
+    function fill(ps){ return (ps||[]).map(function(p){ return map[p]; }).filter(Boolean); }
+    DB.job.forEach(function(j){ j.shots=fill(j._ps); j.shotsEnd=fill(j._pe); });
+    DB.fuel.forEach(function(f){ f.shots=fill(f._pr); f.odoShots=fill(f._po); });
+  }).catch(function(){ /* เปิดรูปไม่ได้ ไม่ควรทำให้ทั้งแอปพัง */ });
+}
+
+/* ---------- อัปโหลดรูปที่เพิ่งถ่าย ---------- */
+function dataUrlToBlob(d){
+  var p=d.split(","), mime=(p[0].match(/:(.*?);/)||[])[1]||"image/jpeg";
+  var bin=atob(p[1]), n=bin.length, u=new Uint8Array(n);
+  while(n--) u[n]=bin.charCodeAt(n);
+  return new Blob([u],{type:mime});
+}
+function uploadShot(dataUrl){
+  var blob=dataUrlToBlob(dataUrl);
+  var ext=blob.type==="image/webp"?"webp":(blob.type==="image/png"?"png":"jpg");
+  var d=new Date();
+  var path=me.id+"/"+d.getFullYear()+"-"+pad(d.getMonth()+1)+"/"+
+           Date.now()+"-"+Math.random().toString(36).slice(2,8)+"."+ext;
+  return fetch(CFG.url+"/storage/v1/object/"+CFG.bucket+"/"+path,{
+    method:"POST",
+    headers:{ apikey:CFG.key, Authorization:"Bearer "+AUTH.token, "Content-Type":blob.type },
+    body: blob
+  }).then(function(r){
+    if(!r.ok) return r.text().then(function(t){ throw new Error("อัปโหลดรูปไม่สำเร็จ "+r.status+" "+t.slice(0,120)); });
+    return path;
+  });
+}
+/* รูปในหน่วยความจำมีสองแบบ: data: คือเพิ่งถ่าย · http คือลิงก์ชั่วคราวของรูปเก่า */
+function pushShots(shownArr, pathArr){
+  var jobs=[], out=(pathArr||[]).slice();
+  (shownArr||[]).forEach(function(s,i){
+    if(typeof s==="string" && s.indexOf("data:")===0){
+      jobs.push(uploadShot(s).then(function(p){ out.push(p); }));
+    }
+  });
+  if(!jobs.length) return Promise.resolve(out);
+  return Promise.all(jobs).then(function(){ return out; });
+}
+
+/* ---------- บันทึก: ส่งขึ้นเฉพาะแถวที่เปลี่ยนจริง ---------- */
+function rowKey(t,o){ return t+":"+o.id; }
+function takeSnapshot(){
+  SNAP={};
+  LISTS.forEach(function(t){
+    DB[t].forEach(function(o){ SNAP[rowKey(t,o)]=JSON.stringify(TOROW[t](o)); });
+  });
+  SNAP._mats   = JSON.stringify(DB.mats);
+  SNAP._absent = JSON.stringify(DB.absent);
+  SNAP._set    = JSON.stringify([DB.set, DB.tg.token, DB.tg.chat, DB.lastTruck]);
+}
+
+function save(){
+  if(!AUTH.token) return;
+  if(SYNC_TIMER) clearTimeout(SYNC_TIMER);
+  SYNC_TIMER=setTimeout(runSync, 400);
+}
+
+function syncBadge(state){
+  var el=document.getElementById("syncDot");
+  if(!el) return;
+  el.className="syncdot "+state;
+  el.title = state==="bad" ? "บันทึกขึ้นคลาวด์ไม่สำเร็จ" : (state==="busy" ? "กำลังบันทึก…" : "บันทึกแล้ว");
+}
+
+function runSync(){
+  if(SYNC_RUNNING){ SYNC_AGAIN=true; return; }
+  SYNC_RUNNING=true; syncBadge("busy");
+
+  var idMap={};   /* id ชั่วคราวในเครื่อง → id จริงจากฐานข้อมูล */
+
+  /* 1) อัปโหลดรูปใหม่ก่อน แล้วค่อยส่งแถว */
+  var photoWork=[];
+  DB.job.forEach(function(j){
+    photoWork.push(pushShots(j.shots, j._ps).then(function(p){ j._ps=p; }));
+    photoWork.push(pushShots(j.shotsEnd, j._pe).then(function(p){ j._pe=p; }));
+  });
+  DB.fuel.forEach(function(f){
+    photoWork.push(pushShots(f.shots, f._pr).then(function(p){ f._pr=p; }));
+    photoWork.push(pushShots(f.odoShots, f._po).then(function(p){ f._po=p; }));
+  });
+
+  Promise.all(photoWork)
+    .then(function(){ return syncTable("emp"); })
+    .then(function(){ return syncTable("truck"); })
+    .then(syncMats)
+    .then(function(){ return syncTable("rate"); })
+    .then(function(){ remapRefs(idMap); return syncTable("job"); })
+    .then(function(){ return syncTable("fuel"); })
+    .then(syncAbsent)
+    .then(syncSettings)
+    .then(function(){
+      takeSnapshot(); syncBadge("ok");
+    })
+    .catch(function(e){
+      syncBadge("bad");
+      toast("บันทึกขึ้นคลาวด์ไม่สำเร็จ — "+(e&&e.message?e.message:e));
+    })
+    .then(function(){
+      SYNC_RUNNING=false;
+      if(SYNC_AGAIN){ SYNC_AGAIN=false; runSync(); }
+    });
+
+  function remapRefs(map){
+    DB.job.forEach(function(j){
+      if(map[j.emp]) j.emp=map[j.emp];
+      if(map[j.truck]) j.truck=map[j.truck];
+    });
+    DB.fuel.forEach(function(f){
+      if(map[f.emp]) f.emp=map[f.emp];
+      if(map[f.truck]) f.truck=map[f.truck];
+    });
+  }
+
+  function syncTable(t){
+    var news=[], ups=[];
+    DB[t].forEach(function(o){
+      var row=TOROW[t](o), js=JSON.stringify(row);
+      if(!isUuid(o.id)){ news.push({obj:o, row:row}); return; }
+      if(SNAP[rowKey(t,o)]!==js){ row.id=o.id; ups.push(row); }
+    });
+    var chain=Promise.resolve();
+    if(news.length){
+      chain=chain.then(function(){
+        return rest(TABLE[t], {method:"POST", body:news.map(function(n){return n.row;}),
+                               headers:{Prefer:"return=representation"}})
+          .then(function(back){
+            (back||[]).forEach(function(r,i){
+              var old=news[i].obj.id;
+              news[i].obj.id=r.id;
+              idMap[old]=r.id;
+            });
+          });
+      });
+    }
+    if(ups.length){
+      chain=chain.then(function(){
+        return rest(TABLE[t], {method:"POST", body:ups,
+          headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
+      });
+    }
+    return chain;
+  }
+
+  function syncMats(){
+    if(SNAP._mats===JSON.stringify(DB.mats)) return Promise.resolve();
+    var old=[]; try{ old=JSON.parse(SNAP._mats||"[]"); }catch(e){}
+    var add=DB.mats.filter(function(m){ return old.indexOf(m)<0; });
+    if(!add.length) return Promise.resolve();
+    return rest("materials", {method:"POST",
+      body: add.map(function(m,i){ return {name:m, sort_order:100+i}; }),
+      headers:{Prefer:"resolution=ignore-duplicates,return=minimal"}});
+  }
+
+  function syncAbsent(){
+    if(SNAP._absent===JSON.stringify(DB.absent)) return Promise.resolve();
+    var rows=[];
+    Object.keys(DB.absent).forEach(function(e){
+      Object.keys(DB.absent[e]||{}).forEach(function(m){
+        rows.push({emp_id:e, ym:m, days:DB.absent[e][m]||0});
+      });
+    });
+    if(!rows.length) return Promise.resolve();
+    return rest("absences", {method:"POST", body:rows,
+      headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
+  }
+
+  function syncSettings(){
+    if(SNAP._set===JSON.stringify([DB.set, DB.tg.token, DB.tg.chat, DB.lastTruck])) return Promise.resolve();
+    var rows=[
+      {key:"allowance_per_month",   value:DB.set.allow},
+      {key:"deduct_per_absent_day", value:DB.set.deduct},
+      {key:"night_rate_default",    value:DB.set.night},
+      {key:"fuel_price_default",    value:DB.set.fuelPrice},
+      {key:"image_quality",         value:DB.set.imgq},
+      {key:"telegram",              value:{token:DB.tg.token||"", chat_id:DB.tg.chat||""}},
+      {key:"last_truck",            value:DB.lastTruck||{}}
+    ];
+    return rest("settings", {method:"POST", body:rows,
+      headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
+  }
+}
+
+/* ---------- โครงว่างตอนหน้าเว็บเพิ่งเปิด (ยังไม่ล็อกอิน) ---------- */
+function load(){
+  return {emp:[], truck:[], rate:[], job:[], fuel:[], absent:{}, lastTruck:{},
+          mats:[], set:{allow:3000, deduct:100, night:200, imgq:"ประหยัด", fuelPrice:31.94},
+          tg:{token:"", chat:"", log:[]}};
+}
+function renderLogin(){
+  var b=document.getElementById("lineBtn");
+  if(b) b.onclick=lineLogin;
+}
+
 </script>
 </body>
 </html>
