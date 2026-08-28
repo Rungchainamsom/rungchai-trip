@@ -232,6 +232,20 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 .hint.bad{color:#b91c1c;font-weight:600}
 </style>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+/* กล่องกรอกของแอปเอง — แทนกล่องเด้งของเบราว์เซอร์ที่มีปุ่ม "ระงับกล่องโต้ตอบ" ให้กดผิด */
+.ask{position:fixed; inset:0; background:rgba(0,0,0,.45); display:none;
+     align-items:center; justify-content:center; padding:18px; z-index:60}
+.ask.on{display:flex}
+.ask-box{background:var(--surface); border:1px solid var(--line); border-radius:16px;
+         padding:18px; width:100%; max-width:420px; box-shadow:0 18px 50px rgba(0,0,0,.28)}
+.ask-box h3{margin:0 0 4px; font-size:19px; color:var(--ink)}
+.ask-box p{margin:0 0 12px; font-size:14px; color:var(--ink3)}
+.ask-box input{width:100%; font-size:18px; padding:13px 14px; border-radius:11px;
+               border:1px solid var(--line); background:var(--bg); color:var(--ink); box-sizing:border-box}
+.ask-row{display:flex; gap:10px; margin-top:14px}
+.ask-row button{flex:1; font-size:18px; padding:13px 10px; border-radius:11px; cursor:pointer}
+</style>
 </head>
 <body>
 
@@ -628,6 +642,18 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <span class="hint">ใช้เมื่อมีคนอื่นเพิ่งบันทึกงานเข้ามา</span>
       </div>
     </section>
+  </div>
+</div>
+
+<div class="ask" id="ask">
+  <div class="ask-box">
+    <h3 id="askTitle">เพิ่มรายการ</h3>
+    <p id="askHint"></p>
+    <input type="text" id="askInput" autocomplete="off" enterkeyhint="done">
+    <div class="ask-row">
+      <button class="btn" id="askCancel">ยกเลิก</button>
+      <button class="btn primary" id="askOk">เพิ่ม</button>
+    </div>
   </div>
 </div>
 
@@ -1145,6 +1171,37 @@ function load(){
           mats:[], set:{allow:3000, deduct:100, night:200, imgq:"ประหยัด", fuelPrice:31.94},
           tg:{token:"", chat:"", log:[]}};
 }
+/* ถามข้อความหนึ่งบรรทัด แบบไม่ใช้ window.prompt
+   Why: กล่องเด้งของ Safari มีปุ่ม "ระงับกล่องโต้ตอบ" ถ้าเผลอกด ปุ่มเพิ่มจะตายเงียบทั้งแอป */
+function askText(title, hint, cb){
+  var box=$("ask"), inp=$("askInput");
+  $("askTitle").textContent=title;
+  $("askHint").textContent=hint||"";
+  inp.value="";
+  box.classList.add("on");
+  document.body.style.overflow="hidden";
+  setTimeout(function(){ inp.focus(); }, 60);
+
+  function close(){
+    box.classList.remove("on");
+    document.body.style.overflow="";
+    document.removeEventListener("keydown", onKey);
+  }
+  function ok(){
+    var v=inp.value.trim();
+    if(!v){ inp.focus(); return; }
+    close(); cb(v);
+  }
+  function onKey(e){
+    if(e.key==="Escape") close();
+    if(e.key==="Enter"){ e.preventDefault(); ok(); }
+  }
+  $("askOk").onclick=ok;
+  $("askCancel").onclick=close;
+  box.onclick=function(e){ if(e.target===box) close(); };
+  document.addEventListener("keydown", onKey);
+}
+
 function renderLogin(){
   var b=document.getElementById("lineBtn");
   if(b) b.onclick=function(){ lineLogin(); };
@@ -1388,13 +1445,12 @@ function buildMatChips(){
   var add=document.createElement("button");
   add.className="chip"; add.type="button"; add.textContent="＋ เพิ่มสินค้า"; add.style.borderStyle="dashed";
   add.onclick=function(){
-    var n=window.prompt("ชื่อสินค้าที่จะเพิ่ม เช่น ลูกรัง, บล็อค, ท่อ, เสาไฟฟ้า");
-    if(n==null) return;
-    n=n.trim(); if(!n) return;
-    DB.mats=DB.mats||MATS.slice();
-    if(DB.mats.indexOf(n)<0) DB.mats.push(n);
-    draft.mat=n; save(); buildMatChips(); paintNew();
-    toast("เพิ่ม \""+n+"\" แล้ว ครั้งหน้าเลือกได้เลย");
+    askText("เพิ่มสินค้า", "เช่น ลูกรัง · บล็อค · ท่อ · เสาไฟฟ้า", function(n){
+      DB.mats=DB.mats||MATS.slice();
+      if(DB.mats.indexOf(n)<0) DB.mats.push(n);
+      draft.mat=n; save(); buildMatChips(); paintNew();
+      toast("เพิ่ม \""+n+"\" แล้ว ครั้งหน้าเลือกได้เลย");
+    });
   };
   mc.appendChild(add);
 }
@@ -2208,14 +2264,13 @@ $("sSave").onclick=function(){
   save(); toast("บันทึกค่าตั้งต้นแล้ว"); render();
 };
 $("tSizeAdd").onclick=function(){
-  var n=window.prompt("ประเภทรถที่จะเพิ่ม เช่น 4 ล้อ, พ่วง 22 ล้อ, รถกระบะ");
-  if(n==null) return;
-  n=n.trim(); if(!n) return;
-  DB.sizes=(DB.sizes&&DB.sizes.length?DB.sizes:SIZES.slice());
-  if(DB.sizes.indexOf(n)<0) DB.sizes.push(n);
-  save(); renderSettings();
-  $("tSize").value=n;
-  toast("เพิ่ม \""+n+"\" แล้ว ครั้งหน้าเลือกได้เลย");
+  askText("เพิ่มประเภทรถ", "เช่น 4 ล้อ · พ่วง 22 ล้อ · รถกระบะ", function(n){
+    DB.sizes=(DB.sizes&&DB.sizes.length?DB.sizes:SIZES.slice());
+    if(DB.sizes.indexOf(n)<0) DB.sizes.push(n);
+    save(); renderSettings();
+    $("tSize").value=n;
+    toast("เพิ่ม \""+n+"\" แล้ว ครั้งหน้าเลือกได้เลย");
+  });
 };
 $("eAdd").onclick=function(){
   var n=$("eName").value.trim(); if(!n){ toast("กรอกชื่อก่อน"); return; }
