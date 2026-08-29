@@ -163,7 +163,10 @@ table input{padding:8px 10px; font-size:15px}
 .datewrap input{position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:pointer; padding:0; border:0}
 select.month{width:auto; padding:9px 12px; font-size:15px}
 
-.job{display:flex; gap:13px; padding:14px 15px; border-bottom:1px solid var(--line); align-items:flex-start}
+.job{display:flex; flex-wrap:wrap; gap:13px; padding:14px 15px; border-bottom:1px solid var(--line); align-items:flex-start}
+.jobedit{flex-basis:100%; width:100%; margin-top:4px; padding:14px;
+         border:1.5px solid var(--accent); border-radius:13px; background:var(--surface2)}
+.jobedit.hidden{display:none}
 .job:last-child{border-bottom:0}
 .job .body{flex:1; min-width:0}
 .jt{font-family:"Bai Jamjuree",sans-serif; font-weight:600; font-size:16.5px; line-height:1.35}
@@ -1758,9 +1761,86 @@ function jobList(host,list,showEmp){
     if(j.status==="active"){ amt.className="amt"; amt.textContent="—"; }
     else if(!j.priced){ amt.className="amt wait"; amt.textContent="รอเจ้าของใส่ราคา"; }
     else { amt.className="amt"; amt.textContent=baht(payOf(j)); }
-    row.appendChild(body); row.appendChild(amt);
+    if(canEditJob(j)){
+      var side=document.createElement("div");
+      side.style.cssText="display:flex; flex-direction:column; align-items:flex-end; gap:7px";
+      side.appendChild(amt);
+      var eb=document.createElement("button");
+      eb.className="btn sm ghost"; eb.textContent="แก้ไข";
+      side.appendChild(eb);
+      var pan=document.createElement("div"); pan.className="jobedit hidden";
+      row.appendChild(body); row.appendChild(side); row.appendChild(pan);
+      eb.onclick=function(){
+        var open=!pan.classList.contains("hidden");
+        if(open){ pan.classList.add("hidden"); pan.innerHTML=""; eb.textContent="แก้ไข"; return; }
+        pan.classList.remove("hidden"); eb.textContent="ปิด";
+        buildJobEdit(j, pan);
+      };
+    } else {
+      row.appendChild(body); row.appendChild(amt);
+    }
     host.appendChild(row);
   });
+}
+/* =============== เจ้าของแก้ยอดงานที่ใส่ราคาไปแล้ว ===============
+   Why: เดิมพอกดยืนยันราคา งานหลุดจากคิว "รอใส่ราคา" แล้วไม่มีทางแก้ในแอปเลย
+        ต้องเข้า SQL แก้ให้ ซึ่งเรื่องเงินยังไงก็ต้องกดผิดสักวัน
+   ฝั่งฐานข้อมูลรองรับอยู่แล้ว: policy jobs_owner_all เป็น for all
+   และ trigger jobs_guard_money() ปล่อยผ่านทันทีถ้า app_is_owner() */
+function canEditJob(j){ return !!(me && me.role==="owner" && j.status==="done"); }
+function buildJobEdit(j, pan){
+  pan.innerHTML=
+    '<div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap">' +
+      '<label class="f" style="flex:2; min-width:150px">ชื่องาน' +
+        '<input type="text" data-k="label" value="'+esc(j.label||"")+'" placeholder="เช่น ส่งบล็อค กุดลิน"></label>' +
+      '<label class="f" style="width:132px">ค่าเที่ยว (บาท)' +
+        '<input type="number" data-k="price" step="50" min="0" value="'+(j.price||0)+'"></label>' +
+      '<label class="f" style="width:104px">ค้างคืน (คืน)' +
+        '<input type="number" data-k="nights" min="0" max="30" step="1" value="'+(j.nights||0)+'"></label>' +
+      '<label class="f" style="width:118px">คืนละ (บาท)' +
+        '<input type="number" data-k="rate" min="0" step="50" value="'+nightRate(j)+'"></label>' +
+    '</div>' +
+    '<label class="row" style="gap:9px; margin-top:10px; font-size:15px; color:var(--ink2); align-items:center">' +
+      '<input type="checkbox" data-k="sync" style="width:20px; height:20px; flex:none">' +
+      'อัปเดตราคามาตรฐานในสมุดราคางานด้วย</label>' +
+    '<div class="hint" data-k="tot" style="margin-top:9px"></div>' +
+    '<div class="row" style="margin-top:11px; gap:9px">' +
+      '<button class="btn primary" data-k="save">บันทึกการแก้ไข</button>' +
+      '<button class="btn ghost" data-k="cancel">ยกเลิก</button>' +
+    '</div>';
+  var g=function(k){ return pan.querySelector('[data-k="'+k+'"]'); };
+  function calc(){
+    var pv=parseFloat(g("price").value)||0;
+    var n=parseInt(g("nights").value,10)||0;
+    var rr=parseFloat(g("rate").value)||0;
+    g("rate").parentNode.style.display = n>0 ? "" : "none";
+    var was=payOf(j);
+    g("tot").innerHTML='<b style="color:var(--ink); font-size:15px">รวมจ่ายงานนี้ '+baht(pv+n*rr)+' บาท</b>' +
+      (n>0 ? ' (ค่าเที่ยว '+baht(pv)+' + ค้างคืน '+n+' × '+baht(rr)+')' : '') +
+      '<br>ยอดเดิม '+baht(was)+' บาท';
+  }
+  ["price","nights","rate"].forEach(function(k){ g(k).oninput=calc; });
+  calc();
+  g("cancel").onclick=function(){
+    pan.classList.add("hidden"); pan.innerHTML="";
+    var b=pan.parentNode.querySelector("button.sm.ghost"); if(b) b.textContent="แก้ไข";
+  };
+  g("save").onclick=function(){
+    var v=parseFloat(g("price").value);
+    if(isNaN(v)||v<0){ toast("ค่าเที่ยวไม่ถูกต้อง"); g("price").focus(); return; }
+    var lbl=g("label").value.trim();
+    j.label=lbl;
+    j.price=v;
+    j.nights=Math.max(0, parseInt(g("nights").value,10)||0);
+    j.nightRate=Math.max(0, parseFloat(g("rate").value)||0);
+    j.priced=true;
+    if(g("sync").checked && lbl){
+      var r=findRate(j.type,lbl);
+      if(r){ r.price=v; r.at=today(); }
+      else DB.rate.push({id:uid("r"), type:j.type, label:lbl, price:v, at:today()});
+    }
+    save(); toast("แก้เป็น "+baht(payOf(j))+" บาทแล้ว"); render();
+  };
 }
 function renderLive(){
   var box=$("liveBox"); box.innerHTML="";
