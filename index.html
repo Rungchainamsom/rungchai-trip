@@ -271,10 +271,12 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 .sheet .sh-ti{font-size:12pt; font-weight:600; text-align:right; white-space:nowrap}
 .sheet .sh-who{display:flex; flex-wrap:wrap; gap:3px 18px; font-size:11.5pt; margin-bottom:8px}
 .sheet .sh-who b{font-weight:700}
-.sheet table{width:100%; border-collapse:collapse; table-layout:fixed}
+.sheet table{width:100%; min-width:0; border-collapse:collapse; table-layout:fixed}
 .sheet th,.sheet td{border:1px solid #8a8a8a; padding:var(--pd,3.2pt) 5pt; text-align:left; vertical-align:top;
                     overflow-wrap:anywhere; background:none}
-.sheet th{background:#e8e8e8; font-weight:700; white-space:nowrap}
+.sheet th{background:#e8e8e8; font-weight:700; white-space:nowrap;
+          font-size:inherit; letter-spacing:normal; text-transform:none}
+.sheet tr:last-child td{border-bottom:1px solid #8a8a8a}
 .sheet td.r,.sheet th.r{text-align:right}
 .sheet td.c,.sheet th.c{text-align:center}
 .sheet tfoot td{font-weight:700; background:#f2f2f2}
@@ -349,6 +351,10 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="sec-title">งานวันนี้ · <span id="todayLabel" class="num"></span></div>
       <div class="tiles" id="homeTiles"></div>
       <div class="card" id="homeJobs" style="margin-top:12px"></div>
+      <div class="card pad" style="margin-top:16px; text-align:center">
+        <a class="btn block" href="help-driver.html" target="_blank" rel="noopener"
+           style="display:block; text-decoration:none; font-size:18px">📖 คู่มือใช้งาน (ตัวหนังสือใหญ่ อ่านง่าย)</a>
+      </div>
     </section>
 
     <section id="v-new" class="view hidden">
@@ -713,6 +719,15 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="card pad row">
         <button class="btn" id="reloadCloud">ดึงข้อมูลล่าสุดจากคลาวด์</button>
         <span class="hint">ใช้เมื่อมีคนอื่นเพิ่งบันทึกงานเข้ามา</span>
+      </div>
+
+      <div class="sec-title">คู่มือการใช้งาน</div>
+      <div class="card pad stack">
+        <p class="hint" style="margin:0">ส่งลิงก์คู่มือคนขับให้พนักงานทางไลน์ได้เลย</p>
+        <div class="row">
+          <a class="btn" href="help-driver.html" target="_blank" rel="noopener" style="text-decoration:none">📖 คู่มือคนขับ</a>
+          <a class="btn" href="help-owner.html" target="_blank" rel="noopener" style="text-decoration:none">📗 คู่มือเจ้าของ</a>
+        </div>
       </div>
     </section>
   </div>
