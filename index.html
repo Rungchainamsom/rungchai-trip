@@ -659,7 +659,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       </div>
       <div class="tiles" id="monTiles" style="margin-top:10px"></div>
       <div class="sec-title">ค่าจ้างรายคน</div>
-      <p class="hint" style="margin:-4px 0 10px">เบี้ยเลี้ยงจ่ายเต็มเดือน หักเฉพาะวันที่ขาดงาน — กรอกวันขาดในตารางได้เลย</p>
+      <p class="hint" id="monHint" style="margin:-4px 0 10px">เบี้ยเลี้ยงจ่ายเต็มเดือน หักเฉพาะวันที่ขาดงาน — กรอกวันขาดในตารางได้เลย</p>
       <div class="tablewrap"><table id="monTable"></table></div>
       <div class="sec-title">แยกตามประเภทงาน</div>
       <div class="tablewrap"><table id="monType"></table></div>
@@ -699,6 +699,9 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       </div>
 
       <div class="sec-title">พนักงาน</div>
+      <div class="card pad" style="margin-bottom:10px">
+        <label class="f">ค้นหาชื่อ<input type="text" id="empSearch" placeholder="พิมพ์ชื่อบางส่วนก็ได้" autocomplete="off"></label>
+      </div>
       <div id="empTable"></div>
       <div class="card pad row" style="margin-top:10px">
         <label class="f" style="flex:2; min-width:160px">ชื่อ–สกุล<input type="text" id="eName" placeholder="เช่น สมชาย ทองดี"></label>
@@ -1838,13 +1841,14 @@ function renderMine(){
   var m=$("minePick").value;
   var list=sorted(DB.job.filter(function(j){ return j.emp===me.id && ym(j.date)===m && j.status==="done"; }));
   var ab=(DB.absent[me.id]||{})[m]||0;
-  var allow=Math.max(0, DB.set.allow-ab*DB.set.deduct);
+  var anyJob=DB.job.some(function(j){ return j.emp===me.id && ym(j.date)===m; });
+  var allow=anyJob ? Math.max(0, DB.set.allow-ab*DB.set.deduct) : 0;
   var priced=list.filter(function(j){ return j.priced; });
   var fee=sumPay(priced), wait=list.length-priced.length;
   $("myTiles").innerHTML=
     tile("รวมรับเดือนนี้", baht(fee+allow), "ค่าเที่ยว + เบี้ยเลี้ยง", true) +
     tile("ค่าเที่ยว", baht(fee), list.length+" งาน"+(wait?" · รอราคา "+wait:"")) +
-    tile("เบี้ยเลี้ยง", baht(allow), ab?("หักขาด "+ab+" วัน"):"เต็มเดือน") +
+    tile("เบี้ยเลี้ยง", baht(allow), !anyJob?"เดือนนี้ยังไม่มีงาน":(ab?("หักขาด "+ab+" วัน"):"เต็มเดือน")) +
     tile("วันที่ออกงาน", uniqDays(list), "วันในเดือนนี้");
   jobList($("myJobs"), list.slice(0,mineLimit), false);
   var more=$("mineMore");
@@ -2021,7 +2025,8 @@ function slipSheet(e, m){
   var fuels=slipDateAsc(DB.fuel.filter(function(f){ return f.emp===e.id && ym(f.date)===m; }));
 
   var ab=(DB.absent[e.id]||{})[m]||0;
-  var allow=Math.max(0, (DB.set.allow||0)-ab*(DB.set.deduct||0));
+  var anyJob=DB.job.some(function(j){ return j.emp===e.id && ym(j.date)===m; });
+  var allow=anyJob ? Math.max(0, (DB.set.allow||0)-ab*(DB.set.deduct||0)) : 0;
   var base=0, nightTot=0, nightsN=0;
   list.forEach(function(j){ base+=(j.price||0); nightTot+=nightPay(j); nightsN+=(j.nights||0); });
   var fee=base+nightTot, net=fee+allow;
@@ -2084,7 +2089,9 @@ function slipSheet(e, m){
       '<div class="sh-row sub"><span>ค่างาน</span><span class="num">'+baht(base)+'</span></div>' +
       '<div class="sh-row sub"><span>ค่าค้างคืน '+nightsN+' คืน</span><span class="num">'+baht(nightTot)+'</span></div>' +
       '<div class="sh-row"><span>เบี้ยเลี้ยง</span><b class="num">'+baht(allow)+'</b></div>' +
-      '<div class="sh-row sub"><span>เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0)+' − ขาดงาน '+ab+' วัน × '+baht(DB.set.deduct||0)+' = '+baht(ab*(DB.set.deduct||0))+'</span><span></span></div>' +
+      '<div class="sh-row sub"><span>'+(anyJob
+        ? 'เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0)+' − ขาดงาน '+ab+' วัน × '+baht(DB.set.deduct||0)+' = '+baht(ab*(DB.set.deduct||0))
+        : 'เดือนนี้ไม่มีงานเลย จึงไม่คิดเบี้ยเลี้ยง')+'</span><span></span></div>' +
       '<div class="sh-net"><span>รวมจ่ายสุทธิ</span><span class="num">'+baht(net)+' บาท</span></div>' +
     '</div>' +
     '<div class="sh-fuel"><b>ค่าน้ำมันที่เติมเดือนนี้ '+baht(fuelBaht)+' บาท</b>' +
@@ -2153,7 +2160,16 @@ function slipFill(){
 }
 function slipOpen(){
   var m=$("monPick").value, who=$("slipWho").value||"*";
-  var who_list = who==="*" ? DB.emp.filter(isDriver) : [find(DB.emp,who)].filter(Boolean);
+  var who_list;
+  if(who==="*"){
+    /* ออกใบเฉพาะคนที่มีงานในเดือนนั้น จะได้ไม่พิมพ์แผ่นเปล่าเปลืองกระดาษ */
+    who_list = DB.emp.filter(function(e){
+      return isDriver(e) && DB.job.some(function(j){ return j.emp===e.id && ym(j.date)===m; });
+    }).sort(function(a,b){ return (a.name||"").localeCompare(b.name||"","th"); });
+    if(!who_list.length){ toast("เดือนนี้ยังไม่มีใครมีงาน"); return; }
+  } else {
+    who_list = [find(DB.emp,who)].filter(Boolean);
+  }
   if(!who_list.length){ toast("ยังไม่มีคนขับในระบบ"); return; }
   var body="";
   who_list.forEach(function(e){ body+=slipSheet(e,m); });
@@ -2185,7 +2201,16 @@ function renderMonth(){
   slipFill();
   var m=$("monPick").value;
   var list=DB.job.filter(function(j){ return ym(j.date)===m && j.status==="done" && j.priced; });
-  var drivers=DB.emp.filter(isDriver);
+  /* เดือนไหนคนขับไม่มีงานเลย ไม่ต้องขึ้นในตาราง และไม่คิดเบี้ยเลี้ยง
+     Why: เดิมนับทุกคนที่ role=driver แล้วให้เบี้ยเลี้ยงเต็ม 3,000 ต่อให้ไม่ได้วิ่งสักงาน
+          คนที่เปิดบัญชีไว้ดูเฉยๆ กับคนที่ลาออกไปแล้ว ก็ยังโดนบวกเข้าต้นทุนคนขับ
+          กติกานี้ตรงกับสรุปรายปีของคนขับ (renderMyYear) ที่ทำถูกอยู่แล้ว */
+  var worked={};
+  DB.job.forEach(function(j){ if(ym(j.date)===m) worked[j.emp]=1; });
+  var allDrv=DB.emp.filter(isDriver);
+  var drivers=allDrv.filter(function(e){ return worked[e.id]; })
+                    .sort(function(a,b){ return (a.name||"").localeCompare(b.name||"","th"); });
+  var skipped=allDrv.length-drivers.length;
   var totFee=sumPay(list), totAllow=0;
   var h='<thead><tr><th>พนักงาน</th><th class="r">งาน</th><th class="r">วันออกงาน</th><th class="r">คืน</th><th class="r">วันขาด</th><th class="r">เบี้ยเลี้ยง</th><th class="r">ค่าเที่ยว</th><th class="r">รวมจ่าย</th></tr></thead><tbody>';
   drivers.forEach(function(e){
@@ -2217,8 +2242,10 @@ function renderMonth(){
   $("monTiles").innerHTML=
     tile("ต้นทุนคนขับรวม", baht(totFee+totAllow), "เบี้ยเลี้ยง + ค่าเที่ยว · "+fmtMonth(m), true) +
     tile("ค่าเที่ยว", baht(totFee), list.length+" งาน"+(pend?" · รอราคา "+pend:"")) +
-    tile("เบี้ยเลี้ยง", baht(totAllow), drivers.length+" คน") +
+    tile("เบี้ยเลี้ยง", baht(totAllow), drivers.length+" คนที่มีงานเดือนนี้") +
     tile("ค่าค้างคืนรวม", baht(list.reduce(function(s,j){ return s+nightPay(j); },0)), sum(list,"nights")+" คืน (ราคาต่อคืนแยกตามงาน)");
+  $("monHint").innerHTML = "เบี้ยเลี้ยงจ่ายเต็มเดือน หักเฉพาะวันที่ขาดงาน — กรอกวันขาดในตารางได้เลย" +
+    (skipped ? ' · <b>ไม่แสดง '+skipped+' คนที่ไม่มีงานในเดือนนี้ (ไม่คิดเบี้ยเลี้ยงให้)</b>' : "");
   groupTable($("monType"), list, function(j){return j.type;}, function(k){return TYPE_LABEL[k];}, "ประเภทงาน");
 }
 /* =============== สิทธิ์พนักงาน — เจ้าของเป็นคนกดเปิดให้คนขับใหม่ =============== */
@@ -2300,6 +2327,37 @@ function wireEmpCards(){
     });
   });
 }
+/* จัดกลุ่มพนักงาน เจ้าของ / คนขับ แล้วเรียงตามชื่อ
+   Why: เจ้าของบอกว่ารายชื่อเรียงมั่วตามลำดับที่ล็อกอินเข้ามา หาชื่อยากมาก */
+function empGroups(){
+  function byName(a,b){ return (a.name||"").localeCompare(b.name||"","th"); }
+  return [
+    ["รอเปิดใช้งาน", "t4", DB.emp.filter(function(e){ return e.active===false; }).sort(byName)],
+    ["เจ้าของ",      "t2", DB.emp.filter(function(e){ return e.active!==false && e.role==="owner"; }).sort(byName)],
+    ["คนขับ",        "t1", DB.emp.filter(function(e){ return e.active!==false && e.role!=="owner"; }).sort(byName)]
+  ];
+}
+function paintEmpList(){
+  var box=$("empSearch"), q=(box&&box.value||"").trim().toLowerCase();
+  var pend=pendingEmps();
+  var h = pend.length ? '<div class="card pad" style="margin-bottom:12px; border-color:var(--warn); background:var(--warn-soft)">' +
+        '<b style="font-size:17px">มีคนรอเปิดใช้งาน '+pend.length+' คน</b>' +
+        '<div class="hint" style="margin-top:4px">กดปุ่ม “✓ เปิดใช้งาน” ในการ์ดสีเหลืองด้านล่าง คนนั้นถึงจะเริ่มบันทึกงานได้</div></div>' : '';
+  var shown=0;
+  empGroups().forEach(function(g){
+    var list=g[2].filter(function(e){
+      return !q || (e.name||"").toLowerCase().indexOf(q)>=0 || (e.line||"").toLowerCase().indexOf(q)>=0;
+    });
+    if(!list.length) return;
+    shown+=list.length;
+    h+='<div class="row" style="gap:8px; align-items:center; margin:16px 0 8px">' +
+       '<b style="font-size:16px">'+g[0]+'</b><span class="pill '+g[1]+'">'+list.length+' คน</span></div>';
+    list.forEach(function(e){ h+=empCard(e); });
+  });
+  if(!shown) h+='<div class="card pad hint">ไม่เจอชื่อที่ค้นหา</div>';
+  $("empTable").innerHTML=h;
+  wireEmpCards();
+}
 function renderPendBanner(){
   var host=$("pendBanner"); if(!host) return;
   var p=pendingEmps();
@@ -2319,13 +2377,8 @@ function renderSettings(){
   DB.job.forEach(function(j){ var a=allShots(j); pics+=a.length; bytes+=sizeOf(a); });
   $("imgStat").textContent="เก็บรูปไว้แล้ว "+pics+" รูป รวม "+bytes+" KB (เฉลี่ย "+(pics?Math.round(bytes/pics):0)+" KB/รูป) · โหมด "+
     (DB.set.imgq||"ประหยัด")+" ย่อด้านยาวเหลือ "+imgProfile().max+" px";
-  var pend=pendingEmps();
-  var h = pend.length ? '<div class="card pad" style="margin-bottom:12px; border-color:var(--warn); background:var(--warn-soft)">' +
-        '<b style="font-size:17px">มีคนรอเปิดใช้งาน '+pend.length+' คน</b>' +
-        '<div class="hint" style="margin-top:4px">กดปุ่ม “✓ เปิดใช้งาน” ในการ์ดสีเหลืองด้านล่าง คนนั้นถึงจะเริ่มบันทึกงานได้</div></div>' : '';
-  DB.emp.forEach(function(e){ h+=empCard(e); });
-  $("empTable").innerHTML=h;
-  wireEmpCards();
+  paintEmpList();
+  $("empSearch").oninput=paintEmpList;
   var t='<thead><tr><th>ทะเบียน</th><th>ขนาด</th><th></th></tr></thead><tbody>';
   DB.truck.forEach(function(x){
     t+='<tr><td>'+x.plate+'</td><td>'+x.size+'</td>' +
