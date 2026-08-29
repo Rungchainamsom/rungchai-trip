@@ -245,6 +245,69 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
                border:1px solid var(--line); background:var(--bg); color:var(--ink); box-sizing:border-box}
 .ask-row{display:flex; gap:10px; margin-top:14px}
 .ask-row button{flex:1; font-size:18px; padding:13px 10px; border-radius:11px; cursor:pointer}
+
+/* =============== ใบสรุปรายคน — ล็อก A4 แนวตั้ง ผู้ใช้ปรับเองไม่ได้ ===============
+   Why ใช้ @page + print stylesheet ไม่ใช้ไลบรารีสร้าง PDF:
+   มือถือทุกเครื่องสั่งพิมพ์แล้วเลือก "บันทึกเป็น PDF" ได้เอง ไม่ต้องโหลดอะไรเพิ่ม */
+@page{ size:A4 portrait; margin:10mm; }
+.slipwrap{display:none}
+.slipwrap.on{display:block}
+@media screen{
+  .slipwrap.on{position:fixed; inset:0; z-index:200; background:#7c7c7c; overflow:auto; -webkit-overflow-scrolling:touch}
+  .slipbar{position:sticky; top:0; z-index:210; display:flex; gap:8px; justify-content:center;
+           flex-wrap:wrap; padding:10px; background:#232323}
+  .slipbar button{font-size:16px; padding:11px 16px; border-radius:10px; border:1px solid #555;
+                  background:#fff; color:#111; cursor:pointer; font-weight:600}
+  .slipbar .note{color:#ddd; font-size:13px; width:100%; text-align:center}
+  .slipwrap .sheet{background:#fff; width:210mm; max-width:100%; margin:14px auto;
+                   padding:11mm 10mm; box-sizing:border-box; box-shadow:0 8px 26px rgba(0,0,0,.4)}
+}
+.sheet{color:#111; font-size:11pt; line-height:1.34}
+.sheet *{color:#111}
+.sheet .sh-top{display:flex; justify-content:space-between; align-items:flex-end; gap:10px;
+               border-bottom:2px solid #111; padding-bottom:5px; margin-bottom:9px}
+.sheet .sh-co{font-size:16pt; font-weight:700; line-height:1.15}
+.sheet .sh-co small{display:block; font-size:9.5pt; font-weight:400}
+.sheet .sh-ti{font-size:12pt; font-weight:600; text-align:right; white-space:nowrap}
+.sheet .sh-who{display:flex; flex-wrap:wrap; gap:3px 18px; font-size:11.5pt; margin-bottom:8px}
+.sheet .sh-who b{font-weight:700}
+.sheet table{width:100%; border-collapse:collapse; table-layout:fixed}
+.sheet th,.sheet td{border:1px solid #8a8a8a; padding:var(--pd,3.2pt) 5pt; text-align:left; vertical-align:top;
+                    overflow-wrap:anywhere; background:none}
+.sheet th{background:#e8e8e8; font-weight:700; white-space:nowrap}
+.sheet td.r,.sheet th.r{text-align:right}
+.sheet td.c,.sheet th.c{text-align:center}
+.sheet tfoot td{font-weight:700; background:#f2f2f2}
+.sheet .sh-lab{font-size:10.5pt; font-weight:700; margin:7pt 0 3pt}
+.sheet .sh-2col{display:flex; gap:4mm; align-items:flex-start}
+.sheet .sh-off{display:none}
+.sheet .sh-2col table{flex:1 1 0; min-width:0}
+.sheet .sh-sum{border:1.5px solid #111; padding:6pt 8pt; margin-top:9pt}
+.sheet .sh-row{display:flex; justify-content:space-between; gap:10px; padding:1.6pt 0}
+.sheet .sh-row.sub{font-size:9.5pt; padding-left:14pt; color:#333}
+.sheet .sh-row.sub *{color:#333}
+.sheet .sh-net{display:flex; justify-content:space-between; gap:10px; border-top:1.5px solid #111;
+               margin-top:5pt; padding-top:5pt; font-size:14pt; font-weight:700}
+.sheet .sh-fuel{margin-top:7pt; font-size:10pt; border:1px dashed #8a8a8a; padding:5pt 7pt}
+.sheet .sh-warn{margin-top:6pt; font-size:10pt; border:1.5px solid #111; padding:4pt 7pt; font-weight:700}
+.sheet .sh-sign{display:flex; gap:14mm; margin-top:8mm; break-inside:avoid; page-break-inside:avoid}
+.sheet .sh-sign div{flex:1; text-align:center; font-size:10.5pt}
+.sheet .sh-sign .ln{border-bottom:1px dotted #111; height:10mm}
+.sheet .sh-foot{margin-top:6pt; font-size:8.5pt; text-align:right}
+.sheet .sh-foot *{color:#555}
+@media print{
+  html,body{background:#fff !important; margin:0 !important}
+  body > *{display:none !important}
+  body > .slipwrap.on{display:block !important; position:static !important; background:none !important;
+                      overflow:visible !important; padding:0 !important}
+  .slipbar{display:none !important}
+  .slipwrap .sheet{width:auto !important; max-width:none !important; margin:0 !important;
+                   padding:0 !important; box-shadow:none !important;
+                   break-after:page; page-break-after:always}
+  .slipwrap .sheet:last-child{break-after:auto; page-break-after:auto}
+  .sheet thead{display:table-header-group}
+  .sheet tr{break-inside:avoid; page-break-inside:avoid}
+}
 </style>
 </head>
 <body>
@@ -594,6 +657,15 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="tablewrap"><table id="monTable"></table></div>
       <div class="sec-title">แยกตามประเภทงาน</div>
       <div class="tablewrap"><table id="monType"></table></div>
+      <div class="sec-title">ใบสรุปรายคน (พิมพ์ / บันทึกเป็น PDF)</div>
+      <div class="card pad stack">
+        <p class="hint" style="margin:0">กระดาษ A4 แนวตั้ง คนละ 1 แผ่น · มีทะเบียนรถทุกคันที่ขับเดือนนั้น · มีช่องเซ็นรับเงิน</p>
+        <div class="row" style="align-items:flex-end">
+          <label class="f" style="flex:1; min-width:170px">เลือกคนขับ<select id="slipWho"></select></label>
+          <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="slipGo">ทำใบสรุป</button></label>
+        </div>
+      </div>
+
       <div class="sec-title">ส่งออก</div>
       <div class="card pad stack">
         <p class="hint" style="margin:0">คัดลอกเป็น CSV แล้ววางใน Excel / Google Sheets ได้ทันที</p>
@@ -666,6 +738,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
   <div class="lb-count num" id="lbCount"></div>
 </div>
 <div class="toast" id="toast"></div>
+<div class="slipwrap" id="slip"></div>
 
 <script>
 (function(){
@@ -1911,8 +1984,190 @@ function renderRates(){
     };
   });
 }
+/* =============== ใบสรุปค่าเที่ยวรายคน — สั่งพิมพ์แล้วบันทึกเป็น PDF =============== */
+function slipPlates(list){
+  var seen={}, out=[];
+  list.forEach(function(j){
+    var p=truck(j.truck).plate;
+    if(p && p!=="?" && !seen[p]){ seen[p]=1; out.push(p); }
+  });
+  return out;
+}
+function slipDateAsc(list){
+  return list.slice().sort(function(a,b){
+    if(a.date!==b.date) return a.date<b.date?-1:1;
+    return (a.at||0)-(b.at||0);
+  });
+}
+function slipSheet(e, m){
+  var mine=DB.job.filter(function(j){ return j.emp===e.id && ym(j.date)===m && j.status==="done"; });
+  var list=slipDateAsc(mine.filter(function(j){ return j.priced; }));
+  var pend=mine.filter(function(j){ return !j.priced; });
+  var fuels=slipDateAsc(DB.fuel.filter(function(f){ return f.emp===e.id && ym(f.date)===m; }));
+
+  var ab=(DB.absent[e.id]||{})[m]||0;
+  var allow=Math.max(0, (DB.set.allow||0)-ab*(DB.set.deduct||0));
+  var base=0, nightTot=0, nightsN=0;
+  list.forEach(function(j){ base+=(j.price||0); nightTot+=nightPay(j); nightsN+=(j.nights||0); });
+  var fee=base+nightTot, net=fee+allow;
+
+  var fuelBaht=0, fuelL=0;
+  fuels.forEach(function(f){
+    fuelBaht+=(f.amount||0);
+    if(f.price>0) fuelL+=(f.amount||0)/f.price;
+  });
+
+  /* ตั้งต้นตัวใหญ่ไว้ก่อน เดี๋ยว slipFit() วัดของจริงแล้วค่อยบีบเท่าที่จำเป็น */
+  var fs="10.5pt", pd="3.2pt";
+
+  var plates=slipPlates(mine);
+  function slipRow(j){
+    return '<tr><td class="c num">'+fmtDate(j.date).slice(0,5)+'</td>' +
+      '<td class="num">'+esc(truck(j.truck).plate)+'</td>' +
+      '<td>'+esc(jobTitle(j))+'</td>' +
+      '<td class="c num">'+(j.nights?j.nights:"–")+'</td>' +
+      '<td class="r num">'+baht(payOf(j))+'</td></tr>';
+  }
+  var HEAD='<thead><tr><th class="c">วันที่</th><th>ทะเบียน</th><th>รายการงาน</th>' +
+           '<th class="c">คืน</th><th class="r">เงิน</th></tr></thead>';
+  var CG1='<colgroup><col style="width:13%"><col style="width:18%"><col><col style="width:9%"><col style="width:17%"></colgroup>';
+  var CG2='<colgroup><col style="width:15%"><col style="width:23%"><col><col style="width:9%"><col style="width:21%"></colgroup>';
+  var TS=' style="font-size:'+fs+'; --pd:'+pd+'"';
+  var table;
+  if(!list.length){
+    table='<table'+TS+'>'+CG1+HEAD+'<tbody><tr><td colspan="5" class="c">ไม่มีงานที่ใส่ค่าเที่ยวแล้วในเดือนนี้</td></tr></tbody></table>';
+  }else{
+    /* ทำไว้ทั้งสองแบบ แล้ว slipFit() วัดของจริงเลือกให้ว่าจะใช้แบบไหน
+       Why: คอลัมน์เดียวอ่านง่ายกว่า ใช้ก่อนเสมอ ถ้าล้นแผ่นค่อยสลับเป็นสองคอลัมน์
+       ประหยัดกระดาษได้เท่าตัวโดยตัวหนังสือยังเท่าเดิม ดีกว่าย่อจนอ่านไม่ออก */
+    var half=Math.ceil(list.length/2);
+    table='<div class="sh-t1">' +
+        '<table'+TS+'>'+CG1+HEAD+'<tbody>'+list.map(slipRow).join("")+'</tbody>' +
+        '<tfoot><tr><td colspan="3">รวมค่าเที่ยว</td><td class="c num">'+(nightsN||"–")+'</td>' +
+        '<td class="r num">'+baht(fee)+'</td></tr></tfoot></table>' +
+      '</div>' +
+      '<div class="sh-t2 sh-off"><div class="sh-2col">' +
+        '<table'+TS+'>'+CG2+HEAD+'<tbody>'+list.slice(0,half).map(slipRow).join("")+'</tbody></table>' +
+        '<table'+TS+'>'+CG2+HEAD+'<tbody>'+list.slice(half).map(slipRow).join("")+'</tbody></table>' +
+      '</div></div>';
+  }
+  return '<div class="sheet">' +
+    '<div class="sh-top">' +
+      '<div class="sh-co">รุ่งชัย น้ำโสม<small>ใบสรุปค่าเที่ยวพนักงาน</small></div>' +
+      '<div class="sh-ti">ประจำเดือน '+fmtMonth(m)+'</div>' +
+    '</div>' +
+    '<div class="sh-who">' +
+      '<div><b>คนขับ:</b> '+esc(e.name||"–")+'</div>' +
+      '<div><b>รถที่ขับเดือนนี้:</b> '+(plates.length?esc(plates.join(", ")):"–")+'</div>' +
+      '<div><b>วันที่ออกงาน:</b> '+uniqDays(list)+' วัน</div>' +
+    '</div>' +
+    '<div class="sh-lab">รายการงาน '+list.length+' งาน</div>' +
+    table +
+    (pend.length ? '<div class="sh-warn">ยังมีงานที่เจ้าของยังไม่ได้ใส่ค่าเที่ยว '+pend.length+' งาน — ยอดในใบนี้ยังไม่รวมงานเหล่านั้น</div>' : '') +
+    '<div class="sh-sum">' +
+      '<div class="sh-row"><span>ค่าเที่ยว ('+list.length+' งาน)</span><b class="num">'+baht(fee)+'</b></div>' +
+      '<div class="sh-row sub"><span>ค่างาน</span><span class="num">'+baht(base)+'</span></div>' +
+      '<div class="sh-row sub"><span>ค่าค้างคืน '+nightsN+' คืน</span><span class="num">'+baht(nightTot)+'</span></div>' +
+      '<div class="sh-row"><span>เบี้ยเลี้ยง</span><b class="num">'+baht(allow)+'</b></div>' +
+      '<div class="sh-row sub"><span>เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0)+' − ขาดงาน '+ab+' วัน × '+baht(DB.set.deduct||0)+' = '+baht(ab*(DB.set.deduct||0))+'</span><span></span></div>' +
+      '<div class="sh-net"><span>รวมจ่ายสุทธิ</span><span class="num">'+baht(net)+' บาท</span></div>' +
+    '</div>' +
+    '<div class="sh-fuel"><b>ค่าน้ำมันที่เติมเดือนนี้ '+baht(fuelBaht)+' บาท</b>' +
+      (fuelL?' ('+fuelL.toFixed(1)+' ลิตร)':'') + ' · '+fuels.length+' ครั้ง — บริษัทเป็นผู้ออก <b>ไม่รวมในยอดจ่าย</b>ด้านบน</div>' +
+    '<div class="sh-sign">' +
+      '<div><div class="ln"></div>ผู้รับเงิน (คนขับ)<br>'+esc(e.name||"")+'<br>วันที่ ......... / ......... / .........</div>' +
+      '<div><div class="ln"></div>ผู้จ่ายเงิน (เจ้าของ)<br>&nbsp;<br>วันที่ ......... / ......... / .........</div>' +
+    '</div>' +
+    '<div class="sh-foot">พิมพ์จากแอปค่าเที่ยว รุ่งชัย น้ำโสม เมื่อ '+fmtDate(today())+'</div>' +
+  '</div>';
+}
+/* บีบตารางเท่าที่จำเป็นให้คนขับหนึ่งคนจบใน 1 แผ่น
+   Why วัดของจริงแทนการเดาจากจำนวนแถว: ชื่องานยาวไม่เท่ากัน บางแถวตัดสองบรรทัด
+   วัดในกล่องซ่อนกว้าง 190mm (= A4 หัก margin 10mm สองข้าง) เพื่อให้ผลเหมือนตอนพิมพ์
+   ต่อให้เปิดบนจอมือถือแคบๆ ก็ตาม */
+function slipFit(sheet){
+  var BUDGET = 277 * 96 / 25.4;              /* 297mm - ขอบบนล่าง 10mm = 277mm */
+  var probe = document.getElementById("slipProbe");
+  if(!probe){
+    probe = document.createElement("div");
+    probe.id = "slipProbe";
+    probe.style.cssText = "position:fixed; left:-99999px; top:0; width:190mm; visibility:hidden; pointer-events:none";
+    document.body.appendChild(probe);
+  }
+  probe.innerHTML = "";
+  var c = sheet.cloneNode(true);
+  c.style.width="auto"; c.style.maxWidth="none"; c.style.margin="0";
+  c.style.padding="0"; c.style.boxShadow="none";
+  probe.appendChild(c);
+
+  function show(node,on){ if(node) node.className = node.className.replace(/\s*sh-off/g,"") + (on?"":" sh-off"); }
+  var c1=c.querySelector(".sh-t1"), c2=c.querySelector(".sh-t2");
+  var s1=sheet.querySelector(".sh-t1"), s2=sheet.querySelector(".sh-t2");
+
+  /* 1) คอลัมน์เดียวก่อน อ่านง่ายที่สุด ถ้าล้นแผ่นค่อยลองสองคอลัมน์ */
+  var two=false;
+  if(c1 && c2 && c.scrollHeight > BUDGET){
+    var h1=c.scrollHeight;
+    show(c1,false); show(c2,true);
+    if(c.scrollHeight < h1) two=true;
+    else { show(c1,true); show(c2,false); }
+  }
+  show(s1,!two); show(s2,two);
+
+  /* 2) ยังล้นอยู่ค่อยย่อตัวอักษร แต่ไม่ต่ำกว่า 8pt เพราะคนขับต้องอ่านออก */
+  var tc = c.querySelectorAll("table"), tr = sheet.querySelectorAll("table");
+  var f = 10.5, p = 3.2, i;
+  for(i=0; i<14; i++){
+    if(c.scrollHeight <= BUDGET) break;
+    if(f <= 8.0) break;
+    f = Math.max(8.0, f - 0.3);
+    p = Math.max(1.1, p - 0.2);
+    tc.forEach(function(x){ x.style.fontSize=f.toFixed(2)+"pt"; x.style.setProperty("--pd", p.toFixed(2)+"pt"); });
+  }
+  tr.forEach(function(x){ x.style.fontSize=f.toFixed(2)+"pt"; x.style.setProperty("--pd", p.toFixed(2)+"pt"); });
+  probe.innerHTML = "";
+}
+function slipFill(){
+  var sel=$("slipWho"); if(!sel) return;
+  var keep=sel.value;
+  var opts='<option value="*">ทุกคน (แยกคนละแผ่น)</option>';
+  DB.emp.filter(isDriver).forEach(function(e){ opts+='<option value="'+e.id+'">'+esc(e.name||"(ไม่มีชื่อ)")+'</option>'; });
+  sel.innerHTML=opts;
+  if(keep) sel.value=keep;
+  if(!sel.value) sel.value="*";
+}
+function slipOpen(){
+  var m=$("monPick").value, who=$("slipWho").value||"*";
+  var who_list = who==="*" ? DB.emp.filter(isDriver) : [find(DB.emp,who)].filter(Boolean);
+  if(!who_list.length){ toast("ยังไม่มีคนขับในระบบ"); return; }
+  var body="";
+  who_list.forEach(function(e){ body+=slipSheet(e,m); });
+  var host=$("slip");
+  host.innerHTML=
+    '<div class="slipbar">' +
+      '<button id="slipPrintBtn">🖨️ พิมพ์ / บันทึกเป็น PDF</button>' +
+      '<button id="slipCloseBtn">✕ ปิด</button>' +
+      '<div class="note">กระดาษ A4 แนวตั้ง · ถ้ากดพิมพ์แล้วไม่ขึ้น ให้เปิดลิงก์นี้ในเบราว์เซอร์ Chrome/Safari แล้วกดใหม่</div>' +
+    '</div>' + body;
+  host.classList.add("on");
+  document.body.style.overflow="hidden";
+  host.querySelectorAll(".sheet").forEach(slipFit);
+  $("slipCloseBtn").onclick=slipClose;
+  $("slipPrintBtn").onclick=function(){
+    if(typeof window.print!=="function"){ toast("เครื่องนี้สั่งพิมพ์ไม่ได้ ให้เปิดในเบราว์เซอร์ Chrome หรือ Safari"); return; }
+    try{ window.print(); }
+    catch(err){ toast("สั่งพิมพ์ไม่สำเร็จ ให้เปิดในเบราว์เซอร์ Chrome หรือ Safari"); }
+  };
+}
+function slipClose(){
+  var host=$("slip");
+  host.classList.remove("on");
+  host.innerHTML="";
+  document.body.style.overflow="";
+}
 function renderMonth(){
   monthOptions($("monPick"), true);
+  slipFill();
   var m=$("monPick").value;
   var list=DB.job.filter(function(j){ return ym(j.date)===m && j.status==="done" && j.priced; });
   var drivers=DB.emp.filter(isDriver);
@@ -1942,6 +2197,7 @@ function renderMonth(){
       save(); renderMonth();
     };
   });
+  $("slipGo").onclick=slipOpen;
   var pend=DB.job.filter(function(j){ return ym(j.date)===m&&j.status==="done"&&!j.priced; }).length;
   $("monTiles").innerHTML=
     tile("ต้นทุนคนขับรวม", baht(totFee+totAllow), "เบี้ยเลี้ยง + ค่าเที่ยว · "+fmtMonth(m), true) +
