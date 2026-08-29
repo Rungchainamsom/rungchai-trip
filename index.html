@@ -1199,7 +1199,14 @@ function runSync(){
     })
     .catch(function(e){
       syncBadge("bad");
-      toast("บันทึกขึ้นคลาวด์ไม่สำเร็จ — "+(e&&e.message?e.message:e));
+      var m=(e&&e.message)?e.message:String(e);
+      if(/foreign key|violates foreign/i.test(m)){
+        /* ลบพนักงาน/รถ ที่ยังมีงานหรือค่าน้ำมันผูกอยู่ ฐานข้อมูลจะไม่ยอม
+           ดึงของจริงกลับมาโชว์ ไม่งั้นหน้าจอจะไม่ตรงกับคลาวด์ */
+        m="ลบไม่ได้ เพราะยังมีงานหรือรายการที่บันทึกไว้ผูกอยู่ — ใช้ปุ่ม \u201cปิดใช้งาน\u201d แทน";
+        bootstrap().then(function(){ render(); }).catch(function(){});
+      }
+      toast("บันทึกขึ้นคลาวด์ไม่สำเร็จ — "+m);
     })
     .then(function(){
       SYNC_RUNNING=false;
@@ -1218,11 +1225,21 @@ function runSync(){
   }
 
   function syncTable(t){
-    var news=[], ups=[];
+    var news=[], ups=[], have={};
     DB[t].forEach(function(o){
+      have[o.id]=1;
       var row=TOROW[t](o), js=JSON.stringify(row);
       if(!isUuid(o.id)){ news.push({obj:o, row:row}); return; }
       if(SNAP[rowKey(t,o)]!==js){ row.id=o.id; ups.push(row); }
+    });
+    /* แถวที่เคยอยู่บนคลาวด์ (อยู่ใน SNAP) แต่หายไปจากหน้าจอแล้ว = ผู้ใช้กดลบ
+       Why ต้องมี: เดิมชั้นซิงก์มีแต่ INSERT กับ UPSERT ไม่เคยส่ง DELETE เลย
+       ลบอะไรก็หายแค่บนจอ พอ bootstrap() ใหม่ก็ดึงกลับมาเหมือนเดิม */
+    var gone=[], pre=t+":";
+    Object.keys(SNAP).forEach(function(k){
+      if(k.indexOf(pre)!==0) return;
+      var id=k.slice(pre.length);
+      if(isUuid(id) && !have[id]) gone.push(id);
     });
     var chain=Promise.resolve();
     if(news.length){
@@ -1242,6 +1259,14 @@ function runSync(){
       chain=chain.then(function(){
         return rest(TABLE[t], {method:"POST", body:ups,
           headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
+      });
+    }
+    if(gone.length){
+      chain=chain.then(function(){
+        /* กันพลาด: ถ้าจู่ๆ จะลบทีเดียวเยอะผิดปกติ แปลว่าข้อมูลในเครื่องเพี้ยน ไม่ใช่ผู้ใช้กดลบ */
+        if(gone.length>20) throw new Error("จะลบ "+gone.length+" รายการรวดเดียว ผิดปกติ — ยกเลิกไว้ก่อน กด \u201cดึงข้อมูลล่าสุดจากคลาวด์\u201d แล้วลองใหม่");
+        return rest(TABLE[t]+"?id=in.("+gone.join(",")+")",
+                    {method:"DELETE", headers:{Prefer:"return=minimal"}});
       });
     }
     return chain;
