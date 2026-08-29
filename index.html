@@ -985,6 +985,24 @@ function liffReady(){
   });
 }
 
+/* LIFF เก็บบัตรประจำตัว (id_token) ไว้ก้อนเดียวตั้งแต่ตอนล็อกอินครั้งแรก แล้ว "ไม่ต่ออายุให้เอง"
+   พอเลยเวลา LINE จะตีกลับว่า IdToken expired ทั้งที่ liff.isLoggedIn() ยังบอกว่าเข้าอยู่
+   กดรีเฟรชกี่ครั้งก็ได้ใบเดิม ต้อง logout ออกจาก LIFF แล้วขอใหม่เท่านั้น */
+var RELOGIN_FLAG="rc-liff-relogin";
+function forceRelogin(why){
+  var tried=null;
+  try{ tried=sessionStorage.getItem(RELOGIN_FLAG); }catch(_){}
+  if(tried){
+    loginMsg((why||"บัตร LINE ใช้ไม่ได้")+" — กดปุ่ม \u201cเข้าสู่ระบบด้วย LINE\u201d อีกครั้ง",1);
+    return;
+  }
+  try{ sessionStorage.setItem(RELOGIN_FLAG,"1"); }catch(_){}
+  clearSession();
+  loginMsg("บัตร LINE หมดอายุ กำลังขอใบใหม่ให้…");
+  try{ if(liff.isLoggedIn && liff.isLoggedIn()) liff.logout(); }catch(_){}
+  try{ liff.login(); }catch(_){ location.replace(location.pathname); }
+}
+
 function enterWith(s){
   AUTH.token=s.token; AUTH.exp=s.exp; me=s.me;
   loginMsg("กำลังโหลดข้อมูล…");
@@ -1002,7 +1020,9 @@ function lineLogin(opts){
       liff.login(); return null;
     }
     var idt=liff.getIDToken();
-    if(!idt) throw new Error("LINE ไม่ได้ส่งบัตรประจำตัวมา (ตรวจว่าเปิดสิทธิ์ openid แล้ว)");
+    if(!idt){ forceRelogin("LINE ไม่ได้ส่งบัตรประจำตัวมา"); return null; }
+    var dec=null; try{ dec=liff.getDecodedIDToken(); }catch(_){}
+    if(dec && dec.exp && (dec.exp*1000) < (Date.now()+60000)){ forceRelogin("บัตร LINE หมดอายุ"); return null; }
     loginMsg("กำลังตรวจสิทธิ์…");
     return fetch(CFG.url+"/functions/v1/login",{
       method:"POST", headers:{"Content-Type":"application/json"},
@@ -1010,7 +1030,12 @@ function lineLogin(opts){
     }).then(function(r){ return r.json(); });
   }).then(function(res){
     if(!res) return null;
-    if(!res.ok) throw new Error(res.error||"เข้าสู่ระบบไม่สำเร็จ");
+    if(!res.ok){
+      var emsg=res.error||"เข้าสู่ระบบไม่สำเร็จ";
+      var det=(res.detail&&(res.detail.error_description||res.detail.error))||"";
+      if(/ปฏิเสธ token|expire/i.test(emsg+" "+det)){ forceRelogin("บัตร LINE ใช้ไม่ได้"); return null; }
+      throw new Error(emsg+(det?" — "+det:""));
+    }
     if(res.status==="pending"){
       loginMsg("บัญชีนี้ยังไม่ได้รับอนุญาต — แจ้งเจ้าของให้เปิดใช้งานให้ในหน้าตั้งค่า");
       return null;
@@ -1018,6 +1043,7 @@ function lineLogin(opts){
     AUTH.token=res.token; AUTH.exp=res.expires_at;
     me={id:res.employee.id, name:res.employee.name, nickname:res.employee.nickname, role:res.employee.role};
     saveSession();
+    try{ sessionStorage.removeItem(RELOGIN_FLAG); }catch(_){}
     loginMsg("กำลังโหลดข้อมูล…");
     return bootstrap().then(function(){ loginMsg(""); enterApp(); });
   }).catch(function(e){
