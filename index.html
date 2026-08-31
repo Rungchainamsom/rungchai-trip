@@ -344,6 +344,9 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       </div>
     </div>
     <div class="topbar-in" style="padding-top:0; padding-bottom:0"><div class="tabs" id="tabs"></div></div>
+    <div id="busyBar" class="hidden" style="background:var(--warn-soft); color:var(--warn); font-size:14px; font-weight:600; text-align:center; padding:6px 12px">
+      กำลังโหลดข้อมูล… ใช้ได้ในอีกสักครู่
+    </div>
   </div>
 
   <div class="wrap">
@@ -1045,10 +1048,28 @@ function forceRelogin(why){
   try{ liff.login(); }catch(_){ location.replace(location.pathname); }
 }
 
+/* กันไม่ให้กดสร้างงาน/เติมน้ำมันตอนข้อมูลยังมาไม่ครบ
+   Why: ถ้าเปิดฟอร์มตอน DB.truck ยังว่าง ช่องเลือกรถจะโล่ง แล้วบันทึกไปเป็นงานไม่มีรถทั้งที่ขับจริง */
+var BUSY=false;
+function setBusy(v){
+  BUSY=!!v;
+  var el=$("busyBar"); if(el) el.classList.toggle("hidden", !BUSY);
+}
+function busyGuard(){
+  if(BUSY){ toast("กำลังโหลดข้อมูล รอสักครู่แล้วลองใหม่"); return true; }
+  return false;
+}
+/* เข้าแอปให้เห็นหน้าจอก่อน แล้วค่อยโหลดข้อมูลตามมา
+   Why: บัตรผ่านยังไม่หมดอายุอยู่แล้ว ไม่มีเหตุผลให้คนขับนั่งมองหน้าขาวรอโหลด */
 function enterWith(s){
   AUTH.token=s.token; AUTH.exp=s.exp; me=s.me;
-  loginMsg("กำลังโหลดข้อมูล…");
-  return bootstrap().then(function(){ loginMsg(""); enterApp(); });
+  loginMsg("");
+  enterApp();
+  setBusy(true);
+  return bootstrap().then(function(){
+    setBusy(false);
+    buildTabs(); render();
+  });
 }
 
 /* silent=true คือพยายามเข้าเองตอนเปิดแอป ถ้ายังไม่เคยเข้า LINE ก็เงียบไว้รอกดปุ่ม */
@@ -1096,13 +1117,17 @@ function lineLogin(opts){
 
 /* ---------- ดึงข้อมูลทั้งหมดลงมาไว้ในเครื่องครั้งเดียว ---------- */
 function bootstrap(){
+  /* คนขับดูได้แค่งานตัวเองอยู่แล้ว (หน้าหลัก · เติมน้ำมัน · ยอดของฉัน)
+     ไม่มีเหตุผลให้รอโหลดงานของทั้งบริษัท — เปิดแอปเร็วขึ้นมาก และประหยัดโควตา Egress ด้วย
+     ไม่ใส่เงื่อนไขวันที่ เพราะหน้า "สรุปรายปี" ต้องใช้งานย้อนหลังทั้งปี */
+  var mine = (me && me.role!=="owner") ? "&emp_id=eq."+me.id : "";
   return Promise.all([
     rest("employees?select=*&order=name"),
     rest("trucks?select=*&order=plate"),
     rest("materials?select=*&order=sort_order"),
     rest("job_rates?select=*&order=label"),
-    rest("jobs?select=*&order=created_at.desc&limit=800"),
-    rest("fuel?select=*&order=created_at.desc&limit=400"),
+    rest("jobs?select=*"+mine+"&order=created_at.desc&limit=800"),
+    rest("fuel?select=*"+mine+"&order=created_at.desc&limit=400"),
     rest("absences?select=*"),
     rest("settings?select=*")
   ]).then(function(a){
@@ -1714,6 +1739,7 @@ function fillTruckSel(reset){
   else if(sel.options.length) sel.value=sel.options[sel.options.length-1].value;
 }
 function openNew(){
+  if(busyGuard()) return;
   draft.shots=[]; draft.other="";
   $("fOther").value=""; $("night1Val").textContent="0";
   buildMatChips();
@@ -3103,6 +3129,7 @@ function refreshCar4(){
     : '<span style="color:var(--accent); font-weight:600">* ต้องมีรูปเลขไมล์อย่างน้อย 1 รูป</span>';
 }
 function saveFuel(){
+  if(busyGuard()) return;
   var amt=parseFloat($("uAmount").value);
   if(!amt||amt<=0){ toast("ใส่จำนวนเงินก่อน"); $("uAmount").focus(); return; }
   var pr=parseFloat($("uPrice").value);
