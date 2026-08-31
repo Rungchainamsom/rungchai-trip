@@ -720,6 +720,18 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <p class="hint" id="imgStat" style="grid-column:1/-1; margin:0"></p>
       </div>
 
+      <div class="sec-title">เก็บกวาดรูปในถัง</div>
+      <div class="card pad stack">
+        <p class="hint" style="margin:0">
+          หารูปที่ไม่มีงานหรือรายการเติมน้ำมันอ้างถึงแล้ว (เช่นบันทึกงานค้างไว้แล้วลบทิ้ง)
+          — ตรวจก่อนได้ ยังไม่ลบอะไรจนกว่าจะกดยืนยัน
+        </p>
+        <div class="row">
+          <button class="btn" id="orphScan">ตรวจหารูปที่ไม่มีใครใช้</button>
+        </div>
+        <div id="orphOut" class="hint" style="margin:0"></div>
+      </div>
+
       <div class="sec-title">พนักงาน</div>
       <div class="card pad" style="margin-bottom:10px">
         <label class="f">ค้นหาชื่อ<input type="text" id="empSearch" placeholder="พิมพ์ชื่อบางส่วนก็ได้" autocomplete="off"></label>
@@ -1162,13 +1174,24 @@ function uploadShot(dataUrl){
     return path;
   });
 }
+/* จำว่ารูปก้อนไหนอัปขึ้นถังไปแล้วได้ path อะไร
+   Why ต้องมี: pushShots() อ่านจาก j.shots ซึ่งยังเก็บ data: ไว้เหมือนเดิมหลังอัปเสร็จ
+   พอ runSync() วิ่งรอบถัดไป (คนขับบันทึกงานที่ 2 ต่อโดยไม่ปิดแอป) มันจะเจอ data: ก้อนเดิม
+   แล้วอัปขึ้นถังใหม่อีกใบ + เติม path เข้า _ps ซ้ำ → รูปเดียวกันโผล่ 2 ใบ กินโควตาฟรีๆ */
+var SHOT_UP={};
+function shotKey(d){
+  /* ไม่ต้องแฮชจริง เอาความยาว + หัว + ท้าย ก็แยกรูปคนละใบได้แน่นอนแล้ว และเร็วกว่ามาก */
+  return d.length+"|"+d.slice(0,80)+"|"+d.slice(-80);
+}
 /* รูปในหน่วยความจำมีสองแบบ: data: คือเพิ่งถ่าย · http คือลิงก์ชั่วคราวของรูปเก่า */
 function pushShots(shownArr, pathArr){
   var jobs=[], out=(pathArr||[]).slice();
-  (shownArr||[]).forEach(function(s,i){
-    if(typeof s==="string" && s.indexOf("data:")===0){
-      jobs.push(uploadShot(s).then(function(p){ out.push(p); }));
-    }
+  function keep(p){ if(p && out.indexOf(p)<0) out.push(p); }
+  (shownArr||[]).forEach(function(s){
+    if(typeof s!=="string" || s.indexOf("data:")!==0) return;
+    var k=shotKey(s);
+    if(SHOT_UP[k]){ keep(SHOT_UP[k]); return; }        /* อัปไปแล้ว ใช้ใบเดิม */
+    jobs.push(uploadShot(s).then(function(p){ SHOT_UP[k]=p; keep(p); }));
   });
   if(!jobs.length) return Promise.resolve(out);
   return Promise.all(jobs).then(function(){ return out; });
@@ -1401,6 +1424,10 @@ function find(arr,id){ for(var i=0;i<arr.length;i++) if(arr[i].id===id) return a
 function emp(id){ return find(DB.emp,id)||{name:"?"}; }
 /* งานประเภททั่วไปไม่บังคับใส่รถ จึงต้องแยก "ตั้งใจไม่ใส่รถ" ออกจาก "ข้อมูลเพี้ยนหาไม่เจอ"
    ไม่งั้นงานที่คนขับไม่ได้ขับรถจะขึ้น "?" เหมือนระบบพัง */
+/* ป้ายทะเบียนบนการ์ดงาน — ไม่มีรถก็ไม่ต้องมีป้าย
+   Why: งานทั่วไปส่วนใหญ่คนขับไม่ได้ขับรถ ขึ้นคำว่า "ไม่ใช้รถ" ทุกใบรกเปล่าๆ
+   ส่วนในตาราง/ใบสรุปยังใช้ truck().plate เหมือนเดิม เพราะช่องในตารางต้องมีอะไรสักอย่าง */
+function plateChip(j){ return j && j.truck ? '<span>'+esc(truck(j.truck).plate)+'</span>' : ''; }
 function truck(id){
   if(!id) return {plate:"ไม่ใช้รถ", size:"–", none:true};
   return find(DB.truck,id)||{plate:"?",size:"?"};
@@ -1536,7 +1563,12 @@ function shrink(file,cb){
 function addShots(files,arr,after){
   Array.prototype.slice.call(files).forEach(function(f){
     if(arr.length>=3){ toast("แนบได้สูงสุด 3 รูป"); return; }
-    shrink(f,function(d){ if(!d||arr.length>=3) return; arr.push(d); after(); });
+    shrink(f,function(d){
+      if(!d||arr.length>=3) return;
+      /* เลือกไฟล์เดิมซ้ำ (กดเข้าคลังรูปแล้วเลือกใบเดิมอีกรอบ) — ไม่ต้องเก็บสองใบ */
+      if(arr.indexOf(d)>=0){ toast("รูปนี้แนบไปแล้ว"); return; }
+      arr.push(d); after();
+    });
   });
 }
 function carousel(host,arr,counter,onChange){
@@ -1765,7 +1797,7 @@ function openFinish(j){
     '<div class="jt">'+esc(jobTitle(j))+'</div>' +
     '<div class="meta"><span class="pill '+TYPE_PILL[j.type]+'">'+TYPE_LABEL[j.type]+'</span>' +
     (j.mat&&j.label?'<span>'+j.mat+'</span>':'') +
-    '<span>'+truck(j.truck).plate+'</span><span class="num">'+fmtDate(j.date)+'</span><span>เริ่ม '+clock(j.start&&j.start.at)+' น.</span>' +
+    plateChip(j)+'<span class="num">'+fmtDate(j.date)+'</span><span>เริ่ม '+clock(j.start&&j.start.at)+' น.</span>' +
     (j.start&&j.start.lat!=null?'<a class="geo" target="_blank" rel="noopener" href="'+mapsPoint(j.start)+'">📍 จุดเริ่มต้น</a>':'<span style="color:var(--ink3)">ไม่มีพิกัดต้นทาง</span>') +
     (j.shots.length?'<button class="btn sm ghost" id="seeBill" style="padding:2px 9px">🧾 ดูรูปบิล '+j.shots.length+' รูป</button>':'') +
     '</div>';
@@ -1814,7 +1846,7 @@ function doneJob(){
 function notifyOwner(j){
   var msg="🚛 งานใหม่รอใส่ค่าเที่ยว\n"+
     "คนขับ: "+emp(j.emp).name+"\n"+
-    "รถ: "+truck(j.truck).plate+"\n"+
+    "รถ: "+(j.truck?truck(j.truck).plate:"–")+"\n"+
     "งาน: "+jobTitle(j)+"\n"+
     "วันที่: "+fmtDate(j.date)+"\n"+
     "ระยะทาง: "+(j.km?j.km.toFixed(1)+" กม.":"–")+
@@ -1882,7 +1914,7 @@ function jobList(host,list,showEmp){
         (j.mat&&j.label?'<span>'+j.mat+'</span>':'') +
         (j.dest&&j.label?'<span>→ '+esc(j.dest)+'</span>':'') +
         (j.bill?'<span>บิล '+esc(j.bill)+'</span>':'') +
-        '<span>'+truck(j.truck).plate+'</span>' +
+        plateChip(j) +
         (showEmp?'<span>'+emp(j.emp).name+'</span>':'') +
         '<span class="num">'+fmtDate(j.date)+'</span>' +
         (j.km?'<span class="num">'+j.km.toFixed(1)+' กม.</span>':'') +
@@ -2008,7 +2040,7 @@ function renderLive(){
     '<span class="pill '+TYPE_PILL[j.type]+'">'+TYPE_LABEL[j.type]+'</span></div>' +
     '<div class="jt" style="font-size:19px">'+esc(jobTitle(j))+'</div>' +
     '<div class="meta">'+(j.mat&&j.label?'<span>'+j.mat+'</span>':'') +
-      '<span>'+truck(j.truck).plate+'</span><span>เริ่ม '+clock(j.start&&j.start.at)+' น.</span>' +
+      plateChip(j)+'<span>เริ่ม '+clock(j.start&&j.start.at)+' น.</span>' +
       (j.start&&j.start.lat!=null?'<a class="geo" target="_blank" rel="noopener" href="'+mapsPoint(j.start)+'">📍 จุดเริ่มต้น</a>':'') +
     '</div>';
   var b=document.createElement("button");
@@ -2119,7 +2151,7 @@ function renderWait(){
     head.innerHTML=
       '<div class="jt">'+esc(jobTitle(j))+'</div>' +
       '<div class="meta"><span class="pill '+TYPE_PILL[j.type]+'">'+TYPE_LABEL[j.type]+'</span>' +
-      '<span>'+emp(j.emp).name+'</span><span>'+truck(j.truck).plate+'</span>' +
+      '<span>'+emp(j.emp).name+'</span>'+plateChip(j) +
       '<span class="num">'+fmtDate(j.date)+'</span>' +
       (j.km?'<span class="num">'+j.km.toFixed(1)+' กม.</span>':'') +
       (j.nights?'<span>🌙 คนขับแจ้งค้าง '+j.nights+' คืน</span>':'') +
@@ -2233,7 +2265,7 @@ function renderDay(){
     live.forEach(function(j){
       var d2=document.createElement("div"); d2.className="live-card"; d2.style.marginBottom="10px";
       d2.innerHTML='<div class="meta" style="margin:0 0 4px"><span class="pill live"><i class="dot"></i> กำลังทำงาน</span>' +
-        '<span>'+emp(j.emp).name+'</span><span>'+truck(j.truck).plate+'</span><span>เริ่ม '+clock(j.start&&j.start.at)+' น.</span></div>' +
+        '<span>'+emp(j.emp).name+'</span>'+plateChip(j)+'<span>เริ่ม '+clock(j.start&&j.start.at)+' น.</span></div>' +
         '<div class="jt">'+esc(jobTitle(j))+'</div>';
       lb.appendChild(d2);
     });
@@ -2640,6 +2672,126 @@ function renderPendBanner(){
     '<button class="btn primary" id="pendGo">ไปหน้าตั้งค่า</button></div>';
   $("pendGo").onclick=function(){ go("set"); };
 }
+/* =============== เก็บกวาดรูปกำพร้าในถัง ===============
+   Why ต้องระวังเป็นพิเศษ: นี่คือปุ่มลบไฟล์ถาวร และรูปพวกนี้คือบิลที่ลูกค้าเซ็นรับของ
+   ลบผิดใบเดียวก็ไม่มีหลักฐานการจ่ายเงินแล้ว จึงต้องกันไว้ 3 ชั้น
+     1. ห้ามใช้ DB.job / DB.fuel เป็นตัวตัดสิน เพราะ bootstrap() ดึงมาแค่ 800/400 แถวล่าสุด
+        ต้องไปนับจากเซิร์ฟเวอร์ให้ครบทุกแถวจริงๆ
+     2. ถ้าดึงมาได้ไม่ครบตามจำนวนที่เซิร์ฟเวอร์บอก ให้เลิกทันที ห้ามเสนอปุ่มลบ
+     3. รูปที่เพิ่งขึ้นถังไม่ถึง 1 วัน ไม่นับเป็นกำพร้า เผื่อแถวยังซิงก์ตามมาไม่ทัน */
+var ORPH=null;
+
+function pullAllCol(table, cols){
+  var out=[], total=null;
+  function step(from){
+    return fetch(CFG.url+"/rest/v1/"+table+"?select="+cols,{
+      headers: sbHead({ Range: from+"-"+(from+999), Prefer:"count=exact" })
+    }).then(function(r){
+      if(!r.ok) return r.text().then(function(t){ throw new Error("["+r.status+"] "+t.slice(0,150)); });
+      var cr=r.headers.get("content-range")||"";
+      var tt=parseInt((cr.split("/")[1]||""),10);
+      if(!isNaN(tt)) total=tt;
+      return r.json();
+    }).then(function(rows){
+      out=out.concat(rows);
+      if(!rows.length || total===null || out.length>=total) return {rows:out, total:total};
+      return step(out.length);
+    });
+  }
+  return step(0);
+}
+function bucketList(prefix){
+  return fetch(CFG.url+"/storage/v1/object/list/"+CFG.bucket,{
+    method:"POST", headers:sbHead(),
+    body: JSON.stringify({prefix:prefix, limit:1000, offset:0, sortBy:{column:"name",order:"asc"}})
+  }).then(function(r){
+    if(!r.ok) return r.text().then(function(t){ throw new Error("["+r.status+"] "+t.slice(0,150)); });
+    return r.json();
+  });
+}
+/* list ของ Supabase คืนแค่ชั้นเดียว ต้องไล่เอง path คือ <คน>/<ปี-เดือน>/<ไฟล์> */
+function bucketWalk(prefix, depth){
+  return bucketList(prefix).then(function(rows){
+    var files=[], subs=[];
+    (rows||[]).forEach(function(x){
+      if(x && x.id) files.push({name:prefix+x.name, at:(x.created_at||x.updated_at||null)});
+      else if(x && x.name) subs.push(x.name);
+    });
+    if(depth<=0) return files;
+    return subs.reduce(function(p,sub){
+      return p.then(function(acc){
+        return bucketWalk(prefix+sub+"/", depth-1).then(function(r){ return acc.concat(r); });
+      });
+    }, Promise.resolve(files));
+  });
+}
+function orphSay(html){ var el=$("orphOut"); if(el) el.innerHTML=html; }
+function orphScan(){
+  var b=$("orphScan"); b.disabled=true; b.textContent="กำลังตรวจ…";
+  ORPH=null;
+  orphSay("กำลังนับรูปที่มีงานอ้างถึง…");
+  Promise.all([
+    pullAllCol("jobs","photos_start,photos_end"),
+    pullAllCol("fuel","photos_receipt,photos_odo"),
+    bucketWalk("",2)
+  ]).then(function(a){
+    var J=a[0], F=a[1], files=a[2];
+    if(J.total===null || J.rows.length!==J.total || F.total===null || F.rows.length!==F.total){
+      orphSay('<b style="color:var(--accent)">ตรวจไม่สำเร็จ — ดึงรายการงานมาได้ไม่ครบ</b><br>' +
+              'งาน '+J.rows.length+'/'+J.total+' · เติมน้ำมัน '+F.rows.length+'/'+F.total+
+              '<br>ยังไม่ลบอะไรทั้งนั้น ลองใหม่อีกครั้ง');
+      return;
+    }
+    var used={};
+    function mark(v){ (v||[]).forEach(function(p){ if(p) used[p]=1; }); }
+    J.rows.forEach(function(r){ mark(r.photos_start); mark(r.photos_end); });
+    F.rows.forEach(function(r){ mark(r.photos_receipt); mark(r.photos_odo); });
+
+    var cut=Date.now()-86400000;
+    var fresh=0;
+    var orph=files.filter(function(f){
+      if(used[f.name]) return false;
+      var t=f.at? new Date(f.at).getTime() : 0;
+      if(t && t>cut){ fresh++; return false; }   /* เพิ่งขึ้นถัง รอแถวตามมาก่อน */
+      return true;
+    });
+    ORPH=orph.map(function(f){ return f.name; });
+    var h='ในถังมี <b>'+files.length+'</b> รูป · มีงานอ้างถึง <b>'+Object.keys(used).length+'</b>' +
+          ' · งานทั้งหมด '+J.total+' รายการ เติมน้ำมัน '+F.total+' รายการ';
+    if(fresh) h+='<br>ข้ามรูปที่เพิ่งขึ้นถังวันนี้ '+fresh+' รูป (รอแถวซิงก์ตามมาก่อน)';
+    if(!orph.length){
+      h+='<br><b style="color:var(--ok)">ไม่มีรูปกำพร้า ถังสะอาดดี</b>';
+      orphSay(h); return;
+    }
+    h+='<br><b style="color:var(--warn-ink,var(--accent))">รูปที่ไม่มีใครใช้ '+orph.length+' รูป</b>' +
+       '<div style="margin-top:8px">' + orph.slice(0,20).map(function(x){
+         return '<div style="font-size:13px">'+esc(x)+'</div>'; }).join("") +
+       (orph.length>20?'<div style="font-size:13px">… และอีก '+(orph.length-20)+' รูป</div>':'') +
+       '</div><div class="row" style="margin-top:10px"><button class="btn" id="orphDel">ลบรูปกำพร้า '+orph.length+' รูป</button></div>';
+    orphSay(h);
+    armBtn($("orphDel"), "กดอีกครั้งเพื่อลบถาวร", orphDelete);
+  }).catch(function(e){
+    orphSay('<b style="color:var(--accent)">ตรวจไม่สำเร็จ</b><br>'+esc(e.message||String(e))+'<br>ยังไม่ลบอะไรทั้งนั้น');
+  }).then(function(){
+    b.disabled=false; b.textContent="ตรวจหารูปที่ไม่มีใครใช้";
+  });
+}
+function orphDelete(){
+  if(!ORPH || !ORPH.length){ toast("ไม่มีรูปให้ลบ"); return; }
+  var list=ORPH.slice();
+  orphSay("กำลังลบ "+list.length+" รูป…");
+  fetch(CFG.url+"/storage/v1/object/"+CFG.bucket,{
+    method:"DELETE", headers:sbHead(), body: JSON.stringify({prefixes:list})
+  }).then(function(r){
+    if(!r.ok) return r.text().then(function(t){ throw new Error("["+r.status+"] "+t.slice(0,150)); });
+    ORPH=null;
+    toast("ลบรูปกำพร้า "+list.length+" รูปแล้ว");
+    orphScan();
+  }).catch(function(e){
+    orphSay('<b style="color:var(--accent)">ลบไม่สำเร็จ</b><br>'+esc(e.message||String(e)));
+  });
+}
+
 function renderSettings(){
   $("sAllow").value=DB.set.allow; $("sDeduct").value=DB.set.deduct; $("sNight").value=DB.set.night;
   $("sGeneral").value=(DB.set.general==null?300:DB.set.general);
@@ -3193,6 +3345,7 @@ $("rAdd").onclick=function(){
   DB.rate.push({id:uid("r"), type:$("rType").value, label:l, price:p, at:today()});
   save(); $("rLabel").value=""; $("rPrice").value=""; toast("เพิ่มราคางานแล้ว"); render();
 };
+$("orphScan").onclick=orphScan;
 $("sSave").onclick=function(){
   DB.set.allow=parseFloat($("sAllow").value)||0;
   DB.set.deduct=parseFloat($("sDeduct").value)||0;
