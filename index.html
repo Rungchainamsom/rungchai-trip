@@ -2652,12 +2652,25 @@ function renderSettings(){
   paintEmpList();
   $("empSearch").oninput=paintEmpList;
   var sizes=(DB.sizes&&DB.sizes.length?DB.sizes:SIZES);
-  /* คนขับประจำรถ — งานที่นำเข้าจากท่าทรายรู้แค่ทะเบียน ต้องอาศัยตรงนี้ลงชื่อคนให้ */
-  var drvOpt='<option value="">— ยังไม่ระบุ —</option>' + DB.emp.filter(function(e){
-      return e.active!==false;
-    }).map(function(e){
-      return '<option value="'+e.id+'">'+esc(e.name||"(ยังไม่มีชื่อ)")+'</option>';
-    }).join("");
+  /* คนขับประจำรถ — งานที่นำเข้าจากท่าทรายรู้แค่ทะเบียน ต้องอาศัยตรงนี้ลงชื่อคนให้
+     **เอาเฉพาะคนขับ ไม่เอาเจ้าของ** เพราะเงินค่าเที่ยวเป็นของคนขับ เจ้าของเป็นคนใส่ราคาให้
+     ใช้เกณฑ์เดียวกับกลุ่ม "คนขับ" ใน empGroups() เป๊ะ (role!=="owner") สองหน้าจะได้ตรงกันเสมอ */
+  var drvList=DB.emp.filter(function(e){ return e.active!==false && e.role!=="owner"; })
+                    .sort(function(a,b){ return (a.name||"").localeCompare(b.name||"","th"); });
+  function drvOptions(cur){
+    var h='<option value="">— ยังไม่ระบุ —</option>', seen=false;
+    drvList.forEach(function(e){
+      if(e.id===cur) seen=true;
+      h+='<option value="'+e.id+'">'+esc(e.name||"(ยังไม่มีชื่อ)")+'</option>';
+    });
+    /* คนที่ผูกไว้แล้วแต่ตอนนี้ไม่ใช่คนขับแล้ว (เลื่อนเป็นเจ้าของ/ปิดใช้งาน) ต้องยังโชว์อยู่
+       ไม่งั้นช่องจะกลายเป็นว่างเงียบๆ แล้วเจ้าของนึกว่ายังไม่เคยตั้ง แต่ของจริงยังผูกอยู่ */
+    if(cur && !seen){
+      var o=find(DB.emp,cur);
+      h+='<option value="'+cur+'">'+esc((o&&o.name)||"(ไม่พบชื่อ)")+' — ไม่ใช่คนขับแล้ว</option>';
+    }
+    return h;
+  }
   var t='<thead><tr><th>ทะเบียน</th><th>ประเภทรถ</th><th>คนขับประจำ</th><th></th></tr></thead><tbody>';
   DB.truck.forEach(function(x){
     var opts=sizes.map(function(z){
@@ -2666,7 +2679,7 @@ function renderSettings(){
     if(sizes.indexOf(x.size)<0) opts='<option selected>'+esc(x.size)+'</option>'+opts;
     t+='<tr><td>'+esc(x.plate)+'</td>' +
        '<td><select data-size-t="'+x.id+'">'+opts+'</select></td>' +
-       '<td><select data-drv-t="'+x.id+'">'+drvOpt+'</select></td>' +
+       '<td><select data-drv-t="'+x.id+'">'+drvOptions(x.driver||"")+'</select></td>' +
        '<td class="r"><button class="btn sm ghost" data-ren-t="'+x.id+'">แก้ทะเบียน</button> ' +
        '<button class="btn sm ghost" data-del-t="'+x.id+'">ลบ</button></td></tr>';
   });
