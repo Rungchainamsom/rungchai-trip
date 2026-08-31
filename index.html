@@ -383,6 +383,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <div>
           <div class="hint" style="font-weight:600; color:var(--ink2); margin-bottom:8px">รถที่ใช้</div>
           <select id="fTruck"></select>
+          <div class="hint" id="truckHint" style="margin-top:6px"></div>
         </div>
         <div>
           <div class="row" style="justify-content:space-between">
@@ -695,6 +696,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <label class="f">เบี้ยเลี้ยง/เดือน (บาท)<input type="number" id="sAllow" step="100"></label>
         <label class="f">หักวันขาด วันละ (บาท)<input type="number" id="sDeduct" step="10"></label>
         <label class="f">ค่าค้างคืน/คืน ตั้งต้น (บาท)<input type="number" id="sNight" step="50"></label>
+        <label class="f">ค่าแรงงานทั่วไป/วัน (บาท)<input type="number" id="sGeneral" step="50" min="0"></label>
         <label class="f">ราคาน้ำมัน/ลิตร ตั้งต้น (บาท)<input type="number" id="sFuel" step="0.01"></label>
         <label class="f">คุณภาพรูปที่เก็บ<select id="sImgq"><option>ประหยัด</option><option>ปกติ</option><option>ชัด</option></select></label>
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="sSave">บันทึก</button></label>
@@ -782,7 +784,16 @@ function pad(n){ return n<10?"0"+n:""+n; }
 function today(){ var d=new Date(); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
 function shift(ds,n){ var d=new Date(ds+"T00:00:00"); d.setDate(d.getDate()+n); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
 function ym(d){ return d.slice(0,7); }
-function baht(n){ return Math.round(n||0).toLocaleString("th-TH"); }
+/* โหมดคิดเป็นคิวทำให้มีเศษสตางค์ (30 × 19.32 = 579.60)
+   ถ้าปัดทุกบรรทัดเป็นจำนวนเต็ม ผลรวมของบรรทัดจะไม่เท่ากับยอดรวมท้ายใบสรุป
+   ซึ่งบนใบที่คนขับเซ็นรับเงินจะดูเหมือนคิดผิด → โชว์สตางค์เฉพาะตอนที่มีจริง
+   จำนวนเต็มยังหน้าตาเหมือนเดิมทุกประการ ไม่มี .00 ต่อท้าย */
+function baht(n){
+  var r=Math.round((n||0)*100)/100;
+  return (Math.abs(r%1)>0.004)
+    ? r.toLocaleString("th-TH",{minimumFractionDigits:2, maximumFractionDigits:2})
+    : Math.round(r).toLocaleString("th-TH");
+}
 function clock(ts){ if(!ts) return "–"; var d=new Date(ts); return pad(d.getHours())+":"+pad(d.getMinutes()); }
 function fmtDate(iso){ if(!iso) return "–"; var p=iso.split("-"); return p[2]+"/"+p[1]+"/"+(parseInt(p[0],10)+543); }
 function fmtMonth(m){ var p=m.split("-"); return TH_MONTH[parseInt(p[1],10)-1]+" "+(parseInt(p[0],10)+543); }
@@ -828,7 +839,7 @@ function seed(){
      note:"บางจาก บ้านผือ", shots:[], odoShots:[], lat:17.680, lng:102.470, at:Math.min(new Date(d1+"T16:40:00").getTime(), Date.now()-7200000)}
   ];
   return {emp:E, truck:T, rate:R, job:J, fuel:F, absent:{}, lastTruck:{}, mats:["หิน","ทราย","ลูกรัง","บล็อค"],
-          set:{allow:3000, deduct:100, night:200, imgq:"ประหยัด", fuelPrice:31.94}, tg:{token:"", chat:"", log:[]}};
+          set:{allow:3000, deduct:100, night:200, general:300, imgq:"ประหยัด", fuelPrice:31.94}, tg:{token:"", chat:"", log:[]}};
   function r(t,l,p){ return {id:uid("r"), type:t, label:l, price:p, at:"2026-08-01"}; }
 }
 function job(date,emp,truck,type,label,mat,bill,price,sla,sln,ela,eln,km,dest,nights){
@@ -895,6 +906,7 @@ function rowJob(r){
     price:num(r.price,0), priced:!!r.priced, nights:r.nights||0, nightRate:r.night_rate==null?null:num(r.night_rate,0),
     km:num(r.km,0), note:r.note||"", status:r.status,
     payMode:r.pay_mode||"เที่ยว", days:r.days||1, returnOf:r.return_of||null,
+    qty:(r.qty==null?null:num(r.qty,0)), src:r.src||null, srcRef:r.src_ref||null,
     incomplete:!!r.incomplete, incompleteReason:r.incomplete_reason||"",
     start: r.start_at? {lat:r.start_lat, lng:r.start_lng, at:ms(r.start_at)} : null,
     end:   r.end_at?   {lat:r.end_lat,   lng:r.end_lng,   at:ms(r.end_at)}   : null,
@@ -916,12 +928,13 @@ var TOROW = {
   truck: function(o){ return {plate:o.plate, size:o.size, active:o.active!==false}; },
   rate: function(o){ return {job_type:o.type, label:o.label, price:o.price, unit:o.unit||"เที่ยว"}; },
   job: function(o){ return {
-      job_date:o.date, emp_id:o.emp, truck_id:o.truck, job_type:o.type, label:o.label||"",
+      job_date:o.date, emp_id:o.emp, truck_id:o.truck||null, job_type:o.type, label:o.label||"",
       material:o.mat||null, bill_no:o.bill||null, dest:o.dest||null,
       price:o.price||0, priced:!!o.priced, nights:o.nights||0,
       night_rate:(o.nightRate==null?null:o.nightRate),
       km:o.km||0, note:o.note||"", status:o.status||"active",
       pay_mode:o.payMode||"เที่ยว", days:o.days||1, return_of:o.returnOf||null,
+      qty:((o.qty==null||o.qty==="")?null:Number(o.qty)), src:o.src||null, src_ref:o.srcRef||null,
       incomplete:!!o.incomplete, incomplete_reason:o.incompleteReason||null,
       start_lat:o.start?o.start.lat:null, start_lng:o.start?o.start.lng:null, start_at:o.start?iso(o.start.at):null,
       end_lat:o.end?o.end.lat:null, end_lng:o.end?o.end.lng:null, end_at:o.end?iso(o.end.at):null,
@@ -1080,6 +1093,7 @@ function bootstrap(){
     var S={}; a[7].forEach(function(s){ S[s.key]=s.value; });
     DB.set={ allow:num(S.allowance_per_month,3000), deduct:num(S.deduct_per_absent_day,100),
              night:num(S.night_rate_default,200), fuelPrice:num(S.fuel_price_default,31.94),
+             general:num(S.general_day_rate,300),
              imgq: S.image_quality || "ประหยัด" };
     DB.tg={ token:(S.telegram&&S.telegram.token)||"", chat:(S.telegram&&S.telegram.chat_id)||"", log:[] };
     DB.lastTruck = S.last_truck || {};
@@ -1301,6 +1315,7 @@ function runSync(){
       {key:"allowance_per_month",   value:DB.set.allow},
       {key:"deduct_per_absent_day", value:DB.set.deduct},
       {key:"night_rate_default",    value:DB.set.night},
+      {key:"general_day_rate",      value:DB.set.general},
       {key:"fuel_price_default",    value:DB.set.fuelPrice},
       {key:"image_quality",         value:DB.set.imgq},
       {key:"last_truck",            value:DB.lastTruck||{}},
@@ -1314,7 +1329,7 @@ function runSync(){
 /* ---------- โครงว่างตอนหน้าเว็บเพิ่งเปิด (ยังไม่ล็อกอิน) ---------- */
 function load(){
   return {emp:[], truck:[], rate:[], job:[], fuel:[], absent:{}, lastTruck:{}, sizes:SIZES.slice(),
-          mats:[], set:{allow:3000, deduct:100, night:200, imgq:"ประหยัด", fuelPrice:31.94},
+          mats:[], set:{allow:3000, deduct:100, night:200, general:300, imgq:"ประหยัด", fuelPrice:31.94},
           tg:{token:"", chat:"", log:[]}};
 }
 /* ถามข้อความหนึ่งบรรทัด แบบไม่ใช้ window.prompt
@@ -1367,7 +1382,12 @@ function renderLogin(){
 
 function find(arr,id){ for(var i=0;i<arr.length;i++) if(arr[i].id===id) return arr[i]; return null; }
 function emp(id){ return find(DB.emp,id)||{name:"?"}; }
-function truck(id){ return find(DB.truck,id)||{plate:"?",size:"?"}; }
+/* งานประเภททั่วไปไม่บังคับใส่รถ จึงต้องแยก "ตั้งใจไม่ใส่รถ" ออกจาก "ข้อมูลเพี้ยนหาไม่เจอ"
+   ไม่งั้นงานที่คนขับไม่ได้ขับรถจะขึ้น "?" เหมือนระบบพัง */
+function truck(id){
+  if(!id) return {plate:"ไม่ใช้รถ", size:"–", none:true};
+  return find(DB.truck,id)||{plate:"?",size:"?"};
+}
 function isDriver(e){ return e.role==="driver"; }
 function findRate(type,label){
   var L=(label||"").trim(); if(!L) return null;
@@ -1609,6 +1629,10 @@ function paintNew(){
   var mc=$("matChips").children;
   for(var j=0;j<mc.length;j++) if(mc[j].dataset.m) mc[j].setAttribute("aria-pressed", mc[j].dataset.m===draft.mat?"true":"false");
   var two=!!TWO_STEP[draft.type];
+  fillTruckSel(false);
+  $("truckHint").textContent = draft.type==="ทั่วไป"
+    ? "ถ้าวันนี้ไม่ได้ขับรถ เลือก \"ไม่ได้ใช้รถ\" ได้"
+    : "";
   $("shot1Label").textContent = draft.type==="รับสินค้า" ? "รูปใบชั่ง / บิลตอนรับของ"
                               : draft.type==="ส่งสินค้า" ? "รูปบิล / ใบส่งของ" : "รูปประกอบ (ถ้ามี)";
   if(draft.type==="อื่นๆ") $("fOther").value = draft.other||"";
@@ -1624,15 +1648,29 @@ function paintNew(){
     : "งานประเภทนี้บันทึกจบในครั้งเดียว";
   $("dateLabel").textContent=fmtDate($("fDate").value);
 }
+/* งานประเภท "ทั่วไป" บางงานคนขับไม่ได้ขับรถ จึงใส่ตัวเลือก "ไม่ได้ใช้รถ" ให้เฉพาะประเภทนี้
+   ประเภทอื่นไม่มีตัวเลือกนี้ ต้องเลือกรถเสมอเหมือนเดิม
+   reset=true คือเพิ่งเปิดฟอร์ม ให้เด้งไปคันล่าสุด · false คือแค่สลับประเภทงาน ให้คงที่เลือกไว้ */
+function fillTruckSel(reset){
+  var sel=$("fTruck"), cur=reset?null:sel.value, i;
+  fillSelect(sel, DB.truck, function(t){return t.id;}, function(t){return t.plate+" · "+t.size;});
+  if(draft.type==="ทั่วไป"){
+    var o=document.createElement("option");
+    o.value=""; o.textContent="ไม่ได้ใช้รถ";
+    sel.insertBefore(o, sel.firstChild);
+  }
+  for(i=0;i<sel.options.length;i++) if(sel.options[i].value===cur){ sel.value=cur; return; }
+  var last=DB.lastTruck[me.id];
+  if(last && find(DB.truck,last)) sel.value=last;
+  else if(sel.options.length) sel.value=sel.options[sel.options.length-1].value;
+}
 function openNew(){
   draft.shots=[]; draft.other="";
   $("fOther").value=""; $("night1Val").textContent="0";
   buildMatChips();
   $("fDate").value=today();
   refreshCar1();
-  fillSelect($("fTruck"), DB.truck, function(t){return t.id;}, function(t){return t.plate+" · "+t.size;});
-  var last=DB.lastTruck[me.id];
-  if(last && find(DB.truck,last)) $("fTruck").value=last;
+  fillTruckSel(true);
   paintNew(); go("new");
 }
 function getGeo(cb){
@@ -1653,10 +1691,12 @@ function startJob(){
     $("car1").scrollIntoView({behavior:"smooth", block:"center"});
     return;
   }
+  var tv=$("fTruck").value;
+  if(draft.type!=="ทั่วไป" && !tv){ toast("เลือกรถที่ใช้ก่อน"); $("fTruck").focus(); return; }
   var lbl = draft.type==="อื่นๆ" ? draft.other : (two ? "" : TYPE_LABEL[draft.type]);
   var r=findRate(draft.type,lbl);
   var j={
-    id:uid("j"), date:$("fDate").value, emp:me.id, truck:$("fTruck").value,
+    id:uid("j"), date:$("fDate").value, emp:me.id, truck:tv||null,
     type:draft.type, label: two?"":lbl,
     mat: (draft.type==="รับสินค้า"||draft.type==="ส่งสินค้า") ? draft.mat : "",
     bill:"", price: r?r.price:0, priced: !!r,
@@ -1665,11 +1705,20 @@ function startJob(){
     shots:draft.shots.slice(), shotsEnd:[], note:"",
     status: two?"active":"done", at:Date.now()
   };
-  DB.lastTruck[me.id]=j.truck;
+  /* งานทั่วไป = ค่าแรงรายวัน ใส่ราคาให้เลย ไม่ต้องเข้าคิวรอใส่ราคา */
+  if(draft.type==="ทั่วไป"){
+    j.payMode="วัน"; j.days=1; j.qty=null;
+    j.price = genDayUsed(me.id, j.date, j.id) ? 0 : (DB.set.general||0);
+    j.priced = true;
+  }
+  if(tv) DB.lastTruck[me.id]=tv;
   if(!two){
     DB.job.push(j); save();
     if(!j.priced) notifyOwner(j);
-    toast(j.priced ? "บันทึกแล้ว "+baht(j.price)+" บาท" : "บันทึกแล้ว — ส่งให้เจ้าของใส่ค่าเที่ยว");
+    toast(j.priced
+      ? (payOf(j)>0 ? "บันทึกแล้ว "+baht(payOf(j))+" บาท"
+                    : "บันทึกแล้ว — วันนี้ลงค่าแรงงานทั่วไปไปแล้ว งานนี้จึงไม่บวกเพิ่ม")
+      : "บันทึกแล้ว — ส่งให้เจ้าของใส่ค่าเที่ยว");
     go("home"); return;
   }
   $("btnStart").disabled=true; $("btnStart").textContent="กำลังหาพิกัด…";
@@ -1768,7 +1817,23 @@ function sorted(list){
 function sum(list,k){ var s=0; list.forEach(function(x){ s+=(x[k]||0); }); return s; }
 function nightRate(j){ return (j.nightRate!=null && j.nightRate!=="") ? j.nightRate : (DB.set.night||0); }
 function nightPay(j){ return (j.nights||0)*nightRate(j); }
-function payOf(j){ return (j.price||0)+nightPay(j); }
+/* ฐานค่าเที่ยว ต้องตรงกับสูตร total_pay ใน DB (rungchai_v5_thasai.sql) เป๊ะๆ
+   ไม่งั้นตัวเลขบนจอกับตัวเลขในฐานข้อมูลจะไม่ตรงกัน */
+function payBase(j){
+  var p=j.price||0;
+  if(j.payMode==="วัน") return p*(j.days||1);
+  if(j.payMode==="คิว") return p*(j.qty||0);
+  return p;
+}
+function payOf(j){ return payBase(j)+nightPay(j); }
+/* ค่าแรงงานทั่วไปคิดเป็นรายวัน วันละครั้ง งานทั่วไปงานที่ 2 ของวันเดียวกันจึงเป็น 0
+   (เจ้าของเข้าไปแก้ยอดทีหลังได้ ถ้าวันนั้นตกลงจ่ายมากกว่านั้น)
+   กติกานี้ต้องตรงกับ jobs_guard_money() ใน DB เป๊ะ ไม่งั้นจอกับคลาวด์จะไม่ตรงกัน */
+function genDayUsed(empId, date, exceptId){
+  return DB.job.some(function(j){
+    return j.emp===empId && j.date===date && j.type==="ทั่วไป" && j.id!==exceptId && (j.price||0)>0;
+  });
+}
 function sumPay(list){ var s=0; list.forEach(function(j){ s+=payOf(j); }); return s; }
 function uniqDays(list){ var s={}; list.forEach(function(p){ s[p.date]=1; }); return Object.keys(s).length; }
 function tile(k,v,s,hero){
@@ -1844,8 +1909,14 @@ function buildJobEdit(j, pan){
     '<div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap">' +
       '<label class="f" style="flex:2; min-width:150px">ชื่องาน' +
         '<input type="text" data-k="label" value="'+esc(j.label||"")+'" placeholder="เช่น ส่งบล็อค กุดลิน"></label>' +
-      '<label class="f" style="width:132px">ค่าเที่ยว (บาท)' +
+      '<label class="f" style="width:150px">วิธีคิด' +
+        '<select data-k="mode"><option value="เที่ยว">เหมาต่อเที่ยว</option>' +
+        '<option value="วัน">คิดเป็นวัน</option><option value="คิว">คิดเป็นคิว</option></select></label>' +
+      '<label class="f" style="width:132px"><span data-k="plab">ค่าเที่ยว (บาท)</span>' +
         '<input type="number" data-k="price" step="50" min="0" value="'+(j.price||0)+'"></label>' +
+      '<label class="f" data-k="qlab" style="width:124px"><span data-k="qtxt">จำนวน</span>' +
+        '<input type="number" data-k="qty" min="0" step="0.001" value="'+
+          (j.payMode==="วัน" ? (j.days||1) : (j.qty!=null ? j.qty : "")) +'"></label>' +
       '<label class="f" style="width:104px">ค้างคืน (คืน)' +
         '<input type="number" data-k="nights" min="0" max="30" step="1" value="'+(j.nights||0)+'"></label>' +
       '<label class="f" style="width:118px">คืนละ (บาท)' +
@@ -1860,35 +1931,52 @@ function buildJobEdit(j, pan){
       '<button class="btn ghost" data-k="cancel">ยกเลิก</button>' +
     '</div>';
   var g=function(k){ return pan.querySelector('[data-k="'+k+'"]'); };
+  g("mode").value = j.payMode||"เที่ยว";
+  function unitWord(){ return g("mode").value==="วัน" ? "วัน" : (g("mode").value==="คิว" ? "คิว" : "เที่ยว"); }
   function calc(){
+    var per = g("mode").value!=="เที่ยว";
+    g("qlab").style.display = per ? "" : "none";
+    g("qtxt").textContent = g("mode").value==="วัน" ? "จำนวนวัน" : "จำนวนคิว";
+    g("plab").textContent = per ? ("บาทต่อ"+unitWord()) : "ค่าเที่ยว (บาท)";
     var pv=parseFloat(g("price").value)||0;
     var n=parseInt(g("nights").value,10)||0;
     var rr=parseFloat(g("rate").value)||0;
+    var q = per ? (parseFloat(g("qty").value)||0) : 1;
+    var base = per ? pv*q : pv;
     g("rate").parentNode.style.display = n>0 ? "" : "none";
     var was=payOf(j);
-    g("tot").innerHTML='<b style="color:var(--ink); font-size:15px">รวมจ่ายงานนี้ '+baht(pv+n*rr)+' บาท</b>' +
-      (n>0 ? ' (ค่าเที่ยว '+baht(pv)+' + ค้างคืน '+n+' × '+baht(rr)+')' : '') +
+    g("tot").innerHTML='<b style="color:var(--ink); font-size:15px">รวมจ่ายงานนี้ '+baht(base+n*rr)+' บาท</b>' +
+      (per ? ' ('+baht(pv)+' × '+q+' '+unitWord()+' = '+baht(base)+')' : '') +
+      (n>0 ? ' + ค้างคืน '+n+' × '+baht(rr) : '') +
       '<br>ยอดเดิม '+baht(was)+' บาท';
   }
-  ["price","nights","rate"].forEach(function(k){ g(k).oninput=calc; });
+  ["price","nights","rate","qty"].forEach(function(k){ g(k).oninput=calc; });
+  g("mode").onchange=calc;
   calc();
   g("cancel").onclick=function(){
     pan.classList.add("hidden"); pan.innerHTML="";
     var b=pan.parentNode.querySelector("button.sm.ghost"); if(b) b.textContent="แก้ไข";
   };
   g("save").onclick=function(){
+    var m=g("mode").value, per=(m!=="เที่ยว");
     var v=parseFloat(g("price").value);
-    if(isNaN(v)||v<0){ toast("ค่าเที่ยวไม่ถูกต้อง"); g("price").focus(); return; }
+    if(isNaN(v)||v<0){ toast("ราคาไม่ถูกต้อง"); g("price").focus(); return; }
+    var q = per ? parseFloat(g("qty").value) : 1;
+    if(per && (!q || q<=0)){ toast("กรอกจำนวน"+unitWord()+"ก่อน ไม่งั้นยอดจะเป็น 0"); g("qty").focus(); return; }
     var lbl=g("label").value.trim();
     j.label=lbl;
     j.price=v;
+    j.payMode=m;
+    if(m==="วัน"){ j.days=Math.min(60, Math.max(1, Math.round(q))); j.qty=null; }
+    else if(m==="คิว"){ j.qty=q; j.days=1; }
+    else { j.days=1; j.qty=null; }
     j.nights=Math.max(0, parseInt(g("nights").value,10)||0);
     j.nightRate=Math.max(0, parseFloat(g("rate").value)||0);
     j.priced=true;
     if(g("sync").checked && lbl){
       var r=findRate(j.type,lbl);
-      if(r){ r.price=v; r.at=today(); }
-      else DB.rate.push({id:uid("r"), type:j.type, label:lbl, price:v, at:today()});
+      if(r){ r.price=v; r.unit=m; r.at=today(); }
+      else DB.rate.push({id:uid("r"), type:j.type, label:lbl, price:v, unit:m, at:today()});
     }
     save(); toast("แก้เป็น "+baht(payOf(j))+" บาทแล้ว"); render();
   };
@@ -2032,6 +2120,18 @@ function renderWait(){
     lab2.innerHTML='ค่าเที่ยว (บาท)<input type="number" step="50" min="0" placeholder="0">';
     var pin=lab2.querySelector("input");
 
+    /* วิธีคิดเงิน 3 แบบ — เจ้าของเลือกเอง เพราะงานท่าทรายตกลงกันเป็นงานๆ ไม่มีกฎตายตัว */
+    var labM=document.createElement("label"); labM.className="f"; labM.style.width="140px";
+    labM.innerHTML='วิธีคิด<select><option value="เที่ยว">เหมาต่อเที่ยว</option>' +
+                   '<option value="วัน">คิดเป็นวัน</option><option value="คิว">คิดเป็นคิว</option></select>';
+    var mSel=labM.querySelector("select");
+    mSel.value=j.payMode||"เที่ยว";
+
+    var labQ=document.createElement("label"); labQ.className="f"; labQ.style.width="130px";
+    labQ.innerHTML='จำนวน<input type="number" min="0" step="0.001" placeholder="0">';
+    var qin=labQ.querySelector("input");
+    qin.value = (j.payMode==="วัน") ? (j.days||1) : (j.qty!=null ? j.qty : "");
+
     var labN=document.createElement("label"); labN.className="f"; labN.style.width="110px";
     labN.innerHTML='ค้างคืน (คืน)<input type="number" min="0" max="30" step="1" value="'+(j.nights||0)+'">';
     var nin=labN.querySelector("input");
@@ -2041,35 +2141,57 @@ function renderWait(){
 
     var sug=document.createElement("div"); sug.className="hint"; sug.style.width="100%";
     var tot=document.createElement("div"); tot.className="hint"; tot.style.width="100%";
+    function unitWord(){ return mSel.value==="วัน" ? "วัน" : (mSel.value==="คิว" ? "คิว" : "เที่ยว"); }
     function calc(){
+      var per = mSel.value!=="เที่ยว";
+      labQ.style.display = per ? "" : "none";
+      labQ.firstChild.nodeValue = mSel.value==="วัน" ? "จำนวนวัน" : "จำนวนคิว";
+      lab2.firstChild.nodeValue = per ? ("บาทต่อ"+unitWord()) : "ค่าเที่ยว (บาท)";
       var n=parseInt(nin.value,10)||0, rr=parseFloat(rin.value)||0, pv=parseFloat(pin.value)||0;
+      var q = per ? (parseFloat(qin.value)||0) : 1;
+      var base = per ? pv*q : pv;
       labR.style.display = n>0 ? "" : "none";
-      tot.innerHTML='<b style="color:var(--ink); font-size:15px">รวมจ่ายงานนี้ '+baht(pv+n*rr)+' บาท</b>' +
-        (n>0 ? ' &nbsp;(ค่าเที่ยว '+baht(pv)+' + ค้างคืน '+n+' × '+baht(rr)+' = '+baht(n*rr)+')' : '');
+      tot.innerHTML='<b style="color:var(--ink); font-size:15px">รวมจ่ายงานนี้ '+baht(base+n*rr)+' บาท</b>' +
+        (per ? ' &nbsp;('+baht(pv)+' × '+q+' '+unitWord()+' = '+baht(base)+')' : '') +
+        (n>0 ? ' &nbsp;+ ค้างคืน '+n+' × '+baht(rr)+' = '+baht(n*rr) : '');
     }
     function suggest(){
       var r=findRate(j.type, lin.value);
-      if(r){ sug.textContent="เคยคิดงานนี้ไว้ "+baht(r.price)+" บาท (แก้ล่าสุด "+fmtDate(r.at)+")"; if(!pin.value) pin.value=r.price; }
+      if(r){
+        sug.textContent="เคยคิดงานนี้ไว้ "+baht(r.price)+" บาท/"+(r.unit||"เที่ยว")+" (แก้ล่าสุด "+fmtDate(r.at)+")";
+        if(!pin.value){ pin.value=r.price; mSel.value=r.unit||"เที่ยว"; }
+      }
       else sug.textContent = lin.value.trim() ? "งานใหม่ ยังไม่เคยคิดราคา" : "ใส่ชื่องานเพื่อให้ระบบจำราคาไว้ใช้ครั้งหน้า";
       calc();
     }
     lin.oninput=suggest; pin.oninput=calc; nin.oninput=calc; rin.oninput=calc;
+    qin.oninput=calc; mSel.onchange=calc;
     suggest();
     var ok=document.createElement("button"); ok.className="btn primary"; ok.textContent="ยืนยันราคา";
     ok.onclick=function(){
+      var m=mSel.value, per=(m!=="เที่ยว");
       var v=parseFloat(pin.value);
-      if(!v||v<=0){ toast("กรอกค่าเที่ยวก่อน"); pin.focus(); return; }
+      if(!v||v<=0){ toast(per?("กรอกราคาต่อ"+unitWord()+"ก่อน"):"กรอกค่าเที่ยวก่อน"); pin.focus(); return; }
+      var q = per ? parseFloat(qin.value) : 1;
+      /* ฐานข้อมูลกันไว้อีกชั้นด้วย constraint jobs_qty_chk แต่บอกตรงนี้ก่อนเข้าใจง่ายกว่า
+         Why ต้องกัน: ถ้าจำนวนว่าง ยอดจะกลายเป็น 0 บาทเงียบๆ โดยดูเผินๆ เหมือนใส่ราคาแล้ว */
+      if(per && (!q || q<=0)){ toast("กรอกจำนวน"+unitWord()+"ก่อน ไม่งั้นยอดจะเป็น 0"); qin.focus(); return; }
       j.nights=Math.max(0, parseInt(nin.value,10)||0);
       j.nightRate=Math.max(0, parseFloat(rin.value)||0);
+      j.payMode=m;
+      if(m==="วัน"){ j.days=Math.min(60, Math.max(1, Math.round(q))); j.qty=null; }
+      else if(m==="คิว"){ j.qty=q; j.days=1; }
+      else { j.days=1; j.qty=null; }
       j.label=lin.value.trim(); j.price=v; j.priced=true;
       if(j.label){
         var r=findRate(j.type,j.label);
-        if(r){ r.price=v; r.at=today(); }
-        else DB.rate.push({id:uid("r"), type:j.type, label:j.label, price:v, at:today()});
+        if(r){ r.price=v; r.unit=m; r.at=today(); }
+        else DB.rate.push({id:uid("r"), type:j.type, label:j.label, price:v, unit:m, at:today()});
       }
       save(); toast("ใส่ค่าเที่ยวแล้ว "+baht(payOf(j))+" บาท"); go("wait");
     };
-    form.appendChild(lab); form.appendChild(lab2); form.appendChild(labN); form.appendChild(labR);
+    form.appendChild(lab); form.appendChild(labM); form.appendChild(lab2); form.appendChild(labQ);
+    form.appendChild(labN); form.appendChild(labR);
     form.appendChild(ok); form.appendChild(sug); form.appendChild(tot);
     c.appendChild(form); host.appendChild(c);
   });
@@ -2138,6 +2260,7 @@ function renderRates(){
 function slipPlates(list){
   var seen={}, out=[];
   list.forEach(function(j){
+    if(!j.truck) return;
     var p=truck(j.truck).plate;
     if(p && p!=="?" && !seen[p]){ seen[p]=1; out.push(p); }
   });
@@ -2502,6 +2625,7 @@ function renderPendBanner(){
 }
 function renderSettings(){
   $("sAllow").value=DB.set.allow; $("sDeduct").value=DB.set.deduct; $("sNight").value=DB.set.night;
+  $("sGeneral").value=(DB.set.general==null?300:DB.set.general);
   $("sImgq").value=DB.set.imgq||"ประหยัด";
   $("sFuel").value=DB.set.fuelPrice||"";
   var pics=0, bytes=0;
@@ -2510,14 +2634,47 @@ function renderSettings(){
     (DB.set.imgq||"ประหยัด")+" ย่อด้านยาวเหลือ "+imgProfile().max+" px";
   paintEmpList();
   $("empSearch").oninput=paintEmpList;
-  var t='<thead><tr><th>ทะเบียน</th><th>ขนาด</th><th></th></tr></thead><tbody>';
+  var sizes=(DB.sizes&&DB.sizes.length?DB.sizes:SIZES);
+  var t='<thead><tr><th>ทะเบียน</th><th>ประเภทรถ</th><th></th></tr></thead><tbody>';
   DB.truck.forEach(function(x){
-    t+='<tr><td>'+x.plate+'</td><td>'+x.size+'</td>' +
-       '<td class="r"><button class="btn sm ghost" data-del-t="'+x.id+'">ลบ</button></td></tr>';
+    var opts=sizes.map(function(z){
+      return '<option'+(z===x.size?' selected':'')+'>'+esc(z)+'</option>';
+    }).join("");
+    if(sizes.indexOf(x.size)<0) opts='<option selected>'+esc(x.size)+'</option>'+opts;
+    t+='<tr><td>'+esc(x.plate)+'</td>' +
+       '<td><select data-size-t="'+x.id+'">'+opts+'</select></td>' +
+       '<td class="r"><button class="btn sm ghost" data-ren-t="'+x.id+'">แก้ทะเบียน</button> ' +
+       '<button class="btn sm ghost" data-del-t="'+x.id+'">ลบ</button></td></tr>';
   });
   $("truckTable").innerHTML=t+'</tbody>';
-  fillSelect($("tSize"), (DB.sizes&&DB.sizes.length?DB.sizes:SIZES), function(x){return x;}, function(x){return x;}, true);
+  fillSelect($("tSize"), sizes, function(x){return x;}, function(x){return x;}, true);
   wireDel("data-del-t", DB.truck);
+  wireTruckEdit();
+}
+
+/* แก้ทะเบียน / เปลี่ยนประเภทรถ ที่ลงไว้ผิด
+   Why ต้องมี: เดิมมีแต่ปุ่มลบ และพอรถมีงานผูกแล้วฐานข้อมูลจะไม่ยอมให้ลบ
+   พิมพ์ทะเบียนผิดครั้งเดียว = ติดถาวร แก้ทางไหนไม่ได้เลย */
+function wireTruckEdit(){
+  document.querySelectorAll("[data-size-t]").forEach(function(sel){
+    sel.onchange=function(){
+      var x=find(DB.truck, sel.getAttribute("data-size-t")); if(!x) return;
+      x.size=sel.value; save(); toast("เปลี่ยนประเภทรถเป็น "+x.size+" แล้ว");
+    };
+  });
+  document.querySelectorAll("[data-ren-t]").forEach(function(b){
+    var x=find(DB.truck, b.getAttribute("data-ren-t")); if(!x) return;
+    b.onclick=function(){
+      askText("แก้ทะเบียนรถ","พิมพ์ทะเบียนที่ถูกต้อง เช่น 85-1289",function(v){
+        v=(v||"").trim();
+        if(!v){ toast("ยังไม่ได้พิมพ์ทะเบียน"); return; }
+        /* ทะเบียนซ้ำจะโดนฐานข้อมูลตีกลับตอน sync หน้าจอจะไม่ตรงกับคลาวด์ กันไว้ตรงนี้ก่อน */
+        var dup=DB.truck.filter(function(o){ return o.id!==x.id && (o.plate||"").trim()===v; });
+        if(dup.length){ toast("ทะเบียน "+v+" มีอยู่แล้ว"); return; }
+        x.plate=v; save(); render(); toast("แก้ทะเบียนเป็น "+v+" แล้ว");
+      }, x.plate);
+    };
+  });
 }
 function wireDel(attr,arr){
   document.querySelectorAll("["+attr+"]").forEach(function(b){
@@ -2806,6 +2963,7 @@ $("sSave").onclick=function(){
   DB.set.allow=parseFloat($("sAllow").value)||0;
   DB.set.deduct=parseFloat($("sDeduct").value)||0;
   DB.set.night=parseFloat($("sNight").value)||0;
+  DB.set.general=parseFloat($("sGeneral").value)||0;
   DB.set.imgq=$("sImgq").value;
   DB.set.fuelPrice=parseFloat($("sFuel").value)||0;
   save(); toast("บันทึกค่าตั้งต้นแล้ว"); render();
