@@ -684,8 +684,25 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
           <button class="btn" id="csvJobs">คัดลอกรายการงาน</button>
         </div>
         <div class="card pad" style="box-shadow:none; background:var(--surface2)">
-          <div class="hint" style="margin-bottom:6px">ช่องรวมข้อมูลจากโปรแกรมท่าทราย ธนเศรษฐ์ศิริ — ยังไม่เชื่อมต่อ</div>
-          <span class="pill t1">รอกำหนดวิธีส่งข้อมูล</span>
+          <div class="row" style="justify-content:space-between; align-items:center">
+            <b style="font-size:17px">รับข้อมูลจากโปรแกรมท่าทราย</b>
+            <span class="pill t1" id="impState">ยังไม่มีข้อมูลเข้ามา</span>
+          </div>
+          <div class="hint" style="margin-top:6px">
+            เปิดโปรแกรมท่าทราย → แท็บ “ค่าเที่ยวรถร่วม” → ปุ่ม “ส่งข้อมูลไปโปรแกรมรุ่งชัย”
+            แล้วรายการจะเด้งมาที่นี่เอง ถ้าไม่เด้ง ให้ใช้ปุ่มคัดลอกที่ท่าทราย แล้วมากดวางตรงนี้
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="impPasteBtn">วางข้อมูลเอง</button>
+            <button class="btn ghost hidden" id="impClearBtn">ล้างรายการ</button>
+          </div>
+          <div id="impPasteBox" class="hidden" style="margin-top:10px">
+            <label class="f">วางข้อความที่คัดลอกมาจากท่าทราย
+              <textarea id="impPasteTa" rows="4" placeholder="วางตรงนี้แล้วกดตรวจข้อมูล"></textarea>
+            </label>
+            <button class="btn primary" id="impPasteGo" style="margin-top:8px">ตรวจข้อมูล</button>
+          </div>
+          <div id="impBox" style="margin-top:12px"></div>
         </div>
       </div>
     </section>
@@ -898,7 +915,7 @@ function rest(path,opt){
 
 /* ---------- แปลงแถวจากฐานข้อมูล → รูปแบบที่หน้าจอใช้ ---------- */
 function rowEmp(r){   return {id:r.id, name:r.name, nickname:r.nickname, role:r.role, line:r.line_user_id, active:r.active, phone:r.phone}; }
-function rowTruck(r){ return {id:r.id, plate:r.plate, size:r.size, active:r.active}; }
+function rowTruck(r){ return {id:r.id, plate:r.plate, size:r.size, active:r.active, driver:r.driver_id||""}; }
 function rowRate(r){  return {id:r.id, type:r.job_type, label:r.label, price:num(r.price,0), unit:r.unit||"เที่ยว", at:r.updated_at}; }
 function rowJob(r){
   return {id:r.id, date:r.job_date, emp:r.emp_id, truck:r.truck_id, type:r.job_type, label:r.label||"",
@@ -925,7 +942,7 @@ function rowFuel(r){
 var TOROW = {
   emp: function(o){ return {name:o.name, nickname:o.nickname||null, role:o.role,
                             line_user_id:o.line||null, phone:o.phone||null, active:o.active!==false}; },
-  truck: function(o){ return {plate:o.plate, size:o.size, active:o.active!==false}; },
+  truck: function(o){ return {plate:o.plate, size:o.size, active:o.active!==false, driver_id:o.driver||null}; },
   rate: function(o){ return {job_type:o.type, label:o.label, price:o.price, unit:o.unit||"เที่ยว"}; },
   job: function(o){ return {
       job_date:o.date, emp_id:o.emp, truck_id:o.truck||null, job_type:o.type, label:o.label||"",
@@ -2635,7 +2652,13 @@ function renderSettings(){
   paintEmpList();
   $("empSearch").oninput=paintEmpList;
   var sizes=(DB.sizes&&DB.sizes.length?DB.sizes:SIZES);
-  var t='<thead><tr><th>ทะเบียน</th><th>ประเภทรถ</th><th></th></tr></thead><tbody>';
+  /* คนขับประจำรถ — งานที่นำเข้าจากท่าทรายรู้แค่ทะเบียน ต้องอาศัยตรงนี้ลงชื่อคนให้ */
+  var drvOpt='<option value="">— ยังไม่ระบุ —</option>' + DB.emp.filter(function(e){
+      return e.active!==false;
+    }).map(function(e){
+      return '<option value="'+e.id+'">'+esc(e.name||"(ยังไม่มีชื่อ)")+'</option>';
+    }).join("");
+  var t='<thead><tr><th>ทะเบียน</th><th>ประเภทรถ</th><th>คนขับประจำ</th><th></th></tr></thead><tbody>';
   DB.truck.forEach(function(x){
     var opts=sizes.map(function(z){
       return '<option'+(z===x.size?' selected':'')+'>'+esc(z)+'</option>';
@@ -2643,6 +2666,7 @@ function renderSettings(){
     if(sizes.indexOf(x.size)<0) opts='<option selected>'+esc(x.size)+'</option>'+opts;
     t+='<tr><td>'+esc(x.plate)+'</td>' +
        '<td><select data-size-t="'+x.id+'">'+opts+'</select></td>' +
+       '<td><select data-drv-t="'+x.id+'">'+drvOpt+'</select></td>' +
        '<td class="r"><button class="btn sm ghost" data-ren-t="'+x.id+'">แก้ทะเบียน</button> ' +
        '<button class="btn sm ghost" data-del-t="'+x.id+'">ลบ</button></td></tr>';
   });
@@ -2656,6 +2680,16 @@ function renderSettings(){
    Why ต้องมี: เดิมมีแต่ปุ่มลบ และพอรถมีงานผูกแล้วฐานข้อมูลจะไม่ยอมให้ลบ
    พิมพ์ทะเบียนผิดครั้งเดียว = ติดถาวร แก้ทางไหนไม่ได้เลย */
 function wireTruckEdit(){
+  document.querySelectorAll("[data-drv-t]").forEach(function(sel){
+    var x=find(DB.truck, sel.getAttribute("data-drv-t")); if(!x) return;
+    sel.value = x.driver || "";
+    sel.onchange=function(){
+      x.driver = sel.value || "";
+      save();
+      toast(x.driver ? ("รถ "+x.plate+" คนขับประจำคือ "+emp(x.driver).name)
+                     : ("ล้างคนขับประจำของรถ "+x.plate+" แล้ว"));
+    };
+  });
   document.querySelectorAll("[data-size-t]").forEach(function(sel){
     sel.onchange=function(){
       var x=find(DB.truck, sel.getAttribute("data-size-t")); if(!x) return;
@@ -2685,8 +2719,175 @@ function wireDel(attr,arr){
     };
   });
 }
+/* =============== รับข้อมูลจากโปรแกรมท่าทราย ธนเศรษฐ์ศิริ ===============
+   Why ทำแบบส่งข้ามแท็บ ไม่ยิงเข้าคลาวด์ตรงๆ:
+     ถ้าให้หน้าเว็บท่าทรายเขียนเข้าฐานข้อมูลรุ่งชัยเอง ต้องฝังกุญแจไว้ในหน้านั้น
+     ซึ่งใครเปิดดูโค้ดก็เห็น — ทางนี้คนกดคือเจ้าของที่ล็อกอินแอปค่าเที่ยวอยู่แล้ว
+     ข้อมูลจึงถูกเขียนด้วยสิทธิ์ของเจ้าของเอง ไม่มีกุญแจของรุ่งชัยอยู่ฝั่งท่าทรายเลย
+   ทางสำรอง: คัดลอกข้อความจากท่าทรายมาวางเอง ใช้ได้เสมอถ้าป๊อปอัปโดนบล็อก */
+var THASAI_ORIGIN="https://thanasetsiri2546.pages.dev";
+var IMP=null;      /* ข้อมูลชุดที่รอตรวจ */
+var IMPPICK={};    /* ทะเบียนที่จับคู่ไม่ได้ เจ้าของเลือกคันเอง: ref -> truckId */
+
+function impNorm(p){ return String(p||"").replace(/[\s.]/g,"").trim(); }
+/* คิวเก็บทศนิยม 3 ตำแหน่งเท่าท่าทราย ใช้ baht() ไม่ได้เพราะมันปัดเหลือ 2 */
+function kiu(n){
+  var r=Math.round((n||0)*1000)/1000;
+  return (Math.abs(r%1)>0.0004)
+    ? r.toLocaleString("th-TH",{minimumFractionDigits:3, maximumFractionDigits:3})
+    : Math.round(r).toLocaleString("th-TH");
+}
+function impRef(r){ return r.date+"|"+impNorm(r.plate)+"|"+(r.customer||"")+"|"+(r.src||""); }
+function impFindTruck(plate){
+  var k=impNorm(plate);
+  for(var i=0;i<DB.truck.length;i++) if(impNorm(DB.truck[i].plate)===k) return DB.truck[i];
+  return null;
+}
+function impTaken(ref){
+  for(var i=0;i<DB.job.length;i++){
+    var j=DB.job[i];
+    if(j.src==="ท่าทราย" && j.srcRef===ref) return j;
+  }
+  return null;
+}
+function impSay(txt,kind){
+  var el=$("impState"); if(!el) return;
+  el.textContent=txt; el.className="pill "+(kind||"t1");
+}
+/* บอกแท็บท่าทรายว่าเราพร้อมรับแล้ว — ประกาศซ้ำเรื่อยๆ เพราะเจ้าของอาจต้องเข้า LINE ก่อน
+   ซึ่งกินเวลาเป็นนาที ถ้าประกาศครั้งเดียวตอนเปิดหน้าจะพลาดกันพอดี */
+function impHello(){
+  if(!window.opener) return;
+  var n=0;
+  var t=setInterval(function(){
+    try{ window.opener.postMessage({app:"rungchai-trip", type:"ready"}, THASAI_ORIGIN); }catch(e){}
+    if(++n>180 || IMP) clearInterval(t);
+  }, 1000);
+}
+function impOnMessage(ev){
+  if(ev.origin!==THASAI_ORIGIN) return;               /* กันคนอื่นยิงข้อมูลปลอมเข้ามา */
+  var d=ev.data;
+  if(!d || d.app!=="thanasetsiri-freight") return;
+  if(d.type==="ping"){
+    try{ ev.source.postMessage({app:"rungchai-trip", type:"ready"}, THASAI_ORIGIN); }catch(e){}
+    return;
+  }
+  if(d.type==="rows"){
+    try{ ev.source.postMessage({app:"rungchai-trip", type:"got", count:(d.rows||[]).length}, THASAI_ORIGIN); }catch(e){}
+    impTake(d);
+  }
+}
+function impTake(d){
+  if(!d || !d.rows || !d.rows.length){ toast("ข้อมูลที่ส่งมาไม่มีรายการเลย"); return; }
+  IMP=d; IMPPICK={};
+  if(!me || me.role!=="owner"){
+    toast("รับข้อมูลไว้แล้ว "+d.rows.length+" รายการ — เข้าสู่ระบบด้วยบัญชีเจ้าของเพื่อตรวจ");
+    return;
+  }
+  go("month");
+  toast("รับข้อมูล "+d.rows.length+" รายการจากท่าทรายแล้ว ตรวจก่อนกดรับ");
+}
+/* จัดสถานะรายบรรทัด — ห้ามเดาทะเบียนที่จับคู่ไม่ได้ ต้องให้เจ้าของเลือกเอง */
+function impRows(){
+  if(!IMP) return [];
+  return IMP.rows.map(function(r){
+    var ref=impRef(r);
+    var tk=impFindTruck(r.plate);
+    if(!tk && IMPPICK[ref]) tk=find(DB.truck, IMPPICK[ref]);
+    var old=impTaken(ref);
+    var st="ok", why="";
+    if(old){
+      st="dup";
+      why = (Math.abs((old.qty||0)-(r.net||0))>0.0005)
+        ? ("รับไปแล้ว — แต่คิวไม่ตรง (ในระบบ "+kiu(old.qty||0)+" · ส่งมา "+kiu(r.net||0)+")")
+        : "รับไปแล้ว";
+    } else if(!((r.net||0)>0)){ st="zero"; why="คิวสุทธิเป็น 0 — ตรวจที่ท่าทรายก่อน"; }
+    else if(!tk){ st="noplate"; why="ไม่รู้จักทะเบียนนี้"; }
+    else if(!tk.driver || !find(DB.emp, tk.driver)){ st="nodrv"; why="รถคันนี้ยังไม่มีคนขับประจำ"; }
+    return {r:r, ref:ref, truck:tk, old:old, st:st, why:why};
+  });
+}
+function renderImport(){
+  var box=$("impBox"); if(!box) return;
+  $("impClearBtn").classList.toggle("hidden", !IMP);
+  if(!IMP){ box.innerHTML=""; impSay("ยังไม่มีข้อมูลเข้ามา","t1"); return; }
+  var rows=impRows();
+  var okN=rows.filter(function(x){ return x.st==="ok"; }).length;
+  var dupN=rows.filter(function(x){ return x.st==="dup"; }).length;
+  var badN=rows.length-okN-dupN;
+  impSay(IMP.month ? ("ข้อมูลเดือน "+fmtMonth(IMP.month)) : "มีข้อมูลรอตรวจ", badN?"t4":"t3");
+
+  var h='<div class="hint" style="margin-bottom:8px">รวม '+rows.length+' รายการ · ' +
+        'พร้อมรับ '+okN+' · รับไปแล้ว '+dupN+(badN?' · ติดปัญหา '+badN:'')+'</div>';
+  h+='<div style="overflow-x:auto"><table style="min-width:0"><thead><tr>' +
+     '<th>วันที่</th><th>ทะเบียน</th><th>ลูกค้า</th><th>ชนิด</th>' +
+     '<th class="r">เที่ยว</th><th class="r">คิวสุทธิ</th><th>คนขับ</th><th>สถานะ</th>' +
+     '</tr></thead><tbody>';
+  rows.forEach(function(x,i){
+    var pick="";
+    if(x.st==="noplate"){
+      pick='<select data-imp-pick="'+i+'"><option value="">— เลือกคันเอง —</option>' +
+           DB.truck.map(function(t){ return '<option value="'+t.id+'">'+esc(t.plate)+'</option>'; }).join("") +
+           '</select>';
+    }
+    var col = x.st==="ok" ? "var(--ok)" : (x.st==="dup" ? "var(--ink2)" : "var(--accent)");
+    h+='<tr>' +
+      '<td class="num">'+fmtDate(x.r.date)+'</td>' +
+      '<td class="num">'+esc(x.r.plate)+(pick?'<br>'+pick:'')+'</td>' +
+      '<td>'+esc(x.r.customer||"–")+'</td>' +
+      '<td>'+esc(x.r.src||"–")+'</td>' +
+      '<td class="r num">'+(x.r.trips||0)+'</td>' +
+      '<td class="r num">'+kiu(x.r.net||0)+'</td>' +
+      '<td>'+esc(x.truck&&x.truck.driver?emp(x.truck.driver).name:"–")+'</td>' +
+      '<td style="color:'+col+'">'+(x.st==="ok"?"พร้อมรับ":esc(x.why))+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  h+='<div class="row" style="margin-top:12px">' +
+     '<button class="btn primary" id="impGo"'+(okN?"":" disabled")+'>รับ '+okN+' รายการเข้าคิวรอใส่ราคา</button></div>';
+  if(badN) h+='<div class="hint" style="margin-top:8px; color:var(--accent)">' +
+     'รายการที่ติดปัญหาจะยังไม่ถูกรับ — เลือกคันเองในตาราง หรือไปตั้งคนขับประจำรถในหน้าตั้งค่าก่อน</div>';
+  box.innerHTML=h;
+
+  document.querySelectorAll("[data-imp-pick]").forEach(function(sel){
+    sel.onchange=function(){
+      var x=impRows()[parseInt(sel.getAttribute("data-imp-pick"),10)];
+      if(!x) return;
+      if(sel.value) IMPPICK[x.ref]=sel.value; else delete IMPPICK[x.ref];
+      renderImport();
+    };
+  });
+  var g=$("impGo");
+  if(g) armBtn(g, "กดอีกครั้งเพื่อรับ "+okN+" รายการ", impAccept);
+}
+function impAccept(){
+  var rows=impRows().filter(function(x){ return x.st==="ok"; });
+  if(!rows.length){ toast("ไม่มีรายการที่พร้อมรับ"); return; }
+  rows.forEach(function(x){
+    var r=x.r;
+    var lbl=(r.customer||"ไม่ระบุลูกค้า")+" — "+(r.src||"ทราย");
+    var rate=findRate("ส่งสินค้า", lbl);
+    DB.job.push({
+      id:uid("j"), date:r.date, emp:x.truck.driver, truck:x.truck.id,
+      type:"ส่งสินค้า", label:lbl,
+      mat:(r.src==="ดิน"?"ดิน":"ทราย"), bill:"", dest:"",
+      price: rate?rate.price:0, priced:false,
+      payMode:"คิว", qty:(r.net||0), days:1,
+      start:null, end:null, km:0,
+      nights:0, nightRate:null,
+      shots:[], shotsEnd:[],
+      note:"นำเข้าจากท่าทราย "+(r.trips||0)+" เที่ยว · คิวก่อนหัก "+kiu(r.kiu||0)+" หักทรายเปียก "+kiu(r.ded||0),
+      status:"done", at:Date.now(),
+      src:"ท่าทราย", srcRef:x.ref
+    });
+  });
+  save();
+  toast("รับ "+rows.length+" รายการเข้าคิวรอใส่ราคาแล้ว");
+  go("wait");
+}
+
 function render(){
   if(!me) return;
+  if(tab==="month") renderImport();
   if(tab==="home")  renderHome();
   if(tab==="mine")  renderMine();
   if(tab==="wait")  renderWait();
@@ -2941,6 +3142,26 @@ $("monPick").onchange=renderMonth;
 ["flEmp","flTruck","flType","flMonth"].forEach(function(id){ $(id).onchange=renderJobs; });
 $("csvMonth").onclick=csvMonth;
 $("csvJobs").onclick=csvJobs;
+
+/* ---------- ต่อสายกับโปรแกรมท่าทราย ---------- */
+window.addEventListener("message", impOnMessage, false);
+impHello();
+$("impPasteBtn").onclick=function(){
+  $("impPasteBox").classList.toggle("hidden");
+  if(!$("impPasteBox").classList.contains("hidden")) $("impPasteTa").focus();
+};
+$("impPasteGo").onclick=function(){
+  var raw=($("impPasteTa").value||"").trim();
+  if(!raw){ toast("ยังไม่ได้วางข้อความ"); return; }
+  var d=null;
+  try{ d=JSON.parse(raw); }catch(e){ toast("อ่านข้อความไม่ออก — คัดลอกจากท่าทรายใหม่อีกครั้ง"); return; }
+  if(!d || d.app!=="thanasetsiri-freight" || !d.rows){ toast("ไม่ใช่ข้อมูลจากโปรแกรมท่าทราย"); return; }
+  $("impPasteTa").value=""; $("impPasteBox").classList.add("hidden");
+  impTake(d);
+};
+armBtn($("impClearBtn"), "กดอีกครั้งเพื่อล้าง", function(){
+  IMP=null; IMPPICK={}; renderImport(); toast("ล้างรายการที่รอตรวจแล้ว");
+});
 $("lb").onclick=function(e){ if(e.target===this) lbClose(); };
 $("lbClose").onclick=lbClose;
 $("lbPrev").onclick=function(e){ e.stopPropagation(); lbGo(-1); };
