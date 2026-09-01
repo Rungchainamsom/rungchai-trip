@@ -220,6 +220,21 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
           background:rgba(0,0,0,.5); padding:4px 14px; border-radius:999px}
 @media (max-width:560px){ .lb-nav{width:42px; height:42px; font-size:24px} .lb{padding:12px; gap:4px} }
 .lb img{max-width:100%; max-height:86vh; border-radius:12px}
+/* ในกล่องดูรูปใหญ่ ให้รูปกินขนาดจริงของมัน ไม่ต้องยัดกรอบ 4:3
+   Why: ถ้าปล่อยให้เป็นกรอบ 4:3 พอหมุน 90 องศา รูปจะหดลงไปอยู่กลางกรอบเล็กๆ */
+.lb .car-track img{aspect-ratio:auto; width:auto; max-width:100%; margin:0 auto;
+                   display:block; will-change:transform}
+.lb-count{bottom:auto; top:22px; left:20px; transform:none}
+.lb-bar{position:absolute; bottom:16px; left:50%; transform:translateX(-50%); z-index:2;
+        display:flex; gap:6px; align-items:center; background:rgba(0,0,0,.55);
+        border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:6px}
+.lb-bar button{min-width:46px; height:46px; border-radius:999px; border:0; padding:0;
+        background:rgba(255,255,255,.14); color:#fff; font-size:21px; line-height:1; cursor:pointer}
+.lb-bar button:active{background:rgba(255,255,255,.32)}
+.lb-bar #lbZoomLv{min-width:72px; font-size:14px; font-weight:600;
+                  font-family:"IBM Plex Mono",monospace}
+@media (max-width:560px){ .lb-bar button{min-width:42px; height:42px; font-size:19px}
+                          .lb-bar #lbZoomLv{min-width:64px; font-size:13px} }
 .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:var(--bg);
        padding:12px 20px; border-radius:999px; font-size:15px; z-index:90; opacity:0; pointer-events:none;
        transition:opacity .2s; max-width:88vw; text-align:center}
@@ -519,6 +534,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <div>
           <div class="hint" style="font-weight:600; color:var(--ink2); margin-bottom:8px">รถที่เติม</div>
           <select id="uTruck"></select>
+          <div class="hint" id="uTruckHint" style="margin-top:6px"></div>
         </div>
 
         <label class="f"><span>จำนวนเงิน (บาท) <b style="color:var(--accent)">*</b></span>
@@ -602,6 +618,10 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <select id="ofuelPick" class="month"></select>
       </div>
       <div class="tiles" id="ofuelTiles" style="margin-top:10px"></div>
+      <div class="sec-title">อัตราสิ้นเปลืองแยกตามรถ</div>
+      <p class="hint" style="margin:0 0 10px">คิดจากเลขไมล์ — ระยะที่วิ่งระหว่างการเติมสองครั้ง หารด้วยลิตรที่เติม
+        การเติมครั้งแรกของรถแต่ละคันยังคิดไม่ได้ เพราะไม่มีเลขไมล์ครั้งก่อนให้เทียบ</p>
+      <div id="ofuelEff"></div>
       <div class="sec-title">แยกตามรถ</div>
       <div class="tablewrap"><table id="ofuelTruck"></table></div>
       <div class="sec-title">แยกตามพนักงาน</div>
@@ -711,12 +731,15 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
     </section>
 
     <section id="v-set" class="view hidden">
+      <p class="hint hidden" id="setAdmNote" style="margin:18px 0 -8px; color:var(--accent); font-weight:600">
+        คุณเข้าใช้ในฐานะ <b>แอดมิน</b> — ตั้งค่าเรื่องเงินกับจัดการสิทธิ์พนักงาน ต้องให้เจ้าของเป็นคนทำ
+      </p>
       <div class="sec-title">ค่าตั้งต้น</div>
       <div class="card pad grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
-        <label class="f">เบี้ยเลี้ยง/เดือน (บาท)<input type="number" id="sAllow" step="100"></label>
-        <label class="f">หักวันขาด วันละ (บาท)<input type="number" id="sDeduct" step="10"></label>
-        <label class="f">ค่าค้างคืน/คืน ตั้งต้น (บาท)<input type="number" id="sNight" step="50"></label>
-        <label class="f">ค่าแรงงานทั่วไป/วัน (บาท)<input type="number" id="sGeneral" step="50" min="0"></label>
+        <label class="f" data-money="1">เบี้ยเลี้ยง/เดือน (บาท)<input type="number" id="sAllow" step="100"></label>
+        <label class="f" data-money="1">หักวันขาด วันละ (บาท)<input type="number" id="sDeduct" step="10"></label>
+        <label class="f" data-money="1">ค่าค้างคืน/คืน ตั้งต้น (บาท)<input type="number" id="sNight" step="50"></label>
+        <label class="f" data-money="1">ค่าแรงงานทั่วไป/วัน (บาท)<input type="number" id="sGeneral" step="50" min="0"></label>
         <label class="f">ราคาน้ำมัน/ลิตร ตั้งต้น (บาท)<input type="number" id="sFuel" step="0.01"></label>
         <label class="f">คุณภาพรูปที่เก็บ<select id="sImgq"><option>ประหยัด</option><option>ปกติ</option><option>ชัด</option></select></label>
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="sSave">บันทึก</button></label>
@@ -735,6 +758,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <div id="orphOut" class="hint" style="margin:0"></div>
       </div>
 
+      <div id="empBlock">
       <div class="sec-title">พนักงาน</div>
       <div class="card pad" style="margin-bottom:10px">
         <label class="f">ค้นหาชื่อ<input type="text" id="empSearch" placeholder="พิมพ์ชื่อบางส่วนก็ได้" autocomplete="off"></label>
@@ -742,8 +766,9 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div id="empTable"></div>
       <div class="card pad row" style="margin-top:10px">
         <label class="f" style="flex:2; min-width:160px">ชื่อ–สกุล<input type="text" id="eName" placeholder="เช่น สมชาย ทองดี"></label>
-        <label class="f" style="flex:1; min-width:120px">บทบาท<select id="eRole"><option value="driver">คนขับ</option><option value="owner">เจ้าของ</option></select></label>
+        <label class="f" style="flex:1; min-width:120px">บทบาท<select id="eRole"><option value="driver">คนขับ</option><option value="admin">แอดมิน (ออฟฟิศ)</option><option value="owner">เจ้าของ</option></select></label>
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="eAdd">เพิ่ม</button></label>
+      </div>
       </div>
 
       <div class="sec-title">รถ</div>
@@ -791,6 +816,13 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
   <button class="lb-nav" id="lbNext" aria-label="รูปถัดไป">›</button>
   <button class="lb-close" id="lbClose" aria-label="ปิด">✕</button>
   <div class="lb-count num" id="lbCount"></div>
+  <div class="lb-bar" id="lbBar">
+    <button id="lbRotL" aria-label="หมุนซ้าย" title="หมุนซ้าย">↺</button>
+    <button id="lbRotR" aria-label="หมุนขวา" title="หมุนขวา">↻</button>
+    <button id="lbZoomOut" aria-label="ย่อ" title="ย่อ">−</button>
+    <button id="lbZoomLv" aria-label="กลับไปพอดีจอ" title="แตะเพื่อกลับไปพอดีจอ">100%</button>
+    <button id="lbZoomIn" aria-label="ขยาย" title="ขยาย">＋</button>
+  </div>
 </div>
 <div class="toast" id="toast"></div>
 <div class="slipwrap" id="slip"></div>
@@ -870,7 +902,7 @@ function seed(){
     {id:uid("f"), date:d1, emp:"e3", truck:"t3", amount:5000, price:31.94, liters:156.54, odo:308200, prevOdo:0,
      note:"บางจาก บ้านผือ", shots:[], odoShots:[], lat:17.680, lng:102.470, at:Math.min(new Date(d1+"T16:40:00").getTime(), Date.now()-7200000)}
   ];
-  return {emp:E, truck:T, rate:R, job:J, fuel:F, absent:{}, lastTruck:{}, mats:["หิน","ทราย","ลูกรัง","บล็อค"],
+  return {emp:E, truck:T, rate:R, job:J, fuel:F, absent:{}, lastTruck:{}, rot:{}, mats:["หิน","ทราย","ลูกรัง","บล็อค"],
           set:{allow:3000, deduct:100, night:200, general:300, imgq:"ประหยัด", fuelPrice:31.94}, tg:{token:"", chat:"", log:[]}};
   function r(t,l,p){ return {id:uid("r"), type:t, label:l, price:p, at:"2026-08-01"}; }
 }
@@ -1120,7 +1152,7 @@ function bootstrap(){
   /* คนขับดูได้แค่งานตัวเองอยู่แล้ว (หน้าหลัก · เติมน้ำมัน · ยอดของฉัน)
      ไม่มีเหตุผลให้รอโหลดงานของทั้งบริษัท — เปิดแอปเร็วขึ้นมาก และประหยัดโควตา Egress ด้วย
      ไม่ใส่เงื่อนไขวันที่ เพราะหน้า "สรุปรายปี" ต้องใช้งานย้อนหลังทั้งปี */
-  var mine = (me && me.role!=="owner") ? "&emp_id=eq."+me.id : "";
+  var mine = (me && !isStaff(me)) ? "&emp_id=eq."+me.id : "";
   return Promise.all([
     rest("employees?select=*&order=name"),
     rest("trucks?select=*&order=plate"),
@@ -1129,7 +1161,8 @@ function bootstrap(){
     rest("jobs?select=*"+mine+"&order=created_at.desc&limit=800"),
     rest("fuel?select=*"+mine+"&order=created_at.desc&limit=400"),
     rest("absences?select=*"),
-    rest("settings?select=*")
+    rest("settings?select=*"),
+    rest("photo_rot?select=path,deg")
   ]).then(function(a){
     DB.emp   = a[0].map(rowEmp);
     DB.truck = a[1].map(rowTruck);
@@ -1151,6 +1184,8 @@ function bootstrap(){
              imgq: S.image_quality || "ประหยัด" };
     DB.tg={ token:(S.telegram&&S.telegram.token)||"", chat:(S.telegram&&S.telegram.chat_id)||"", log:[] };
     DB.lastTruck = S.last_truck || {};
+    DB.rot={};
+    (a[8]||[]).forEach(function(r){ if(r.deg) DB.rot[r.path]=r.deg; });
     DB.sizes = (S.truck_sizes && S.truck_sizes.length) ? S.truck_sizes : SIZES.slice();
     return signPhotos();
   }).then(takeSnapshot);
@@ -1171,10 +1206,63 @@ function signPhotos(){
       var u=x.signedURL||x.signedUrl;
       if(u) map[x.path]=CFG.url+"/storage/v1"+u;
     });
-    function fill(ps){ return (ps||[]).map(function(p){ return map[p]; }).filter(Boolean); }
+    /* จำไว้ว่าลิงก์ชั่วคราวใบนี้มาจาก path ไหนในถัง — ตอนหมุนรูปต้องรู้ว่าจะบันทึกทับใคร */
+    function fill(ps){
+      return (ps||[]).map(function(p){ var u=map[p]; if(u) ROTPATH[u]=p; return u; }).filter(Boolean);
+    }
     DB.job.forEach(function(j){ j.shots=fill(j._ps); j.shotsEnd=fill(j._pe); });
     DB.fuel.forEach(function(f){ f.shots=fill(f._pr); f.odoShots=fill(f._po); });
   }).catch(function(){ /* เปิดรูปไม่ได้ ไม่ควรทำให้ทั้งแอปพัง */ });
+}
+
+/* ---------- หมุนรูป (เจ้าของเลือกวิธีนี้ 1 ก.ย. 2569) ----------
+   เก็บแค่ "องศา" ไว้ในตาราง photo_rot ไม่แตะไฟล์ในถังเลย
+   Why ไม่หมุนไฟล์จริง: รูปถูกย่อ+บีบอัดตอนถ่ายไปแล้วรอบหนึ่ง (โหมดประหยัด q=0.42)
+   ถ้าหมุนแล้วเซฟทับต้องบีบอัดซ้ำ ตัวเลขในบิลจะเบลอลงทุกครั้งที่กด
+   ซึ่งขัดกับเหตุผลที่หมุน คืออยากอ่านตัวเลขออก · แถมวิธีนี้หมุนผิดก็หมุนกลับได้ ไม่มีอะไรเสียหาย */
+var ROTPATH={};                       /* ลิงก์ชั่วคราว → path ในถัง */
+function rotOf(src){ return (DB.rot && DB.rot[ROTPATH[src]]) || 0; }
+/* คนขับหมุนได้เฉพาะรูปของตัวเอง (path ขึ้นต้นด้วย id ตัวเอง) เหมือนกติกาของถังรูป
+   ฝั่งฐานข้อมูลมี policy prot_write กันไว้อีกชั้น */
+function canRot(src){
+  if(!me) return false;
+  if(isStaff(me)) return true;
+  var p=ROTPATH[src];
+  return !!p && p.indexOf(me.id+"/")===0;
+}
+function setRot(src,deg){
+  var p=ROTPATH[src]; if(!p || !DB.rot) return false;
+  deg=((deg%360)+360)%360;
+  if(deg) DB.rot[p]=deg; else delete DB.rot[p];
+  save(); repaintRot(src); return true;
+}
+/* หมุนในกล่องขยายแล้ว รูปใบเดียวกันที่อยู่บนหน้าจอข้างหลังต้องหมุนตามทันที
+   Why: ปิดกล่องขยายแล้วหน้าเดิมไม่ได้ถูกวาดใหม่ ถ้าไม่ไล่แก้ให้ จะเห็นรูปเอียงเหมือนเดิม
+   แล้วเข้าใจว่าที่กดไปไม่ติด */
+function repaintRot(src){
+  var d=rotOf(src), all=document.querySelectorAll("img"), i, im;
+  for(i=0;i<all.length;i++){
+    im=all[i];
+    if(im.src!==src) continue;
+    if(im.closest && im.closest("#lbBox")) continue;   /* ในกล่องขยาย lbPaint() คุมเอง */
+    fitRot(im, d);
+  }
+}
+/* หมุนรูปในกรอบที่มีขนาดตายตัว (รูปย่อในรายการ · การ์ดในหน้ารอใส่ราคา)
+   ต้องย่อลงด้วย ไม่งั้นด้านยาวจะทะลุกรอบออกไป */
+function fitRot(im,deg){
+  if(!deg){ im.style.transform=""; return; }
+  var w=im.clientWidth, h=im.clientHeight, f=1;
+  if(w&&h) f=Math.min(w/h, h/w);
+  im.style.transformOrigin="center center";
+  im.style.transform="rotate("+deg+"deg) scale("+f+")";
+}
+function paintRot(im,src){
+  var d=rotOf(src);
+  if(!d){ im.style.transform=""; return; }
+  var go=function(){ fitRot(im,d); };
+  if(im.complete && im.clientWidth) go();
+  im.addEventListener("load", go);
 }
 
 /* ---------- อัปโหลดรูปที่เพิ่งถ่าย ---------- */
@@ -1231,6 +1319,7 @@ function takeSnapshot(){
   });
   SNAP._mats   = JSON.stringify(DB.mats);
   SNAP._absent = JSON.stringify(DB.absent);
+  SNAP._rot    = JSON.stringify(DB.rot||{});
   SNAP._set    = JSON.stringify([DB.set, DB.lastTruck, DB.sizes]);
 }
 
@@ -1272,6 +1361,7 @@ function runSync(){
     .then(function(){ remapRefs(idMap); return syncTable("job"); })
     .then(function(){ return syncTable("fuel"); })
     .then(syncAbsent)
+    .then(syncRot)
     .then(syncSettings)
     .then(function(){
       takeSnapshot(); syncBadge("ok");
@@ -1374,6 +1464,29 @@ function runSync(){
       headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
   }
 
+  /* องศาที่หมุน — ส่งเฉพาะใบที่เปลี่ยน และลบแถวของใบที่หมุนกลับเป็น 0
+     Why ต้องมีทางลบด้วย: ถ้ามีแต่ upsert พอหมุนกลับเป็นตรงแล้ว แถวเก่าจะค้างไว้
+     รีเฟรชทีไรก็เอียงกลับมาเหมือนเดิม (บทเรียนเดียวกับ syncTable ที่เคยลืม DELETE) */
+  function syncRot(){
+    var now=DB.rot||{}, was={};
+    try{ was=JSON.parse(SNAP._rot||"{}"); }catch(e){}
+    if(JSON.stringify(now)===JSON.stringify(was)) return Promise.resolve();
+    var rows=[], gone=[];
+    Object.keys(now).forEach(function(p){ if(was[p]!==now[p]) rows.push({path:p, deg:now[p]}); });
+    Object.keys(was).forEach(function(p){ if(now[p]===undefined) gone.push(p); });
+    var chain=Promise.resolve();
+    if(rows.length) chain=chain.then(function(){
+      return rest("photo_rot", {method:"POST", body:rows,
+        headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
+    });
+    gone.forEach(function(p){
+      chain=chain.then(function(){
+        return rest("photo_rot?path=eq."+encodeURIComponent(p), {method:"DELETE"});
+      });
+    });
+    return chain;
+  }
+
   function syncSettings(){
     if(SNAP._set===JSON.stringify([DB.set, DB.lastTruck, DB.sizes])) return Promise.resolve();
     var rows=[
@@ -1393,7 +1506,7 @@ function runSync(){
 
 /* ---------- โครงว่างตอนหน้าเว็บเพิ่งเปิด (ยังไม่ล็อกอิน) ---------- */
 function load(){
-  return {emp:[], truck:[], rate:[], job:[], fuel:[], absent:{}, lastTruck:{}, sizes:SIZES.slice(),
+  return {emp:[], truck:[], rate:[], job:[], fuel:[], absent:{}, lastTruck:{}, rot:{}, sizes:SIZES.slice(),
           mats:[], set:{allow:3000, deduct:100, night:200, general:300, imgq:"ประหยัด", fuelPrice:31.94},
           tg:{token:"", chat:"", log:[]}};
 }
@@ -1457,7 +1570,17 @@ function truck(id){
   if(!id) return {plate:"ไม่ใช้รถ", size:"–", none:true};
   return find(DB.truck,id)||{plate:"?",size:"?"};
 }
-function isDriver(e){ return e.role==="driver"; }
+function isDriver(e){ return !!e && e.role==="driver"; }
+/* บทบาทมี 3 ระดับ: เจ้าของ · แอดมิน (ออฟฟิศ) · คนขับ
+   แอดมินเห็นและกรอกข้อมูลได้เกือบเหมือนเจ้าของ แต่แตะเรื่องเงินไม่ได้เลย
+   (ค่าเที่ยว · สมุดราคางาน · เบี้ยเลี้ยง/วันขาด · ค่าตั้งต้นเรื่องเงิน · สิทธิ์พนักงาน)
+   ตัวที่กันจริงคือฝั่งฐานข้อมูล (app_is_staff / app_is_admin + trigger)
+   หน้าเว็บแค่ไม่โชว์ปุ่มที่กดไปก็ไม่ผ่าน จะได้ไม่งงว่าทำไมกดแล้วขึ้น error */
+function isOwner(e){ return !!e && e.role==="owner"; }
+function isAdmin(e){ return !!e && e.role==="admin"; }
+function isStaff(e){ return !!e && (e.role==="owner" || e.role==="admin"); }
+function roleLabel(r){ return r==="owner" ? "เจ้าของ" : (r==="admin" ? "แอดมิน" : "คนขับ"); }
+function rolePill(r){  return r==="owner" ? "t2"      : (r==="admin" ? "t3"     : "t1"); }
 function findRate(type,label){
   var L=(label||"").trim(); if(!L) return null;
   for(var i=0;i<DB.rate.length;i++){ var r=DB.rate[i]; if(r.type===type && r.label.trim()===L) return r; }
@@ -1488,12 +1611,101 @@ function $(id){ return document.getElementById(id); }
 function initials(n){ return (n||"?").trim().charAt(0); }
 function toast(m){ var t=$("toast"); t.textContent=m; t.classList.add("on"); setTimeout(function(){ t.classList.remove("on"); },2600); }
 var lbArr=[], lbIdx=0;
+/* กล่องดูรูปใหญ่ — หมุนและซูมได้ (เจ้าของขอ 1 ก.ย. 2569)
+   Why: บิลที่คนขับถ่ายมามักตะแคง 90 องศา และตัวเลขเล็ก ถ้าอ่านไม่ออกก็ใส่ค่าเที่ยวไม่ได้
+   เก็บสถานะแยกรายรูป (lbSt) ปัดไปดูรูปอื่นแล้วปัดกลับมา ยังหมุน/ซูมค้างไว้ให้เหมือนเดิม */
+var lbSt=[];
+function lbCur(){ return lbSt[lbIdx] || (lbSt[lbIdx]={rot:0, z:1, x:0, y:0}); }
+/* หมุน 90 องศาแล้วด้านยาวไปชนขอบจอ ต้องย่อลงให้พอดีเอง เบราว์เซอร์ไม่คิดให้ */
+function lbFit(im, rot){
+  if(rot % 180 === 0) return 1;
+  var w=im.clientWidth, h=im.clientHeight;
+  if(!w || !h) return 1;
+  var W=(im.parentNode && im.parentNode.clientWidth) || w;
+  var H=Math.round(window.innerHeight*0.82);
+  /* ย่อได้อย่างเดียว ไม่ขยายเกินขนาดเดิม ไม่งั้นรูปเล็กๆ พอหมุนแล้วจะเบลอ */
+  return Math.max(0.15, Math.min(1, Math.min(W/h, H/w)));
+}
+function lbPaint(){
+  var tr=$("lbBox").querySelector(".car-track"); if(!tr) return;
+  for(var i=0;i<tr.children.length;i++){
+    var im=tr.children[i].querySelector("img"); if(!im) continue;
+    var st=lbSt[i] || (lbSt[i]={rot:0, z:1, x:0, y:0});
+    var f=lbFit(im, st.rot);
+    im.style.transformOrigin="center center";
+    im.style.transform="translate("+st.x+"px,"+st.y+"px) rotate("+st.rot+"deg) scale("+(st.z*f)+")";
+  }
+  var c=lbCur();
+  $("lbZoomLv").textContent=Math.round(c.z*100)+"%";
+  /* ซูมอยู่ = ลากเพื่อเลื่อนดู ไม่ใช่ปัดเปลี่ยนรูป ต้องปิดการเลื่อนของรางก่อน */
+  var big=c.z>1.01;
+  tr.style.overflowX = big ? "hidden" : "auto";
+  tr.style.overflowY = big ? "hidden" : "";
+  tr.style.touchAction = big ? "none" : "pan-x";
+}
+var lbRotSaid=false;
+function lbRot(step){
+  var s=lbCur();
+  s.rot=(s.rot+step+360)%360; s.x=0; s.y=0;
+  lbPaint();
+  var src=lbArr[lbIdx];
+  if(canRot(src) && setRot(src, s.rot) && !lbRotSaid){
+    lbRotSaid=true;
+    toast("หมุนแล้ว — จำไว้ให้ ครั้งหน้าเปิดมาก็ตรงเลย");
+  }
+}
+function lbZoomBy(mul, reset){
+  var s=lbCur();
+  if(reset){ s.z=1; s.x=0; s.y=0; }
+  else{
+    s.z=Math.max(1, Math.min(6, s.z*mul));
+    if(s.z<=1.01){ s.z=1; s.x=0; s.y=0; }
+  }
+  lbPaint();
+}
+function lbDist(t){
+  var dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY;
+  return Math.sqrt(dx*dx+dy*dy) || 1;
+}
+/* จีบนิ้วซูม · แตะสองทีสลับซูม · ลากเลื่อนตอนซูมอยู่
+   ต้องผูกใหม่ทุกครั้งที่เปิดกล่อง เพราะ carousel() สร้างรางกับรูปขึ้นมาใหม่หมด */
+function lbWire(){
+  var tr=$("lbBox").querySelector(".car-track"); if(!tr) return;
+  var pinch=0, base=1, lastTap=0, drag=null;
+  tr.addEventListener("touchstart", function(e){
+    if(e.touches.length===2){ pinch=lbDist(e.touches); base=lbCur().z; drag=null; e.preventDefault(); return; }
+    if(e.touches.length===1){
+      var now=Date.now(), big=lbCur().z>1.01;
+      if(now-lastTap<320){ lbZoomBy(big?1:2.5, big); lastTap=0; e.preventDefault(); return; }
+      lastTap=now;
+      if(big) drag={x:e.touches[0].clientX, y:e.touches[0].clientY, ox:lbCur().x, oy:lbCur().y};
+    }
+  }, {passive:false});
+  tr.addEventListener("touchmove", function(e){
+    if(pinch && e.touches.length===2){
+      var s=lbCur();
+      s.z=Math.max(1, Math.min(6, base*(lbDist(e.touches)/pinch)));
+      if(s.z<=1.01){ s.z=1; s.x=0; s.y=0; }
+      lbPaint(); e.preventDefault(); return;
+    }
+    if(drag && e.touches.length===1){
+      var c=lbCur();
+      c.x=drag.ox+(e.touches[0].clientX-drag.x);
+      c.y=drag.oy+(e.touches[0].clientY-drag.y);
+      lbPaint(); e.preventDefault();
+    }
+  }, {passive:false});
+  tr.addEventListener("touchend", function(){ pinch=0; drag=null; });
+  tr.addEventListener("touchcancel", function(){ pinch=0; drag=null; });
+  /* ปัดเปลี่ยนรูปแล้ว เลข % ต้องเปลี่ยนตามรูปที่กำลังดู */
+  tr.addEventListener("scroll", lbPaint);
+}
 function zoom(arr,start){
   if(typeof arr==="string") arr=[arr];
   if(!arr||!arr.length) return;
   lbArr=arr.slice(); lbIdx=start||0;
   var box=$("lbBox"); box.innerHTML=""; box.className="car";
-  carousel(box, lbArr, null, null);
+  carousel(box, lbArr, null, null, true);
   $("lb").classList.add("on");
   document.body.style.overflow="hidden";
   var tr=box.querySelector(".car-track");
@@ -1507,6 +1719,8 @@ function zoom(arr,start){
   var one=lbArr.length<2;
   $("lbPrev").classList.toggle("hidden",one);
   $("lbNext").classList.toggle("hidden",one);
+  lbSt=lbArr.map(function(u){ return {rot:rotOf(u), z:1, x:0, y:0}; });
+  lbWire(); lbPaint();
   paintLbCount();
   $("lb").focus();
 }
@@ -1516,14 +1730,17 @@ function lbGo(step){
   var tr=$("lbBox").querySelector(".car-track"); if(!tr) return;
   lbIdx=Math.min(lbArr.length-1, Math.max(0, lbIdx+step));
   tr.scrollTo({left: tr.clientWidth*lbIdx, behavior:"smooth"});
-  paintLbCount();
+  paintLbCount(); lbPaint();
 }
 function lbClose(){ $("lb").classList.remove("on"); document.body.style.overflow=""; }
 function allShots(j){ return (j.shots||[]).concat(j.shotsEnd||[]); }
 function esc(s){ return String(s).replace(/[&<>"]/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
 
 function tabsFor(){
-  if(me.role!=="owner") return [["home","หน้าหลัก"],["fuel","เติมน้ำมัน"],["mine","ยอดของฉัน"]];
+  if(!isStaff(me)) return [["home","หน้าหลัก"],["fuel","เติมน้ำมัน"],["mine","ยอดของฉัน"]];
+  /* แอดมินไม่มีแท็บ "รอใส่ราคา" กับ "สมุดราคางาน" เพราะสองหน้านั้นคือการใส่ราคาล้วนๆ
+     ตัดออกไปเลยดีกว่าปล่อยให้เข้าไปแล้วกดอะไรไม่ได้สักปุ่ม */
+  if(isAdmin(me)) return [["today","วันนี้"],["jobs","งานทั้งหมด"],["ofuel","ค่าน้ำมัน"],["month","สรุปสิ้นเดือน"],["set","ตั้งค่า"]];
   return [["wait","รอใส่ราคา"],["today","วันนี้"],["jobs","งานทั้งหมด"],["ofuel","ค่าน้ำมัน"],["rates","สมุดราคางาน"],["month","สรุปสิ้นเดือน"],["set","ตั้งค่า"]];
 }
 function enterApp(){
@@ -1531,7 +1748,7 @@ function enterApp(){
   $("appView").classList.remove("hidden");
   $("meName").textContent=me.name;
   $("meAvatar").textContent=initials(me.name);
-  go(me.role==="owner" ? (waiting().length?"wait":"today") : "home");
+  go(isOwner(me) ? (waiting().length?"wait":"today") : (isAdmin(me) ? "today" : "home"));
 }
 function buildTabs(){
   var el=$("tabs"); el.innerHTML="";
@@ -1596,7 +1813,12 @@ function addShots(files,arr,after){
     });
   });
 }
-function carousel(host,arr,counter,onChange){
+/* noZoom = true ใช้ตอนวาดรูปอยู่ข้างในกล่องขยายเอง จะได้ไม่เปิดกล่องขยายซ้อนกล่องขยาย
+   Why ต้องแยกออกจาก onChange: เดิมผูก "กดรูปเพื่อดูใหญ่" ไว้กับ onChange
+   ซึ่งมีเฉพาะกล่องรูปที่แก้ไขได้ (ตอนถ่ายรูปแนบงาน) ผลคือรูปในหน้า "รอใส่ราคา" กดไม่ขึ้นเลย
+   เจ้าของต้องเพ่งรูปบิลจิ๋วๆ ตอนใส่ค่าเที่ยว (เจ้าของแจ้งเอง 2 ก.ย. 2569)
+   บทเรียน: "แก้ไขได้" กับ "ดูใหญ่ได้" เป็นคนละเรื่องกัน อย่าเอาธงเดียวคุมสองอย่าง */
+function carousel(host,arr,counter,onChange,noZoom){
   host.innerHTML="";
   if(counter) $(counter).textContent=arr.length+"/3"+(arr.length?" · "+sizeOf(arr)+" KB":"");
   if(!arr.length) return;
@@ -1604,7 +1826,11 @@ function carousel(host,arr,counter,onChange){
   arr.forEach(function(src,i){
     var fig=document.createElement("figure");
     var im=document.createElement("img"); im.src=src; im.alt="รูปที่ "+(i+1);
-    if(onChange) im.onclick=function(){ zoom(arr,i); };
+    if(!noZoom){
+      im.style.cursor="zoom-in";
+      im.onclick=function(){ zoom(arr,i); };
+      paintRot(im, src);          /* ในกล่องขยายไม่ต้อง lbPaint() จัดการเอง */
+    }
     fig.appendChild(im);
     if(onChange){
       var del=document.createElement("button"); del.className="car-del"; del.textContent="×"; del.title="ลบรูปนี้";
@@ -1734,8 +1960,8 @@ function fillTruckSel(reset){
     sel.insertBefore(o, sel.firstChild);
   }
   for(i=0;i<sel.options.length;i++) if(sel.options[i].value===cur){ sel.value=cur; return; }
-  var last=DB.lastTruck[me.id];
-  if(last && find(DB.truck,last)) sel.value=last;
+  var def=defaultTruckId();
+  if(def) sel.value=def;
   else if(sel.options.length) sel.value=sel.options[sel.options.length-1].value;
 }
 function openNew(){
@@ -1922,6 +2148,7 @@ function jobList(host,list,showEmp){
     var pics=allShots(j);
     if(pics.length){
       var im=document.createElement("img"); im.className="thumb"; im.src=pics[0]; im.alt="รูปงาน";
+      paintRot(im, pics[0]);
       im.title="ดูรูปทั้งหมด "+pics.length+" รูป";
       im.onclick=function(){ zoom(pics,0); };
       row.appendChild(im);
@@ -1978,7 +2205,7 @@ function jobList(host,list,showEmp){
         ต้องเข้า SQL แก้ให้ ซึ่งเรื่องเงินยังไงก็ต้องกดผิดสักวัน
    ฝั่งฐานข้อมูลรองรับอยู่แล้ว: policy jobs_owner_all เป็น for all
    และ trigger jobs_guard_money() ปล่อยผ่านทันทีถ้า app_is_owner() */
-function canEditJob(j){ return !!(me && me.role==="owner" && j.status==="done"); }
+function canEditJob(j){ return !!(isOwner(me) && j.status==="done"); }
 function buildJobEdit(j, pan){
   pan.innerHTML=
     '<div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap">' +
@@ -2559,6 +2786,8 @@ function renderMonth(){
      '<td class="r num">'+baht(totAllow+totFee)+'</td></tr></tfoot>';
   var tbl=$("monTable"); tbl.innerHTML=h;
   tbl.querySelectorAll("[data-ab]").forEach(function(inp){
+    /* วันขาดไปหักเบี้ยเลี้ยง = เรื่องเงิน แอดมินดูได้แต่แก้ไม่ได้ */
+    if(isAdmin(me)){ inp.disabled=true; inp.title="ต้องให้เจ้าของเป็นคนกรอกวันขาด"; return; }
     inp.onchange=function(){
       var id=inp.dataset.ab;
       DB.absent[id]=DB.absent[id]||{};
@@ -2573,7 +2802,9 @@ function renderMonth(){
     tile("ค่าเที่ยว", baht(totFee), list.length+" งาน"+(pend?" · รอราคา "+pend:"")) +
     tile("เบี้ยเลี้ยง", baht(totAllow), drivers.length+" คนที่มีงานเดือนนี้") +
     tile("ค่าค้างคืนรวม", baht(list.reduce(function(s,j){ return s+nightPay(j); },0)), sum(list,"nights")+" คืน (ราคาต่อคืนแยกตามงาน)");
-  $("monHint").innerHTML = "เบี้ยเลี้ยงจ่ายเต็มเดือน หักเฉพาะวันที่ขาดงาน — กรอกวันขาดในตารางได้เลย" +
+  $("monHint").innerHTML = (isAdmin(me)
+      ? "เบี้ยเลี้ยงจ่ายเต็มเดือน หักเฉพาะวันที่ขาดงาน — <b>ช่องวันขาดต้องให้เจ้าของเป็นคนกรอก</b>"
+      : "เบี้ยเลี้ยงจ่ายเต็มเดือน หักเฉพาะวันที่ขาดงาน — กรอกวันขาดในตารางได้เลย") +
     (skipped ? ' · <b>ไม่แสดง '+skipped+' คนที่ไม่มีงานในเดือนนี้ (ไม่คิดเบี้ยเลี้ยงให้)</b>' : "");
   groupTable($("monType"), list, function(j){return j.type;}, function(k){return TYPE_LABEL[k];}, "ประเภทงาน");
 }
@@ -2601,19 +2832,28 @@ function guardOwner(e, next){
   if(n===0){ toast("ต้องเหลือเจ้าของที่เปิดใช้งานอย่างน้อย 1 คน ไม่งั้นจะไม่มีใครใส่ค่าเที่ยวได้"); return false; }
   return true;
 }
+/* ปุ่มเปลี่ยนบทบาท โชว์เฉพาะบทบาทที่ยังไม่ใช่ของคนนี้ */
+function roleBtns(e){
+  var h="";
+  [["owner","ตั้งเป็นเจ้าของ"],["admin","ตั้งเป็นแอดมิน"],["driver","ลดเป็นคนขับ"]].forEach(function(x){
+    if(x[0]===e.role) return;
+    h+='<button class="btn sm" data-emp-role="'+e.id+'" data-to="'+x[0]+'">'+x[1]+'</button>';
+  });
+  return h;
+}
 function empCard(e){
-  var isMe = !!(me && e.id===me.id), owner = e.role==="owner", off = e.active===false;
+  var isMe = !!(me && e.id===me.id), off = e.active===false;
   return '<div class="card pad" style="margin-bottom:10px'+(off?'; border-color:var(--warn); background:var(--warn-soft)':'')+'">' +
     '<div class="row" style="gap:8px; flex-wrap:wrap; align-items:center">' +
       '<b style="font-size:17px">'+esc(e.name||"(ยังไม่มีชื่อ)")+'</b>' +
-      '<span class="pill '+(owner?"t2":"t1")+'">'+(owner?"เจ้าของ":"คนขับ")+'</span>' +
+      '<span class="pill '+rolePill(e.role)+'">'+roleLabel(e.role)+'</span>' +
       (off?'<span class="pill t4">รอเปิดใช้งาน</span>':'') +
       (isMe?'<span class="pill t3">คุณ</span>':'') +
     '</div>' +
     '<div class="hint num" style="margin-top:4px; word-break:break-all">'+esc(e.line||"–")+'</div>' +
     '<div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap">' +
       '<button class="btn sm '+(off?"primary":"ghost")+'" data-emp-act="'+e.id+'">'+(off?"✓ เปิดใช้งาน":"ปิดใช้งาน")+'</button>' +
-      '<button class="btn sm" data-emp-role="'+e.id+'">'+(owner?"ลดเป็นคนขับ":"ตั้งเป็นเจ้าของ")+'</button>' +
+      roleBtns(e) +
       '<button class="btn sm" data-emp-ren="'+e.id+'">แก้ชื่อ</button>' +
       '<button class="btn sm ghost" data-emp-del="'+e.id+'">ลบ</button>' +
     '</div></div>';
@@ -2631,12 +2871,12 @@ function wireEmpCards(){
   });
   document.querySelectorAll("[data-emp-role]").forEach(function(b){
     var e=find(DB.emp, b.getAttribute("data-emp-role")); if(!e) return;
-    var to = e.role==="owner" ? "driver" : "owner";
+    var to = b.getAttribute("data-to");
     armBtn(b,"แน่ใจ? กดอีกครั้ง",function(){
       if(!guardOwner(e,{role:to, active:(to==="owner"?true:e.active)})) return;
       e.role=to; if(to==="owner") e.active=true;
       save(); render();
-      toast(e.name+" เป็น"+(to==="owner"?"เจ้าของ":"คนขับ")+"แล้ว");
+      toast(e.name+" เป็น"+roleLabel(to)+"แล้ว");
     });
   });
   document.querySelectorAll("[data-emp-ren]").forEach(function(b){
@@ -2662,8 +2902,9 @@ function empGroups(){
   function byName(a,b){ return (a.name||"").localeCompare(b.name||"","th"); }
   return [
     ["รอเปิดใช้งาน", "t4", DB.emp.filter(function(e){ return e.active===false; }).sort(byName)],
-    ["เจ้าของ",      "t2", DB.emp.filter(function(e){ return e.active!==false && e.role==="owner"; }).sort(byName)],
-    ["คนขับ",        "t1", DB.emp.filter(function(e){ return e.active!==false && e.role!=="owner"; }).sort(byName)]
+    ["เจ้าของ",      "t2", DB.emp.filter(function(e){ return e.active!==false && isOwner(e); }).sort(byName)],
+    ["แอดมิน",       "t3", DB.emp.filter(function(e){ return e.active!==false && isAdmin(e); }).sort(byName)],
+    ["คนขับ",        "t1", DB.emp.filter(function(e){ return e.active!==false && isDriver(e); }).sort(byName)]
   ];
 }
 function paintEmpList(){
@@ -2827,13 +3068,19 @@ function renderSettings(){
   DB.job.forEach(function(j){ var a=allShots(j); pics+=a.length; bytes+=sizeOf(a); });
   $("imgStat").textContent="เก็บรูปไว้แล้ว "+pics+" รูป รวม "+bytes+" KB (เฉลี่ย "+(pics?Math.round(bytes/pics):0)+" KB/รูป) · โหมด "+
     (DB.set.imgq||"ประหยัด")+" ย่อด้านยาวเหลือ "+imgProfile().max+" px";
+  var adm=isAdmin(me);
+  $("setAdmNote").classList.toggle("hidden", !adm);
+  var mo=$("v-set").querySelectorAll('[data-money="1"]');
+  for(var mi=0; mi<mo.length; mi++) mo[mi].classList.toggle("hidden", adm);
+  $("empBlock").classList.toggle("hidden", adm);
   paintEmpList();
   $("empSearch").oninput=paintEmpList;
   var sizes=(DB.sizes&&DB.sizes.length?DB.sizes:SIZES);
   /* คนขับประจำรถ — งานที่นำเข้าจากท่าทรายรู้แค่ทะเบียน ต้องอาศัยตรงนี้ลงชื่อคนให้
      **เอาเฉพาะคนขับ ไม่เอาเจ้าของ** เพราะเงินค่าเที่ยวเป็นของคนขับ เจ้าของเป็นคนใส่ราคาให้
-     ใช้เกณฑ์เดียวกับกลุ่ม "คนขับ" ใน empGroups() เป๊ะ (role!=="owner") สองหน้าจะได้ตรงกันเสมอ */
-  var drvList=DB.emp.filter(function(e){ return e.active!==false && e.role!=="owner"; })
+     ใช้เกณฑ์เดียวกับกลุ่ม "คนขับ" ใน empGroups() เป๊ะ (isDriver) สองหน้าจะได้ตรงกันเสมอ
+     **เพิ่มบทบาทใหม่เมื่อไหร่ ต้องมาดูตรงนี้ด้วยทุกครั้ง** ตอนเพิ่ม "แอดมิน" เกือบหลุดมาโผล่ในช่องนี้ */
+  var drvList=DB.emp.filter(function(e){ return e.active!==false && isDriver(e); })
                     .sort(function(a,b){ return (a.name||"").localeCompare(b.name||"","th"); });
   function drvOptions(cur){
     var h='<option value="">— ยังไม่ระบุ —</option>', seen=false;
@@ -2971,8 +3218,8 @@ function impOnMessage(ev){
 function impTake(d){
   if(!d || !d.rows || !d.rows.length){ toast("ข้อมูลที่ส่งมาไม่มีรายการเลย"); return; }
   IMP=d; IMPPICK={};
-  if(!me || me.role!=="owner"){
-    toast("รับข้อมูลไว้แล้ว "+d.rows.length+" รายการ — เข้าสู่ระบบด้วยบัญชีเจ้าของเพื่อตรวจ");
+  if(!isStaff(me)){
+    toast("รับข้อมูลไว้แล้ว "+d.rows.length+" รายการ — เข้าสู่ระบบด้วยบัญชีเจ้าของหรือแอดมินเพื่อตรวจ");
     return;
   }
   go("month");
@@ -3098,6 +3345,36 @@ function lastOdo(truckId){
   DB.fuel.forEach(function(f){ if(f.truck===truckId && f.odo>0 && (best===null || f.at>best.at)) best=f; });
   return best;
 }
+/* รถประจำของคนขับ — เจ้าของผูกไว้ในหน้าตั้งค่า (trucks.driver_id)
+   Why: คนขับคนหนึ่งอยู่กับรถคันเดิมแทบทุกวัน ให้เด้งคันของเขาขึ้นมาก่อนเสมอ
+   จะได้ไม่เผลอบันทึกน้ำมันเข้าคันอื่น (เกิดจริงมาแล้ว 1 ก.ย. 2569) */
+function myTruckId(empId){
+  var who=empId||me.id, hit="";
+  DB.truck.forEach(function(t){ if(!hit && t.driver===who && t.active!==false) hit=t.id; });
+  return hit;
+}
+function defaultTruckId(){
+  var mine=myTruckId();
+  if(mine && find(DB.truck,mine)) return mine;
+  var last=DB.lastTruck[me.id];
+  if(last && find(DB.truck,last)) return last;
+  return "";
+}
+/* ระยะที่วิ่งกับอัตราสิ้นเปลืองของการเติมหนึ่งครั้ง — คิดจากเลขไมล์อย่างเดียว */
+function fuelRun(f){ return (f.prevOdo && f.odo>f.prevOdo) ? (f.odo-f.prevOdo) : 0; }
+function fuelKmL(f){
+  var run=fuelRun(f), l=f.liters||0;
+  return (run>0 && l>0) ? run/l : 0;
+}
+/* ย้ายรายการข้ามคันแล้ว เลขไมล์ครั้งก่อนของทั้งสองคันเปลี่ยนหมด ต้องไล่ใหม่ทั้งแถว
+   ฝั่งฐานข้อมูลมี trigger fuel_rechain_guard ทำให้อยู่แล้ว อันนี้ทำให้จอตรงกันทันทีโดยไม่ต้องรีเฟรช */
+function rechainFuel(truckId){
+  if(!truckId) return;
+  var L=DB.fuel.filter(function(f){ return f.truck===truckId; })
+               .sort(function(a,b){ return (a.odo-b.odo)||(a.at-b.at); });
+  var prev=0;
+  L.forEach(function(f){ f.prevOdo=prev; prev=f.odo||prev; });
+}
 function calcLiters(){
   var amt=parseFloat($("uAmount").value)||0, pr=parseFloat($("uPrice").value)||0;
   var l = (amt>0 && pr>0) ? amt/pr : 0;
@@ -3115,6 +3392,13 @@ function paintOdoHint(){
   var cur=parseInt($("uOdo").value,10)||0;
   var run = cur>b.odo ? cur-b.odo : 0;
   $("odoRun").innerHTML = run ? run.toLocaleString("th-TH")+'<span class="u">กม.</span>' : "–";
+}
+function paintTruckHint(){
+  var el=$("uTruckHint"); if(!el) return;
+  var mine=myTruckId(), cur=$("uTruck").value;
+  if(!mine){ el.innerHTML='<span style="color:var(--ink3)">ยังไม่ได้ผูกรถประจำให้คุณ — เลือกคันที่เติมเอง</span>'; return; }
+  if(cur===mine){ el.innerHTML='<span style="color:var(--ok); font-weight:600">✓ รถประจำของคุณ</span>'; return; }
+  el.innerHTML='<span style="color:var(--accent); font-weight:600">⚠️ ไม่ใช่รถประจำของคุณ</span> — รถประจำคือ '+esc(truck(mine).plate)+' ถ้าเลือกผิดกดเปลี่ยนกลับได้';
 }
 function refreshCar3(){
   carousel($("car3"), uDraft.shots, "cnt3", refreshCar3);
@@ -3174,32 +3458,38 @@ function fuelList(host,list,showEmp){
     var fpics=(f.shots||[]).concat(f.odoShots||[]);
     if(fpics.length){
       var im=document.createElement("img"); im.className="thumb"; im.src=fpics[0]; im.alt="ใบเสร็จน้ำมัน";
+      paintRot(im, fpics[0]);
       im.title="ดูรูปทั้งหมด "+fpics.length+" รูป";
       im.onclick=function(){ zoom(fpics,0); };
       row.appendChild(im);
     } else { var ph=document.createElement("div"); ph.className="thumb none"; ph.textContent="ไม่มีรูป"; row.appendChild(ph); }
     var body=document.createElement("div"); body.className="body";
-    var run = (f.prevOdo && f.odo>f.prevOdo) ? (f.odo-f.prevOdo) : 0;
-    body.innerHTML='<div class="jt">'+truck(f.truck).plate+(f.note?' · '+esc(f.note):'')+'</div>' +
+    var run = fuelRun(f), kml = fuelKmL(f);
+    body.innerHTML='<div class="jt">'+esc(truck(f.truck).plate)+(f.note?' · '+esc(f.note):'')+'</div>' +
       '<div class="meta">' +
       (f.liters?'<span class="pill t3 num">'+f.liters.toFixed(2)+' ลิตร</span>':'') +
+      (kml?'<span class="pill t2 num">'+kml.toFixed(2)+' กม./ล.</span>':'') +
       (f.price?'<span class="num">฿'+f.price.toFixed(2)+'/ล.</span>':'') +
-      (showEmp?'<span>'+emp(f.emp).name+'</span>':'') +
+      (showEmp?'<span>'+esc(emp(f.emp).name)+'</span>':'') +
       '<span class="num">'+fmtDate(f.date)+'</span><span>'+clock(f.at)+' น.</span>' +
       (f.odo?'<span class="num">ไมล์ '+f.odo.toLocaleString("th-TH")+'</span>':'') +
       (run?'<span class="num">วิ่ง '+run.toLocaleString("th-TH")+' กม.</span>':'') +
+      (run&&f.amount?'<span class="num">฿'+(f.amount/run).toFixed(2)+'/กม.</span>':'') +
       (f.lat!=null?'<a class="geo" target="_blank" rel="noopener" href="'+mapsPoint(f)+'">📍 ปั๊ม</a>':'') +
       '</div>';
     var amt=document.createElement("div"); amt.className="amt"; amt.textContent=baht(f.amount);
     row.appendChild(body); row.appendChild(amt); host.appendChild(row);
+    if(canFixTruck(f)) body.appendChild(fixTruckBtn(f, body));
   });
 }
 function renderFuel(){
   fillSelect($("uTruck"), DB.truck, function(t){return t.id;}, function(t){return t.plate+" · "+t.size;}, true);
-  var last=DB.lastTruck[me.id];
-  if(last && find(DB.truck,last) && !$("uTruck").dataset.touched) $("uTruck").value=last;
+  if(!$("uTruck").dataset.touched){
+    var def=defaultTruckId();
+    if(def) $("uTruck").value=def;
+  }
   if(!$("uPrice").value) $("uPrice").value=DB.set.fuelPrice||"";
-  calcLiters(); paintOdoHint();
+  calcLiters(); paintOdoHint(); paintTruckHint();
   var m=ym(today());
   var mine=DB.fuel.filter(function(f){ return f.emp===me.id && ym(f.date)===m; })
                   .sort(function(a,b){ return b.at-a.at; });
@@ -3220,9 +3510,92 @@ function renderOwnerFuel(){
     tile("จำนวนลิตร", lit?lit.toFixed(0):"–", lit?"ลิตร (เฉพาะที่กรอก)":"ยังไม่ได้กรอกลิตร") +
     tile("เฉลี่ยต่อครั้ง", list.length?baht(sum(list,"amount")/list.length):"0", "บาท") +
     tile("ราคาเฉลี่ย/ลิตร", lit?(sum(list,"amount")/lit).toFixed(2):"–", "บาท");
+  fuelEffCards($("ofuelEff"), list);
   fuelGroup($("ofuelTruck"), list, function(f){return f.truck;}, function(k){return truck(k).plate+" · "+truck(k).size;}, "รถ");
   fuelGroup($("ofuelEmp"), list, function(f){return f.emp;}, function(k){return emp(k).name;}, "พนักงาน");
   fuelList($("ofuelList"), list, true);
+}
+/* ใครแก้ทะเบียนของรายการที่บันทึกไปแล้วได้ (เจ้าของตัดสิน 1 ก.ย. 2569)
+   เจ้าของ = ทุกรายการ · คนขับ = ของตัวเอง เฉพาะที่บันทึกวันนี้
+   ฝั่งฐานข้อมูลมี policy fuel_update_own กันไว้อีกชั้น ไม่ได้เชื่อหน้าเว็บอย่างเดียว */
+function canFixTruck(f){
+  if(isStaff(me)) return true;
+  return f.emp===me.id && f.date===today();
+}
+function fixTruckBtn(f, body){
+  var b=document.createElement("button");
+  b.className="btn sm ghost"; b.textContent="✏️ แก้ทะเบียน";
+  b.style.marginTop="8px";
+  b.onclick=function(){ openFixTruck(f, body, b); };
+  return b;
+}
+function openFixTruck(f, body, btn){
+  if(busyGuard()) return;
+  btn.classList.add("hidden");
+  var box=document.createElement("div"); box.style.marginTop="8px";
+  var sel=document.createElement("select");
+  DB.truck.filter(function(t){ return t.active!==false || t.id===f.truck; })
+    .forEach(function(t){
+      var o=document.createElement("option");
+      o.value=t.id; o.textContent=t.plate+" · "+t.size;
+      if(t.id===f.truck) o.selected=true;
+      sel.appendChild(o);
+    });
+  var ok=document.createElement("button");
+  ok.className="btn sm primary"; ok.textContent="เปลี่ยนทะเบียน"; ok.style.marginRight="8px";
+  var no=document.createElement("button");
+  no.className="btn sm ghost"; no.textContent="ยกเลิก";
+  var bar=document.createElement("div"); bar.className="row"; bar.style.marginTop="8px";
+  bar.appendChild(ok); bar.appendChild(no);
+  box.appendChild(sel); box.appendChild(bar);
+  body.appendChild(box);
+  no.onclick=function(){ render(); };
+  ok.onclick=function(){
+    var nw=sel.value, old=f.truck;
+    if(!nw || nw===old){ render(); return; }
+    f.truck=nw;
+    /* ระยะที่วิ่งของทั้งคันเก่าและคันใหม่เปลี่ยนหมด ต้องไล่เลขไมล์ครั้งก่อนใหม่ทั้งสองคัน */
+    rechainFuel(old); rechainFuel(nw);
+    save();
+    toast("เปลี่ยนเป็น "+truck(nw).plate+" แล้ว");
+    render();
+  };
+}
+/* การ์ดสรุปอัตราสิ้นเปลืองแยกตามรถ
+   ใช้วิธีถ่วงน้ำหนัก (ระยะรวม ÷ ลิตรรวม) ไม่ใช่เฉลี่ยตัวเลขของแต่ละครั้ง
+   Why: เติมครั้งละ 200 บาท กับเติมเต็มถัง ถ้าเฉลี่ยตรงๆ ครั้งเล็กจะดึงตัวเลขเพี้ยน
+   และนับเฉพาะครั้งที่มีเลขไมล์ครั้งก่อนให้เทียบ ไม่งั้นลิตรของครั้งแรกจะไปหารระยะที่ไม่มี */
+function fuelEffCards(host, list){
+  var g={};
+  list.forEach(function(f){
+    var k=f.truck;
+    if(!g[k]) g[k]={total:0, liters:0, n:0, run:0, runL:0, runB:0, runN:0};
+    g[k].total+=(f.amount||0); g[k].liters+=(f.liters||0); g[k].n++;
+    var r=fuelRun(f);
+    if(r>0 && f.liters>0){ g[k].run+=r; g[k].runL+=f.liters; g[k].runB+=(f.amount||0); g[k].runN++; }
+  });
+  var keys=Object.keys(g);
+  if(!keys.length){ host.innerHTML='<div class="card pad hint">ยังไม่มีการเติมน้ำมันในเดือนนี้</div>'; return; }
+  keys.sort(function(a,b){ return truck(a).plate.localeCompare(truck(b).plate,"th"); });
+  var h="";
+  keys.forEach(function(k){
+    var v=g[k], kml=v.runL>0 ? v.run/v.runL : 0;
+    h+='<div class="card pad" style="margin-bottom:10px">' +
+       '<div style="font-weight:700; margin-bottom:8px">🚛 '+esc(truck(k).plate)+' · '+esc(truck(k).size||"")+'</div>' +
+       '<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; text-align:center">' +
+         '<div><div class="hint">เติมทั้งหมด</div><div class="num" style="font-weight:700">฿'+baht(v.total)+'</div></div>' +
+         '<div><div class="hint">ปริมาณ</div><div class="num" style="font-weight:700">'+v.liters.toFixed(1)+' ล.</div></div>' +
+         '<div><div class="hint">เฉลี่ย กม./ล.</div><div class="num" style="font-weight:700; color:var(--accent)">'+(kml?kml.toFixed(2):"–")+'</div></div>' +
+       '</div>' +
+       '<div class="hint" style="margin-top:8px; border-top:1px solid var(--line); padding-top:8px">' +
+         (kml
+           ? '📏 ระยะรวม '+v.run.toLocaleString("th-TH")+' กม. · ฿'+(v.run>0?(v.runB/v.run).toFixed(2):"–")+'/กม.' +
+             ' · คิดจากการเติม '+v.runN+' จาก '+v.n+' ครั้ง'
+           : 'ยังคิดอัตราสิ้นเปลืองไม่ได้ — ต้องมีการเติมของคันนี้อย่างน้อย 2 ครั้งถึงจะเทียบเลขไมล์ได้') +
+       '</div>' +
+       '</div>';
+  });
+  host.innerHTML=h;
 }
 function fuelGroup(tbl,list,keyFn,label,head){
   var g={}; list.forEach(function(f){ var k=keyFn(f); (g[k]=g[k]||[]).push(f); });
@@ -3311,7 +3684,7 @@ $("file3").onchange=function(){ addShots(this.files, uDraft.shots, refreshCar3);
 $("cam4").onchange=function(){ addShots(this.files, uDraft.odoShots, refreshCar4); this.value=""; };
 $("file4").onchange=function(){ addShots(this.files, uDraft.odoShots, refreshCar4); this.value=""; };
 $("uMoreToggle").onclick=function(){ $("uMoreBox").classList.toggle("hidden"); };
-$("uTruck").onchange=function(){ this.dataset.touched="1"; paintOdoHint(); };
+$("uTruck").onchange=function(){ this.dataset.touched="1"; paintOdoHint(); paintTruckHint(); };
 $("uAmount").oninput=calcLiters;
 $("uPrice").oninput=calcLiters;
 $("uOdo").oninput=paintOdoHint;
@@ -3358,11 +3731,20 @@ $("lb").onclick=function(e){ if(e.target===this) lbClose(); };
 $("lbClose").onclick=lbClose;
 $("lbPrev").onclick=function(e){ e.stopPropagation(); lbGo(-1); };
 $("lbNext").onclick=function(e){ e.stopPropagation(); lbGo(1); };
+$("lbRotL").onclick  =function(e){ e.stopPropagation(); lbRot(-90); };
+$("lbRotR").onclick  =function(e){ e.stopPropagation(); lbRot(90); };
+$("lbZoomOut").onclick=function(e){ e.stopPropagation(); lbZoomBy(1/1.5); };
+$("lbZoomIn").onclick =function(e){ e.stopPropagation(); lbZoomBy(1.5); };
+$("lbZoomLv").onclick =function(e){ e.stopPropagation(); lbZoomBy(1,true); };
 document.addEventListener("keydown",function(e){
   if(!$("lb").classList.contains("on")) return;
   if(e.key==="ArrowLeft"){ e.preventDefault(); lbGo(-1); }
   else if(e.key==="ArrowRight"){ e.preventDefault(); lbGo(1); }
   else if(e.key==="Escape"){ e.preventDefault(); lbClose(); }
+  else if(e.key==="r" || e.key==="R"){ e.preventDefault(); lbRot(e.shiftKey?-90:90); }
+  else if(e.key==="+" || e.key==="="){ e.preventDefault(); lbZoomBy(1.5); }
+  else if(e.key==="-"){ e.preventDefault(); lbZoomBy(1/1.5); }
+  else if(e.key==="0"){ e.preventDefault(); lbZoomBy(1,true); }
 }, true);
 $("rAdd").onclick=function(){
   var l=$("rLabel").value.trim(), p=parseFloat($("rPrice").value);
