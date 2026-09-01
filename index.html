@@ -780,6 +780,19 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="tAdd">เพิ่ม</button></label>
       </div>
 
+      <div id="trashBlock">
+      <div class="sec-title">งานที่ถูกลบ</div>
+      <div class="card pad stack">
+        <p class="hint" style="margin:0">
+          งานที่ถูกลบไปยังกู้คืนได้ ข้อมูลเก็บไว้ครบทั้งค่าเที่ยว รูป และพิกัด
+        </p>
+        <div class="row">
+          <button class="btn" id="trashScan">ดูงานที่ถูกลบ</button>
+        </div>
+        <div id="trashOut"></div>
+      </div>
+      </div>
+
       <div class="sec-title">ข้อมูล</div>
       <div class="card pad row">
         <button class="btn" id="reloadCloud">ดึงข้อมูลล่าสุดจากคลาวด์</button>
@@ -788,9 +801,10 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 
       <div class="sec-title">คู่มือการใช้งาน</div>
       <div class="card pad stack">
-        <p class="hint" style="margin:0">ส่งลิงก์คู่มือคนขับให้พนักงานทางไลน์ได้เลย</p>
+        <p class="hint" style="margin:0">ส่งลิงก์คู่มือให้พนักงานทางไลน์ได้เลย</p>
         <div class="row">
           <a class="btn" href="help-driver.html" target="_blank" rel="noopener" style="text-decoration:none">📖 คู่มือคนขับ</a>
+          <a class="btn" href="help-admin.html" target="_blank" rel="noopener" style="text-decoration:none">📘 คู่มือแอดมิน</a>
           <a class="btn" href="help-owner.html" target="_blank" rel="noopener" style="text-decoration:none">📗 คู่มือเจ้าของ</a>
         </div>
       </div>
@@ -2179,23 +2193,39 @@ function jobList(host,list,showEmp){
     if(j.status==="active"){ amt.className="amt"; amt.textContent="—"; }
     else if(!j.priced){ amt.className="amt wait"; amt.textContent="รอเจ้าของใส่ราคา"; }
     else { amt.className="amt"; amt.textContent=baht(payOf(j)); }
+    var side=document.createElement("div");
+    side.style.cssText="display:flex; flex-direction:column; align-items:flex-end; gap:7px";
+    side.appendChild(amt);
+    var pan=document.createElement("div"); pan.className="jobedit hidden";
+    row.appendChild(body); row.appendChild(side); row.appendChild(pan);
+    function panShut(){ pan.classList.add("hidden"); pan.innerHTML=""; }
+
     if(canEditJob(j)){
-      var side=document.createElement("div");
-      side.style.cssText="display:flex; flex-direction:column; align-items:flex-end; gap:7px";
-      side.appendChild(amt);
       var eb=document.createElement("button");
       eb.className="btn sm ghost"; eb.textContent="แก้ไข";
       side.appendChild(eb);
-      var pan=document.createElement("div"); pan.className="jobedit hidden";
-      row.appendChild(body); row.appendChild(side); row.appendChild(pan);
       eb.onclick=function(){
-        var open=!pan.classList.contains("hidden");
-        if(open){ pan.classList.add("hidden"); pan.innerHTML=""; eb.textContent="แก้ไข"; return; }
-        pan.classList.remove("hidden"); eb.textContent="ปิด";
+        if(!pan.classList.contains("hidden") && pan.dataset.k==="edit"){ panShut(); eb.textContent="แก้ไข"; return; }
+        pan.classList.remove("hidden"); pan.dataset.k="edit"; eb.textContent="ปิด";
         buildJobEdit(j, pan);
       };
-    } else {
-      row.appendChild(body); row.appendChild(amt);
+    }
+    /* ประวัติการแก้ไข — เจ้าของกับแอดมินดูได้ (ฐานข้อมูลก็เปิดให้อ่านแค่สองบทบาทนี้) */
+    if(isStaff(me)){
+      var hb=document.createElement("button");
+      hb.className="btn sm ghost"; hb.textContent="🕘 ประวัติ";
+      side.appendChild(hb);
+      hb.onclick=function(){
+        if(!pan.classList.contains("hidden") && pan.dataset.k==="log"){ panShut(); return; }
+        pan.classList.remove("hidden"); pan.dataset.k="log";
+        showLog(pan, "jobs", j.id);
+      };
+    }
+    if(canDelJob(j)){
+      var xb=document.createElement("button");
+      xb.className="btn sm ghost"; xb.style.color="var(--accent)"; xb.textContent="🗑️ ลบ";
+      side.appendChild(xb);
+      armBtn(xb, "ลบจริงไหม? กดอีกครั้ง", function(){ delJob(j); });
     }
     host.appendChild(row);
   });
@@ -2206,6 +2236,126 @@ function jobList(host,list,showEmp){
    ฝั่งฐานข้อมูลรองรับอยู่แล้ว: policy jobs_owner_all เป็น for all
    และ trigger jobs_guard_money() ปล่อยผ่านทันทีถ้า app_is_owner() */
 function canEditJob(j){ return !!(isOwner(me) && j.status==="done"); }
+/* ใครลบงานได้ (เจ้าของตัดสิน 1 ก.ย. 2569)
+   เจ้าของ = ทุกงาน · แอดมิน = เฉพาะงานที่ยังไม่ใส่ค่าเที่ยว (แตะเรื่องเงินไม่ได้)
+   คนขับ = ของตัวเอง เฉพาะงานวันนี้ และต้องยังไม่ใส่ราคา
+           ยกเว้นงานทั่วไปที่ระบบใส่ค่าแรง 300 ให้ทันที อันนั้นลบได้ถ้าเป็นของวันนี้
+   ฝั่งฐานข้อมูลมี policy jobs_delete_own + trigger jobs_del_guard กันไว้อีกชั้น */
+function canDelJob(j){
+  if(!me) return false;
+  if(isOwner(me)) return true;
+  if(isAdmin(me)) return !j.priced;
+  return j.emp===me.id && j.date===today() && (!j.priced || j.type==="ทั่วไป");
+}
+function delJob(j){
+  if(busyGuard()) return;
+  for(var i=0;i<DB.job.length;i++) if(DB.job[i].id===j.id){ DB.job.splice(i,1); break; }
+  save(); render();
+  toast(isOwner(me) ? "ลบแล้ว — กู้คืนได้ที่หน้าตั้งค่า"
+                    : "ลบแล้ว — แจ้งเจ้าของแล้ว ถ้าลบผิดให้บอกเจ้าของกู้คืนให้");
+}
+/* ---------- ประวัติการแก้ไข (ตาราง edit_log) ---------- */
+var LOGACT={add:"➕ บันทึกใหม่", edit:"✏️ แก้ไข", del:"🗑️ ลบ", restore:"♻️ กู้คืน"};
+var LOGF={ job_date:"วันที่งาน", emp_id:"คนขับ", truck_id:"รถ", job_type:"ประเภทงาน",
+  label:"ชื่องาน", material:"สินค้า", dest:"ปลายทาง", bill_no:"เลขบิล", km:"ระยะทาง (กม.)",
+  nights:"ค้างคืน", night_rate:"ค่าค้างคืน/คืน", price:"ค่าเที่ยว", priced:"ใส่ราคาแล้ว",
+  pay_mode:"วิธีคิดเงิน", days:"จำนวนวัน", qty:"จำนวนคิว", note:"หมายเหตุ", status:"สถานะงาน",
+  photos_start:"รูปตอนเริ่ม", photos_end:"รูปตอนปิดงาน", start_at:"เวลาเริ่ม", end_at:"เวลาปิดงาน",
+  incomplete:"ถ่ายบิลไม่ได้", priced_at:"เวลาที่ใส่ราคา", priced_by:"คนใส่ราคา",
+  fuel_date:"วันที่เติม", amount:"จำนวนเงิน", price_per_l:"ราคาต่อลิตร", odo:"เลขไมล์",
+  photos_receipt:"รูปใบเสร็จ", photos_odo:"รูปเลขไมล์", src:"มาจาก", src_ref:"อ้างอิง" };
+function logVal(k,v){
+  if(v===null || v===undefined || v==="") return "–";
+  if(k==="emp_id" || k==="priced_by") return emp(v).name || "ไม่ทราบชื่อ";
+  if(k==="truck_id") return truck(v).plate || "–";
+  if(Array.isArray(v)) return v.length ? (v.length+" รูป") : "ไม่มีรูป";
+  if(v===true) return "ใช่";
+  if(v===false) return "ไม่";
+  if(k==="job_date" || k==="fuel_date") return fmtDate(String(v));
+  if(k==="start_at" || k==="end_at" || k==="priced_at") return logWhen(v);
+  return String(v);
+}
+/* เวลาในฐานข้อมูลเป็น UTC ต้องแปลงเป็นเวลาบ้านเราก่อนโชว์
+   ปล่อยให้ Date แปลงให้เอง เพราะมือถือคนใช้ตั้งเป็นเวลาไทยอยู่แล้ว */
+function logWhen(iso){
+  if(!iso) return "–";
+  var d=new Date(iso);
+  if(isNaN(d.getTime())) return String(iso);
+  return fmtDate(d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())) +
+         " " + pad(d.getHours())+":"+pad(d.getMinutes()) + " น.";
+}
+function logCard(r){
+  var who = r.by_emp ? (emp(r.by_emp).name || "ไม่ทราบชื่อ") : "ระบบ";
+  var h='<div class="card pad" style="margin-bottom:8px">' +
+        '<div style="font-weight:600">'+(LOGACT[r.action]||r.action)+' · '+esc(who)+'</div>' +
+        '<div class="hint num">'+logWhen(r.at)+'</div>';
+  var c=r.changed||{}, keys=Object.keys(c);
+  keys.forEach(function(k){
+    h+='<div class="hint" style="margin-top:5px">'+esc(LOGF[k]||k)+': ' +
+       esc(logVal(k,c[k].from))+' → <b>'+esc(logVal(k,c[k].to))+'</b></div>';
+  });
+  return h+'</div>';
+}
+function showLog(host, tbl, rowId){
+  host.innerHTML='<div class="hint">กำลังโหลดประวัติ…</div>';
+  rest("edit_log?select=*&tbl=eq."+tbl+"&row_id=eq."+rowId+"&order=id.desc&limit=50")
+    .then(function(rows){
+      if(!rows || !rows.length){ host.innerHTML='<div class="hint">ยังไม่มีประวัติของรายการนี้</div>'; return; }
+      var h='<div style="font-weight:700; margin-bottom:8px">ประวัติการแก้ไข '+rows.length+' ครั้ง</div>';
+      rows.forEach(function(r){ h+=logCard(r); });
+      host.innerHTML=h;
+    })
+    .catch(function(e){
+      host.innerHTML='<div class="hint">อ่านประวัติไม่ได้ — '+esc((e&&e.message)||"")+'</div>';
+    });
+}
+/* ---------- งานที่ถูกลบ + กู้คืน (เจ้าของเท่านั้น) ---------- */
+function trashScan(){
+  var out=$("trashOut");
+  out.innerHTML='<div class="hint">กำลังหา…</div>';
+  rest("edit_log?select=*&action=eq.del&order=id.desc&limit=50")
+    .then(function(rows){
+      rows=(rows||[]);
+      if(!rows.length){ out.innerHTML='<div class="hint">ไม่มีงานที่ถูกลบ</div>'; return; }
+      out.innerHTML="";
+      rows.forEach(function(r){
+        var sn=r.snapshot||{}, isJob=(r.tbl==="jobs");
+        var card=document.createElement("div"); card.className="card pad"; card.style.marginTop="8px";
+        var title = isJob
+          ? ((sn.label||TYPE_LABEL[sn.job_type]||"งาน") + " · " + (sn.truck_id?truck(sn.truck_id).plate:"ไม่ใช้รถ"))
+          : ("เติมน้ำมัน " + (sn.truck_id?truck(sn.truck_id).plate:"–"));
+        var money = isJob
+          ? (sn.priced ? ("ค่าเที่ยว "+baht(num(sn.price,0))+" บาท") : "ยังไม่ได้ใส่ราคา")
+          : (baht(num(sn.amount,0))+" บาท");
+        card.innerHTML='<div style="font-weight:700">'+esc(title)+'</div>' +
+          '<div class="hint" style="margin-top:3px">' +
+            esc(emp(sn.emp_id).name||"–")+' · '+fmtDate(String(sn.job_date||sn.fuel_date||""))+' · '+esc(money) +
+          '</div>' +
+          '<div class="hint num" style="margin-top:3px">ลบโดย '+esc(r.by_emp?(emp(r.by_emp).name||"ไม่ทราบชื่อ"):"ระบบ")+
+            ' เมื่อ '+logWhen(r.at)+'</div>';
+        var b=document.createElement("button");
+        b.className="btn sm primary"; b.style.marginTop="9px"; b.textContent="♻️ กู้คืน";
+        card.appendChild(b);
+        armBtn(b, "กู้คืนเลยไหม? กดอีกครั้ง", function(){
+          b.disabled=true; b.textContent="กำลังกู้คืน…";
+          rest("rpc/restore_deleted", {method:"POST", body:{p_log:r.id}})
+            .then(function(){
+              toast("กู้คืนแล้ว — กำลังดึงข้อมูลใหม่");
+              return bootstrap();
+            })
+            .then(function(){ render(); trashScan(); })
+            .catch(function(e){
+              b.disabled=false; b.textContent="♻️ กู้คืน";
+              toast("กู้คืนไม่สำเร็จ — "+((e&&e.message)||""));
+            });
+        });
+        out.appendChild(card);
+      });
+    })
+    .catch(function(e){
+      out.innerHTML='<div class="hint">อ่านไม่ได้ — '+esc((e&&e.message)||"")+'</div>';
+    });
+}
 function buildJobEdit(j, pan){
   pan.innerHTML=
     '<div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap">' +
@@ -3000,9 +3150,18 @@ function orphScan(){
   Promise.all([
     pullAllCol("jobs","photos_start,photos_end"),
     pullAllCol("fuel","photos_receipt,photos_odo"),
-    bucketWalk("",2)
+    bucketWalk("",2),
+    /* รูปของงานที่ถูกลบไปแล้ว ยังต้องนับว่า "มีคนใช้อยู่"
+       Why: เจ้าของกู้คืนงานได้ ถ้าเก็บกวาดลบรูปทิ้งไปก่อน จะกู้งานกลับมาได้แต่ไม่มีบิล
+       ซึ่งแปลว่าไม่มีหลักฐานว่าลูกค้าเซ็นรับของ */
+    pullAllCol("edit_log","snapshot").catch(function(){ return null; })
   ]).then(function(a){
-    var J=a[0], F=a[1], files=a[2];
+    var J=a[0], F=a[1], files=a[2], L=a[3];
+    if(!L || L.total===null || L.rows.length!==L.total){
+      orphSay('<b style="color:var(--accent)">ตรวจไม่สำเร็จ — อ่านประวัติงานที่ถูกลบไม่ครบ</b><br>' +
+              'รูปของงานที่ถูกลบต้องเก็บไว้ให้กู้คืนได้ ยังไม่ลบอะไรทั้งนั้น ลองใหม่อีกครั้ง');
+      return;
+    }
     if(J.total===null || J.rows.length!==J.total || F.total===null || F.rows.length!==F.total){
       orphSay('<b style="color:var(--accent)">ตรวจไม่สำเร็จ — ดึงรายการงานมาได้ไม่ครบ</b><br>' +
               'งาน '+J.rows.length+'/'+J.total+' · เติมน้ำมัน '+F.rows.length+'/'+F.total+
@@ -3013,6 +3172,13 @@ function orphScan(){
     function mark(v){ (v||[]).forEach(function(p){ if(p) used[p]=1; }); }
     J.rows.forEach(function(r){ mark(r.photos_start); mark(r.photos_end); });
     F.rows.forEach(function(r){ mark(r.photos_receipt); mark(r.photos_odo); });
+    var keptDel=0;
+    L.rows.forEach(function(r){
+      var sn=r.snapshot; if(!sn) return;
+      var before=Object.keys(used).length;
+      mark(sn.photos_start); mark(sn.photos_end); mark(sn.photos_receipt); mark(sn.photos_odo);
+      keptDel += Object.keys(used).length-before;
+    });
 
     var cut=Date.now()-86400000;
     var fresh=0;
@@ -3026,13 +3192,16 @@ function orphScan(){
     var h='ในถังมี <b>'+files.length+'</b> รูป · มีงานอ้างถึง <b>'+Object.keys(used).length+'</b>' +
           ' · งานทั้งหมด '+J.total+' รายการ เติมน้ำมัน '+F.total+' รายการ';
     if(fresh) h+='<br>ข้ามรูปที่เพิ่งขึ้นถังวันนี้ '+fresh+' รูป (รอแถวซิงก์ตามมาก่อน)';
+    if(keptDel) h+='<br>เก็บรูปของงานที่ถูกลบไว้ '+keptDel+' รูป (เผื่อกู้คืน)';
     if(!orph.length){
       h+='<br><b style="color:var(--ok)">ไม่มีรูปกำพร้า ถังสะอาดดี</b>';
       orphSay(h); return;
     }
     h+='<br><b style="color:var(--warn-ink,var(--accent))">รูปที่ไม่มีใครใช้ '+orph.length+' รูป</b>' +
+       /* เดิมใส่ esc(x) ทั้งก้อน ได้ [object Object] เพราะ orph เป็นรายการ object ไม่ใช่ชื่อไฟล์
+          หน้านี้คือหน้ายืนยันลบถาวร ต้องอ่านชื่อไฟล์ออกก่อนกด (เจอ 1 ก.ย. 2569) */
        '<div style="margin-top:8px">' + orph.slice(0,20).map(function(x){
-         return '<div style="font-size:13px">'+esc(x)+'</div>'; }).join("") +
+         return '<div style="font-size:13px">'+esc(x.name)+'</div>'; }).join("") +
        (orph.length>20?'<div style="font-size:13px">… และอีก '+(orph.length-20)+' รูป</div>':'') +
        '</div><div class="row" style="margin-top:10px"><button class="btn" id="orphDel">ลบรูปกำพร้า '+orph.length+' รูป</button></div>';
     orphSay(h);
@@ -3073,6 +3242,8 @@ function renderSettings(){
   var mo=$("v-set").querySelectorAll('[data-money="1"]');
   for(var mi=0; mi<mo.length; mi++) mo[mi].classList.toggle("hidden", adm);
   $("empBlock").classList.toggle("hidden", adm);
+  /* กู้คืนได้เฉพาะเจ้าของ (ฟังก์ชัน restore_deleted ในฐานข้อมูลก็เช็กซ้ำ) */
+  $("trashBlock").classList.toggle("hidden", !isOwner(me));
   paintEmpList();
   $("empSearch").oninput=paintEmpList;
   var sizes=(DB.sizes&&DB.sizes.length?DB.sizes:SIZES);
@@ -3729,6 +3900,7 @@ armBtn($("impClearBtn"), "กดอีกครั้งเพื่อล้า
 });
 $("lb").onclick=function(e){ if(e.target===this) lbClose(); };
 $("lbClose").onclick=lbClose;
+$("trashScan").onclick=trashScan;
 $("lbPrev").onclick=function(e){ e.stopPropagation(); lbGo(-1); };
 $("lbNext").onclick=function(e){ e.stopPropagation(); lbGo(1); };
 $("lbRotL").onclick  =function(e){ e.stopPropagation(); lbRot(-90); };
