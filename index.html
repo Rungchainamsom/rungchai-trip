@@ -976,8 +976,8 @@ function rest(path,opt){
 
 /* ---------- แปลงแถวจากฐานข้อมูล → รูปแบบที่หน้าจอใช้ ---------- */
 function rowEmp(r){   return {id:r.id, name:r.name, nickname:r.nickname, role:r.role, line:r.line_user_id, active:r.active, phone:r.phone}; }
-function rowTruck(r){ return {id:r.id, plate:r.plate, size:r.size, active:r.active, driver:r.driver_id||""}; }
-function rowRate(r){  return {id:r.id, type:r.job_type, label:r.label, price:num(r.price,0), unit:r.unit||"เที่ยว", at:r.updated_at}; }
+function rowTruck(r){ return {id:r.id, plate:r.plate, size:r.size, active:r.active, driver:r.driver_id||"", company:!!r.company}; }
+function rowRate(r){  return {id:r.id, type:r.job_type, label:r.label, price:num(r.price,0), unit:r.unit||"เที่ยว", mat:r.material||"", dest:r.dest||"", at:r.updated_at}; }
 function rowJob(r){
   return {id:r.id, date:r.job_date, emp:r.emp_id, truck:r.truck_id, type:r.job_type, label:r.label||"",
     mat:r.material||"", bill:r.bill_no||"", dest:r.dest||"",
@@ -1003,8 +1003,8 @@ function rowFuel(r){
 var TOROW = {
   emp: function(o){ return {name:o.name, nickname:o.nickname||null, role:o.role,
                             line_user_id:o.line||null, phone:o.phone||null, active:o.active!==false}; },
-  truck: function(o){ return {plate:o.plate, size:o.size, active:o.active!==false, driver_id:o.driver||null}; },
-  rate: function(o){ return {job_type:o.type, label:o.label, price:o.price, unit:o.unit||"เที่ยว"}; },
+  truck: function(o){ return {plate:o.plate, size:o.size, active:o.active!==false, driver_id:o.driver||null, company:!!o.company}; },
+  rate: function(o){ return {job_type:o.type, label:o.label, price:o.price, unit:o.unit||"เที่ยว", material:o.mat||null, dest:o.dest||null}; },
   job: function(o){ return {
       job_date:o.date, emp_id:o.emp, truck_id:o.truck||null, job_type:o.type, label:o.label||"",
       material:o.mat||null, bill_no:o.bill||null, dest:o.dest||null,
@@ -1579,10 +1579,23 @@ function emp(id){ return find(DB.emp,id)||{name:"?"}; }
 /* ป้ายทะเบียนบนการ์ดงาน — ไม่มีรถก็ไม่ต้องมีป้าย
    Why: งานทั่วไปส่วนใหญ่คนขับไม่ได้ขับรถ ขึ้นคำว่า "ไม่ใช้รถ" ทุกใบรกเปล่าๆ
    ส่วนในตาราง/ใบสรุปยังใช้ truck().plate เหมือนเดิม เพราะช่องในตารางต้องมีอะไรสักอย่าง */
-function plateChip(j){ return j && j.truck ? '<span>'+esc(truck(j.truck).plate)+'</span>' : ''; }
+function plateChip(j){ return j && j.truck ? '<span>'+esc(truck(j.truck).plate)+'</span>'+(isCompanyJob(j)?'<span class="pill t3">รถบริษัท</span>':'') : ''; }
 function truck(id){
   if(!id) return {plate:"ไม่ใช้รถ", size:"–", none:true};
   return find(DB.truck,id)||{plate:"?",size:"?"};
+}
+/* รถบริษัท — งานที่ใช้รถคันนี้ไม่จ่ายค่าเที่ยว ระบบใส่ 0 ให้เอง ไม่เข้าคิว "รอใส่ราคา"
+   เจ้าของยังกดแก้ราคาย้อนหลังได้เสมอ ถ้าเที่ยวไหนตกลงจ่ายพิเศษ
+   กติกาต้องตรงกับ jobs_guard_money() ฝั่งฐานข้อมูลเป๊ะ (rungchai_v14_company_truck.sql)
+   งานทั่วไปไม่เข้าเงื่อนไขนี้ เพราะเป็นค่าแรงรายวัน ไม่ใช่ค่าเที่ยว */
+function isCompanyTruck(id){ return !!id && !!(find(DB.truck,id)||{}).company; }
+function isCompanyJob(j){ return !!j && j.type!=="ทั่วไป" && isCompanyTruck(j.truck); }
+/* เดือนนี้คนนี้มีงานที่กินค่าเที่ยวผ่านแอปไหม — ใช้ตัดสินว่าจะคิดเบี้ยเลี้ยงให้หรือไม่
+   คนขับรถบริษัทกินเงินเดือน ไม่ได้กินค่าเที่ยว/เบี้ยเลี้ยงผ่านแอป งานรถบริษัทจึงไม่นับ
+   ต้องใช้ตัวเดียวกันทั้ง 4 จุด: renderMonth · renderMine · renderMyYear · slipSheet
+   (เคยพลาดมาแล้วตอนกติกา "ไม่มีงาน = ไม่คิดเบี้ยเลี้ยง" ทำถูกอยู่จุดเดียว) */
+function workedMonth(empId,m){
+  return DB.job.some(function(j){ return j.emp===empId && ym(j.date)===m && !isCompanyJob(j); });
 }
 function isDriver(e){ return !!e && e.role==="driver"; }
 /* บทบาทมี 3 ระดับ: เจ้าของ · แอดมิน (ออฟฟิศ) · คนขับ
@@ -1600,8 +1613,69 @@ function findRate(type,label){
   for(var i=0;i<DB.rate.length;i++){ var r=DB.rate[i]; if(r.type===type && r.label.trim()===L) return r; }
   return null;
 }
+/* รายชื่องานเดิมสำหรับช่องเลือก — เรียงงานที่ใช้บ่อยขึ้นก่อน แล้วค่อยงานที่เพิ่งแก้ราคา
+   Why นับจากงานจริงทุกครั้งที่วาด ไม่เก็บตัวนับไว้ในสมุดราคา:
+     ตัวนับที่เก็บไว้จะเพี้ยนทันทีที่มีคนลบงานหรือกู้คืนงาน นับสดถูกเสมอและของมีไม่กี่ร้อยแถว */
+function rateChoices(type){
+  var cnt={};
+  DB.job.forEach(function(j){
+    if(j.type!==type) return;
+    var L=(j.label||"").trim(); if(L) cnt[L]=(cnt[L]||0)+1;
+  });
+  return DB.rate.filter(function(r){ return r.type===type; })
+    .map(function(r){ return {r:r, n:cnt[(r.label||"").trim()]||0}; })
+    .sort(function(a,b){
+      if(a.n!==b.n) return b.n-a.n;
+      if((a.r.at||"")!==(b.r.at||"")) return (a.r.at||"")<(b.r.at||"") ? 1 : -1;
+      return (a.r.label||"").localeCompare(b.r.label||"","th");
+    });
+}
+function rateWhat(r){
+  var s=[]; if(r.mat) s.push(r.mat); if(r.dest) s.push(r.dest);
+  return s.join(" → ");
+}
+/* ช่องกรอกชื่องาน = ช่องเลือกงานเดิม + ช่องพิมพ์ชื่อใหม่ (โผล่เมื่อกด ＋ พิมพ์ชื่องานใหม่)
+   Why ใช้ <select> ไม่ใช่ datalist: บนมือถือ datalist บางเบราว์เซอร์ไม่ขึ้นรายการเลย
+        และเจ้าของอยาก "เลือก" ไม่ใช่ "พิมพ์ให้ตรงเป๊ะ" ซึ่งเดิมพิมพ์ผิดตัวเดียว = กลายเป็นงานใหม่
+   คืน {box, get, onPick} — box เอาไปแปะในฟอร์ม · get() อ่านชื่องานที่เลือกอยู่
+   onPick(fn) เรียก fn(rate|null) ทุกครั้งที่ชื่องานเปลี่ยน ให้ฟอร์มไปเติมราคา/วิธีคิดเอง */
+function jobNameField(type, initial, caption){
+  var box=document.createElement("label"); box.className="f";
+  var cap=document.createElement("span"); cap.textContent=caption; box.appendChild(cap);
+  var sel=document.createElement("select"); box.appendChild(sel);
+  var inp=document.createElement("input");
+  inp.type="text"; inp.placeholder="เช่น ส่งบล็อค กุดลิน"; inp.style.marginTop="7px";
+  box.appendChild(inp);
+  var list=rateChoices(type), cb=null, cur=(initial||"").trim();
+  var known=list.some(function(x){ return (x.r.label||"").trim()===cur; });
+  var h='<option value="">— ยังไม่เลือก —</option>';
+  list.forEach(function(x){
+    var w=rateWhat(x.r);
+    h+='<option value="'+esc(x.r.label)+'">'+esc(x.r.label)+' — '+baht(x.r.price)+' บ./'+esc(x.r.unit||"เที่ยว") +
+       (w?' · '+esc(w):'') + (x.n?' · ใช้ '+x.n+' ครั้ง':'') + '</option>';
+  });
+  h+='<option value="__new">＋ พิมพ์ชื่องานใหม่</option>';
+  sel.innerHTML=h;
+  function showInput(on){ inp.style.display = on ? "" : "none"; }
+  if(cur && known){ sel.value=cur; showInput(false); }
+  else if(cur){ sel.value="__new"; inp.value=cur; showInput(true); }
+  else { sel.value=""; showInput(false); }
+  sel.onchange=function(){
+    if(sel.value==="__new"){ showInput(true); inp.focus(); if(cb) cb(null); return; }
+    showInput(false); inp.value="";
+    var hit=null;
+    list.forEach(function(y){ if(y.r.label===sel.value) hit=y.r; });
+    if(cb) cb(hit);
+  };
+  inp.oninput=function(){ if(cb) cb(findRate(type, inp.value)); };
+  return {
+    box: box,
+    get: function(){ return (sel.value==="__new" ? inp.value : sel.value).trim(); },
+    onPick: function(fn){ cb=fn; }
+  };
+}
 function activeJob(id){ for(var i=DB.job.length-1;i>=0;i--) if(DB.job[i].emp===id && DB.job[i].status==="active") return DB.job[i]; return null; }
-function waiting(){ return DB.job.filter(function(j){ return j.status==="done" && !j.priced; }); }
+function waiting(){ return DB.job.filter(function(j){ return j.status==="done" && !j.priced && !isCompanyJob(j); }); }
 function jobTitle(j){
   if(j.label) return j.label;
   var t=TYPE_LABEL[j.type];
@@ -2026,14 +2100,21 @@ function startJob(){
     j.price = genDayUsed(me.id, j.date, j.id) ? 0 : (DB.set.general||0);
     j.priced = true;
   }
+  /* รถบริษัทไม่มีค่าเที่ยว — งานขั้นเดียวปิดจบตรงนี้เลย
+     งาน 2 ขั้นยังไม่ปิดคิวตอนนี้ รอไปตั้งตอนกดปิดงาน (doneJob) เหมือนฝั่งฐานข้อมูล
+     Why: policy jobs_update_own บังคับว่าแถวเดิมต้อง priced=false
+          ถ้าปิดคิวตั้งแต่ตอนเริ่มงาน คนขับจะกดปิดงานตัวเองไม่ได้เลย */
+  if(isCompanyJob(j) && j.status==="done"){ j.price=0; j.priced=true; }
   if(tv) DB.lastTruck[me.id]=tv;
   if(!two){
     DB.job.push(j); save();
     if(!j.priced) notifyOwner(j);
-    toast(j.priced
-      ? (payOf(j)>0 ? "บันทึกแล้ว "+baht(payOf(j))+" บาท"
-                    : "บันทึกแล้ว — วันนี้ลงค่าแรงงานทั่วไปไปแล้ว งานนี้จึงไม่บวกเพิ่ม")
-      : "บันทึกแล้ว — ส่งให้เจ้าของใส่ค่าเที่ยว");
+    toast(isCompanyJob(j)
+      ? "บันทึกแล้ว — รถบริษัท ไม่มีค่าเที่ยว"
+      : (j.priced
+        ? (payOf(j)>0 ? "บันทึกแล้ว "+baht(payOf(j))+" บาท"
+                      : "บันทึกแล้ว — วันนี้ลงค่าแรงงานทั่วไปไปแล้ว งานนี้จึงไม่บวกเพิ่ม")
+        : "บันทึกแล้ว — ส่งให้เจ้าของใส่ค่าเที่ยว"));
     go("home"); return;
   }
   $("btnStart").disabled=true; $("btnStart").textContent="กำลังหาพิกัด…";
@@ -2090,23 +2171,49 @@ function paintEndGeo(){
     $("linkRoute").classList.add("hidden");
   }
 }
+/* ปุ่ม "งานสำเร็จ" ปักพิกัดปลายทางให้เองถ้ายังไม่เคยปัก แล้วค่อยปิดงาน
+   Why (ของจริง 2 ก.ย. 2569): มีคนแนบรูปบิลครบ กดปักพิกัดแล้ว 2 รอบ แล้วนึกว่าจบ
+     ไม่ได้กดปุ่มนี้ งานเลยค้างเป็น "กำลังทำงาน" ทั้งที่ส่งของเสร็จไปแล้ว
+     พอปุ่มเดียวทำให้ครบ ก็ไม่มีขั้นตอนอื่นให้เข้าใจผิดว่าจบแล้ว
+   **ถ้าปักเองไว้แล้ว ยึดพิกัดเดิมเสมอ** เผื่อขับออกจากจุดส่งมาแล้วค่อยกดปิดงาน
+   **ปักไม่ได้ก็ยังปิดงานได้** เหมือนตอนกดเริ่มงาน ห้ามให้เรื่องพิกัดขวางการปิดงาน */
 function doneJob(){
   if(TWO_STEP[fin.type] && !fin.shotsEnd.length){
     toast("ต้องแนบรูปบิลที่ลูกค้าเซ็นรับ อย่างน้อย 1 รูป ถึงจะปิดงานได้");
     $("car2").scrollIntoView({behavior:"smooth", block:"center"});
     return;
   }
-  fin.bill=$("fBill").value.trim();
-  fin.note=$("finNote").value.trim();
-  fin.nights=parseInt($("nightVal").textContent,10)||0;
-  if(!fin.end) fin.end={lat:null,lng:null,at:Date.now()};
-  fin.end.at=Date.now();
-  fin.status="done";
-  var r=findRate(fin.type, fin.label);
-  if(r){ fin.price=r.price; fin.priced=true; }
+  var job=fin;
+  if(job.end && job.end.lat!=null){ finishJobNow(job, true); return; }
+  var b=$("btnDone"), orig=b.textContent;
+  b.disabled=true; b.textContent="กำลังหาพิกัด…";
+  getGeo(function(p){
+    b.disabled=false; b.textContent=orig;
+    if(p){
+      job.end={lat:p.lat, lng:p.lng, at:Date.now()};
+      /* paintEndGeo() เป็นตัวคิด km ให้ด้วย — เรียกได้เฉพาะตอนยังอยู่หน้าปิดงานใบเดิม */
+      if(job===fin) paintEndGeo();
+    }
+    finishJobNow(job, !!p);
+  });
+}
+function finishJobNow(j, gotGeo){
+  j.bill=$("fBill").value.trim();
+  j.note=$("finNote").value.trim();
+  j.nights=parseInt($("nightVal").textContent,10)||0;
+  if(!j.end) j.end={lat:null,lng:null,at:Date.now()};
+  j.end.at=Date.now();
+  j.status="done";
+  var r=findRate(j.type, j.label);
+  if(r){ j.price=r.price; j.priced=true; }
+  /* รถบริษัทไม่มีค่าเที่ยว ปิดงานแล้วจบเลย ไม่ต้องรบกวนเจ้าของ (ตรงกับ jobs_guard_money) */
+  if(isCompanyJob(j)){ j.price=0; j.priced=true; }
   save();
-  if(!fin.priced) notifyOwner(fin);
-  toast(fin.priced ? "งานสำเร็จ "+baht(payOf(fin))+" บาท" : "งานสำเร็จ — แจ้งเจ้าของให้ใส่ค่าเที่ยวแล้ว");
+  if(!j.priced) notifyOwner(j);
+  var msg = isCompanyJob(j) ? "งานสำเร็จ — รถบริษัท ไม่มีค่าเที่ยว"
+          : (j.priced ? "งานสำเร็จ "+baht(payOf(j))+" บาท"
+                      : "งานสำเร็จ — แจ้งเจ้าของให้ใส่ค่าเที่ยวแล้ว");
+  toast(gotGeo ? msg : msg+" (ปักพิกัดปลายทางไม่ได้)");
   go("home");
 }
 function notifyOwner(j){
@@ -2359,8 +2466,12 @@ function trashScan(){
 function buildJobEdit(j, pan){
   pan.innerHTML=
     '<div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap">' +
-      '<label class="f" style="flex:2; min-width:150px">ชื่องาน' +
-        '<input type="text" data-k="label" value="'+esc(j.label||"")+'" placeholder="เช่น ส่งบล็อค กุดลิน"></label>' +
+      '<span data-k="namebox"></span>' +
+      '<label class="f" data-k="mlab" style="width:150px">สินค้า' +
+        '<select data-k="mat"></select></label>' +
+      '<label class="f" data-k="dlab" style="width:140px">ปลายทาง' +
+        '<select data-k="dest"><option value="">–</option>' +
+        '<option value="โรงงาน">โรงงาน</option><option value="ส่งลูกค้า">ส่งลูกค้า</option></select></label>' +
       '<label class="f" style="width:150px">วิธีคิด' +
         '<select data-k="mode"><option value="เที่ยว">เหมาต่อเที่ยว</option>' +
         '<option value="วัน">คิดเป็นวัน</option><option value="คิว">คิดเป็นคิว</option></select></label>' +
@@ -2383,6 +2494,28 @@ function buildJobEdit(j, pan){
       '<button class="btn ghost" data-k="cancel">ยกเลิก</button>' +
     '</div>';
   var g=function(k){ return pan.querySelector('[data-k="'+k+'"]'); };
+  /* สินค้า/ปลายทาง — เดิมคนขับเลือกผิดแล้วเจ้าของแก้ในแอปไม่ได้เลย ต้องไปแก้ที่ฐานข้อมูล
+     โชว์เฉพาะประเภทที่มีสินค้าจริง · ปลายทางมีเฉพาะงานรับสินค้าเหมือนหน้าคนขับ
+     ค่าเดิมของงานถูกใส่เป็นตัวเลือกด้วยเสมอ เผื่อสินค้านั้นถูกเอาออกจากรายการไปแล้ว */
+  var hasMat = (j.type==="ส่งสินค้า" || j.type==="รับสินค้า");
+  g("mlab").style.display = hasMat ? "" : "none";
+  g("dlab").style.display = (j.type==="รับสินค้า") ? "" : "none";
+  if(hasMat){
+    var mats=(DB.mats||[]).slice();
+    if(j.mat && mats.indexOf(j.mat)<0) mats.unshift(j.mat);
+    g("mat").innerHTML='<option value="">–</option>'+mats.map(function(m){
+      return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join("");
+    g("mat").value=j.mat||"";
+    g("dest").value=j.dest||"";
+  }
+  /* ช่องชื่องานตัวเดียวกับหน้ารอใส่ราคา — เลือกงานเดิมแล้วราคา/วิธีคิดเด้งตาม */
+  var nf=jobNameField(j.type, j.label, "ชื่องาน (เลือกงานเดิมแล้วราคาเด้งมาให้)");
+  nf.box.style.flex="2"; nf.box.style.minWidth="210px";
+  g("namebox").parentNode.replaceChild(nf.box, g("namebox"));
+  nf.onPick(function(r){
+    if(r){ g("price").value=r.price; g("mode").value=r.unit||"เที่ยว"; }
+    calc();
+  });
   g("mode").value = j.payMode||"เที่ยว";
   function unitWord(){ return g("mode").value==="วัน" ? "วัน" : (g("mode").value==="คิว" ? "คิว" : "เที่ยว"); }
   function calc(){
@@ -2415,7 +2548,7 @@ function buildJobEdit(j, pan){
     if(isNaN(v)||v<0){ toast("ราคาไม่ถูกต้อง"); g("price").focus(); return; }
     var q = per ? parseFloat(g("qty").value) : 1;
     if(per && (!q || q<=0)){ toast("กรอกจำนวน"+unitWord()+"ก่อน ไม่งั้นยอดจะเป็น 0"); g("qty").focus(); return; }
-    var lbl=g("label").value.trim();
+    var lbl=nf.get();
     j.label=lbl;
     j.price=v;
     j.payMode=m;
@@ -2424,11 +2557,16 @@ function buildJobEdit(j, pan){
     else { j.days=1; j.qty=null; }
     j.nights=Math.max(0, parseInt(g("nights").value,10)||0);
     j.nightRate=Math.max(0, parseFloat(g("rate").value)||0);
+    if(hasMat){
+      j.mat=g("mat").value;
+      if(j.type==="รับสินค้า") j.dest=g("dest").value;
+    }
     j.priced=true;
     if(g("sync").checked && lbl){
       var r=findRate(j.type,lbl);
-      if(r){ r.price=v; r.unit=m; r.at=today(); }
-      else DB.rate.push({id:uid("r"), type:j.type, label:lbl, price:v, unit:m, at:today()});
+      if(r){ r.price=v; r.unit=m; r.at=today(); if(j.mat) r.mat=j.mat; if(j.dest) r.dest=j.dest; }
+      else DB.rate.push({id:uid("r"), type:j.type, label:lbl, price:v, unit:m, at:today(),
+                         mat:j.mat||"", dest:j.dest||""});
     }
     save(); toast("แก้เป็น "+baht(payOf(j))+" บาทแล้ว"); render();
   };
@@ -2484,7 +2622,7 @@ function renderMyYear(){
   var h='<thead><tr><th>เดือน</th><th class="r">งาน</th><th class="r">ค่าเที่ยว</th><th class="r">เบี้ยเลี้ยง</th><th class="r">รวมรับ</th></tr></thead><tbody>';
   months.forEach(function(mk){
     var L=DB.job.filter(function(j){ return j.emp===me.id && ym(j.date)===mk && j.status==="done" && j.priced; });
-    var any=DB.job.some(function(j){ return j.emp===me.id && ym(j.date)===mk; });
+    var any=workedMonth(me.id,mk);
     var fee=sumPay(L);
     /* เดือนที่ไม่มีงานเลย ไม่นับเบี้ยเลี้ยง — กันยอดปลอมของเดือนที่ยังไม่ได้เริ่มใช้ระบบ */
     var allow= any ? allowOf(me.id,mk) : 0;
@@ -2512,7 +2650,7 @@ function renderMine(){
   var m=$("minePick").value;
   var list=sorted(DB.job.filter(function(j){ return j.emp===me.id && ym(j.date)===m && j.status==="done"; }));
   var ab=(DB.absent[me.id]||{})[m]||0;
-  var anyJob=DB.job.some(function(j){ return j.emp===me.id && ym(j.date)===m; });
+  var anyJob=workedMonth(me.id,m);
   var allow=anyJob ? Math.max(0, DB.set.allow-ab*DB.set.deduct) : 0;
   var priced=list.filter(function(j){ return j.priced; });
   var fee=sumPay(priced), wait=list.length-priced.length;
@@ -2565,9 +2703,8 @@ function renderWait(){
     var pics=allShots(j);
     if(pics.length){ var cc=document.createElement("div"); cc.className="car"; c.appendChild(cc); carousel(cc,pics,null,null); }
     var form=document.createElement("div"); form.className="row"; form.style.alignItems="flex-end";
-    var lab=document.createElement("label"); lab.className="f"; lab.style.flex="1"; lab.style.minWidth="160px";
-    lab.innerHTML='ชื่องาน (ใช้จำราคาไว้ครั้งหน้า)<input type="text" value="'+esc(j.label||"")+'" placeholder="เช่น ส่งบล็อค กุดลิน">';
-    var lin=lab.querySelector("input");
+    var nf=jobNameField(j.type, j.label, "ชื่องาน (เลือกงานเดิมแล้วราคาเด้งมาให้)");
+    var lab=nf.box; lab.style.flex="2"; lab.style.minWidth="210px";
     var lab2=document.createElement("label"); lab2.className="f"; lab2.style.width="150px";
     lab2.innerHTML='ค่าเที่ยว (บาท)<input type="number" step="50" min="0" placeholder="0">';
     var pin=lab2.querySelector("input");
@@ -2607,16 +2744,23 @@ function renderWait(){
         (per ? ' &nbsp;('+baht(pv)+' × '+q+' '+unitWord()+' = '+baht(base)+')' : '') +
         (n>0 ? ' &nbsp;+ ค้างคืน '+n+' × '+baht(rr)+' = '+baht(n*rr) : '');
     }
-    function suggest(){
-      var r=findRate(j.type, lin.value);
+    /* picked = เจ้าของเพิ่งเลือกงานเดิมจากช่องเลือก → ทับราคาที่ค้างอยู่ได้เลย
+       ถ้าแค่พิมพ์ชื่อเอง ยังคงพฤติกรรมเดิมคือเติมให้เฉพาะตอนช่องราคายังว่าง
+       Why แยกสองกรณี: การ "เลือก" คือเจตนาชัดว่าจะเอาราคานั้น ส่วนการพิมพ์อาจแค่แก้ตัวสะกด */
+    function suggest(picked){
+      var lbl=nf.get(), r = picked || findRate(j.type, lbl);
       if(r){
-        sug.textContent="เคยคิดงานนี้ไว้ "+baht(r.price)+" บาท/"+(r.unit||"เที่ยว")+" (แก้ล่าสุด "+fmtDate(r.at)+")";
-        if(!pin.value){ pin.value=r.price; mSel.value=r.unit||"เที่ยว"; }
+        var w=rateWhat(r);
+        sug.textContent="เคยคิดงานนี้ไว้ "+baht(r.price)+" บาท/"+(r.unit||"เที่ยว") +
+                        (w?" · ปกติ "+w:"") + " (แก้ล่าสุด "+fmtDate(r.at)+")";
+        if(picked || !pin.value){ pin.value=r.price; mSel.value=r.unit||"เที่ยว"; }
       }
-      else sug.textContent = lin.value.trim() ? "งานใหม่ ยังไม่เคยคิดราคา" : "ใส่ชื่องานเพื่อให้ระบบจำราคาไว้ใช้ครั้งหน้า";
+      else sug.textContent = lbl ? "งานใหม่ ยังไม่เคยคิดราคา"
+                                 : "เลือกงานเดิม หรือกด ＋ พิมพ์ชื่องานใหม่ เพื่อให้ระบบจำราคาไว้ใช้ครั้งหน้า";
       calc();
     }
-    lin.oninput=suggest; pin.oninput=calc; nin.oninput=calc; rin.oninput=calc;
+    nf.onPick(function(r){ suggest(r); });
+    pin.oninput=calc; nin.oninput=calc; rin.oninput=calc;
     qin.oninput=calc; mSel.onchange=calc;
     suggest();
     var ok=document.createElement("button"); ok.className="btn primary"; ok.textContent="ยืนยันราคา";
@@ -2634,11 +2778,13 @@ function renderWait(){
       if(m==="วัน"){ j.days=Math.min(60, Math.max(1, Math.round(q))); j.qty=null; }
       else if(m==="คิว"){ j.qty=q; j.days=1; }
       else { j.days=1; j.qty=null; }
-      j.label=lin.value.trim(); j.price=v; j.priced=true;
+      j.label=nf.get(); j.price=v; j.priced=true;
       if(j.label){
         var r=findRate(j.type,j.label);
-        if(r){ r.price=v; r.unit=m; r.at=today(); }
-        else DB.rate.push({id:uid("r"), type:j.type, label:j.label, price:v, unit:m, at:today()});
+        /* จำสินค้า/ปลายทางของงานนี้ไว้ด้วย ครั้งหน้าในช่องเลือกจะได้รู้ว่างานนี้คืองานอะไร */
+        if(r){ r.price=v; r.unit=m; r.at=today(); if(j.mat) r.mat=j.mat; if(j.dest) r.dest=j.dest; }
+        else DB.rate.push({id:uid("r"), type:j.type, label:j.label, price:v, unit:m, at:today(),
+                           mat:j.mat||"", dest:j.dest||""});
       }
       save(); toast("ใส่ค่าเที่ยวแล้ว "+baht(payOf(j))+" บาท"); go("wait");
     };
@@ -2688,11 +2834,12 @@ function renderJobs(){
 }
 function renderRates(){
   fillSelect($("rType"), TYPES, function(t){return t;}, function(t){return TYPE_LABEL[t];}, true);
-  var h='<thead><tr><th>ประเภท</th><th>ชื่องาน / เส้นทาง</th><th class="r">ราคา/เที่ยว</th><th class="r">ใช้ไปแล้ว</th><th>แก้ล่าสุด</th><th></th></tr></thead><tbody>';
+  var h='<thead><tr><th>ประเภท</th><th>ชื่องาน / เส้นทาง</th><th>สินค้า / ปลายทาง</th><th class="r">ราคา/เที่ยว</th><th class="r">ใช้ไปแล้ว</th><th>แก้ล่าสุด</th><th></th></tr></thead><tbody>';
   DB.rate.forEach(function(r){
     var used=DB.job.filter(function(j){ return j.status==="done"&&j.type===r.type&&(j.label||"").trim()===r.label.trim(); }).length;
     h+='<tr><td><span class="pill '+TYPE_PILL[r.type]+'">'+TYPE_LABEL[r.type]+'</span></td>' +
        '<td>'+esc(r.label)+'</td>' +
+       '<td style="color:var(--ink2)">'+esc(rateWhat(r)||"–")+'</td>' +
        '<td class="r"><input type="number" step="50" value="'+r.price+'" data-rate="'+r.id+'" style="width:104px; text-align:right"></td>' +
        '<td class="r num">'+used+'</td><td class="num" style="color:var(--ink2)">'+fmtDate(r.at)+'</td>' +
        '<td class="r"><button class="btn sm" data-save="'+r.id+'">บันทึก</button></td></tr>';
@@ -2731,7 +2878,7 @@ function slipSheet(e, m){
   var fuels=slipDateAsc(DB.fuel.filter(function(f){ return f.emp===e.id && ym(f.date)===m; }));
 
   var ab=(DB.absent[e.id]||{})[m]||0;
-  var anyJob=DB.job.some(function(j){ return j.emp===e.id && ym(j.date)===m; });
+  var anyJob=workedMonth(e.id,m);
   var allow=anyJob ? Math.max(0, (DB.set.allow||0)-ab*(DB.set.deduct||0)) : 0;
   var base=0, nightTot=0, nightsN=0;
   list.forEach(function(j){ base+=(j.price||0); nightTot+=nightPay(j); nightsN+=(j.nights||0); });
@@ -2912,7 +3059,7 @@ function renderMonth(){
           คนที่เปิดบัญชีไว้ดูเฉยๆ กับคนที่ลาออกไปแล้ว ก็ยังโดนบวกเข้าต้นทุนคนขับ
           กติกานี้ตรงกับสรุปรายปีของคนขับ (renderMyYear) ที่ทำถูกอยู่แล้ว */
   var worked={};
-  DB.job.forEach(function(j){ if(ym(j.date)===m) worked[j.emp]=1; });
+  DB.job.forEach(function(j){ if(ym(j.date)===m && !isCompanyJob(j)) worked[j.emp]=1; });
   var allDrv=DB.emp.filter(isDriver);
   var drivers=allDrv.filter(function(e){ return worked[e.id]; })
                     .sort(function(a,b){ return (a.name||"").localeCompare(b.name||"","th"); });
@@ -3267,7 +3414,7 @@ function renderSettings(){
     }
     return h;
   }
-  var t='<thead><tr><th>ทะเบียน</th><th>ประเภทรถ</th><th>คนขับประจำ</th><th></th></tr></thead><tbody>';
+  var t='<thead><tr><th>ทะเบียน</th><th>ประเภทรถ</th><th>คนขับประจำ</th><th class="r">รถบริษัท</th><th></th></tr></thead><tbody>';
   DB.truck.forEach(function(x){
     var opts=sizes.map(function(z){
       return '<option'+(z===x.size?' selected':'')+'>'+esc(z)+'</option>';
@@ -3276,6 +3423,7 @@ function renderSettings(){
     t+='<tr><td>'+esc(x.plate)+'</td>' +
        '<td><select data-size-t="'+x.id+'">'+opts+'</select></td>' +
        '<td><select data-drv-t="'+x.id+'">'+drvOptions(x.driver||"")+'</select></td>' +
+       '<td class="r"><input type="checkbox" data-co-t="'+x.id+'" style="width:20px; height:20px"'+(x.company?' checked':'')+'></td>' +
        '<td class="r"><button class="btn sm ghost" data-ren-t="'+x.id+'">แก้ทะเบียน</button> ' +
        '<button class="btn sm ghost" data-del-t="'+x.id+'">ลบ</button></td></tr>';
   });
@@ -3289,6 +3437,17 @@ function renderSettings(){
    Why ต้องมี: เดิมมีแต่ปุ่มลบ และพอรถมีงานผูกแล้วฐานข้อมูลจะไม่ยอมให้ลบ
    พิมพ์ทะเบียนผิดครั้งเดียว = ติดถาวร แก้ทางไหนไม่ได้เลย */
 function wireTruckEdit(){
+  /* ติ๊กแล้วงานของรถคันนี้จะไม่มีค่าเที่ยว ระบบใส่ 0 และปิดคิวรอใส่ราคาให้เอง
+     เป็นเรื่องเงิน แอดมินจึงดูได้แต่แก้ไม่ได้ (ฝั่งฐานข้อมูลกันด้วย app_is_owner อยู่แล้ว) */
+  document.querySelectorAll("[data-co-t]").forEach(function(cb){
+    var x=find(DB.truck, cb.getAttribute("data-co-t")); if(!x) return;
+    if(!isOwner(me)){ cb.disabled=true; cb.title="ต้องให้เจ้าของเป็นคนตั้ง"; return; }
+    cb.onchange=function(){
+      x.company=cb.checked; save(); render();
+      toast(cb.checked ? ("รถ "+x.plate+" = รถบริษัท งานต่อจากนี้จะไม่มีค่าเที่ยว")
+                       : ("รถ "+x.plate+" กลับมาคิดค่าเที่ยวตามปกติ"));
+    };
+  });
   document.querySelectorAll("[data-drv-t]").forEach(function(sel){
     var x=find(DB.truck, sel.getAttribute("data-drv-t")); if(!x) return;
     sel.value = x.driver || "";
@@ -3479,7 +3638,8 @@ function impAccept(){
       id:uid("j"), date:r.date, emp:x.truck.driver, truck:x.truck.id,
       type:"ส่งสินค้า", label:lbl,
       mat:(r.src==="ดิน"?"ดิน":"ทราย"), bill:"", dest:"",
-      price: rate?rate.price:0, priced:false,
+      price: isCompanyTruck(x.truck.id) ? 0 : (rate?rate.price:0),
+      priced: isCompanyTruck(x.truck.id),
       payMode:"คิว", qty:(r.net||0), days:1,
       start:null, end:null, km:0,
       nights:0, nightRate:null,
@@ -3841,7 +4001,8 @@ $("btnEndGeo").onclick=function(){
   getGeo(function(p){
     if(!p){ $("endGeoText").textContent="ปักไม่ได้"; toast("เปิดสิทธิ์ตำแหน่งในเบราว์เซอร์ก่อน แล้วลองใหม่"); return; }
     fin.end={lat:p.lat, lng:p.lng, at:Date.now()};
-    save(); paintEndGeo(); toast("ปักพิกัดปลายทางแล้ว");
+    save(); paintEndGeo();
+    toast("ปักพิกัดปลายทางแล้ว — อย่าลืมกดปุ่ม \"งานสำเร็จ\" ด้านล่างด้วย");
   });
 };
 $("cam1").onchange=function(){ addShots(this.files, draft.shots, refreshCar1); this.value=""; };
