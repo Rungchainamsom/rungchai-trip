@@ -740,6 +740,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <label class="f" data-money="1">หักวันขาด วันละ (บาท)<input type="number" id="sDeduct" step="10"></label>
         <label class="f" data-money="1">ค่าค้างคืน/คืน ตั้งต้น (บาท)<input type="number" id="sNight" step="50"></label>
         <label class="f" data-money="1">ค่าแรงงานทั่วไป/วัน (บาท)<input type="number" id="sGeneral" step="50" min="0"></label>
+        <label class="f" data-money="1">ค่าเที่ยวเหมา วันที่ลงงานทั่วไป (บาท)<input type="number" id="sGenTrip" step="10" min="0"></label>
         <label class="f">ราคาน้ำมัน/ลิตร ตั้งต้น (บาท)<input type="number" id="sFuel" step="0.01"></label>
         <label class="f">คุณภาพรูปที่เก็บ<select id="sImgq"><option>ประหยัด</option><option>ปกติ</option><option>ชัด</option></select></label>
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="sSave">บันทึก</button></label>
@@ -917,7 +918,7 @@ function seed(){
      note:"บางจาก บ้านผือ", shots:[], odoShots:[], lat:17.680, lng:102.470, at:Math.min(new Date(d1+"T16:40:00").getTime(), Date.now()-7200000)}
   ];
   return {emp:E, truck:T, rate:R, job:J, fuel:F, absent:{}, lastTruck:{}, rot:{}, mats:["หิน","ทราย","ลูกรัง","บล็อค"],
-          set:{allow:3000, deduct:100, night:200, general:300, imgq:"ประหยัด", fuelPrice:31.94}, tg:{token:"", chat:"", log:[]}};
+          set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, imgq:"ประหยัด", fuelPrice:31.94}, tg:{token:"", chat:"", log:[]}};
   function r(t,l,p){ return {id:uid("r"), type:t, label:l, price:p, at:"2026-08-01"}; }
 }
 function job(date,emp,truck,type,label,mat,bill,price,sla,sln,ela,eln,km,dest,nights){
@@ -985,7 +986,7 @@ function rowJob(r){
     km:num(r.km,0), note:r.note||"", status:r.status,
     payMode:r.pay_mode||"เที่ยว", days:r.days||1, returnOf:r.return_of||null,
     qty:(r.qty==null?null:num(r.qty,0)), src:r.src||null, srcRef:r.src_ref||null,
-    incomplete:!!r.incomplete, incompleteReason:r.incomplete_reason||"",
+    incomplete:!!r.incomplete, incompleteReason:r.incomplete_reason||"", flatTrip:!!r.flat_trip,
     start: r.start_at? {lat:r.start_lat, lng:r.start_lng, at:ms(r.start_at)} : null,
     end:   r.end_at?   {lat:r.end_lat,   lng:r.end_lng,   at:ms(r.end_at)}   : null,
     at: ms(r.created_at),
@@ -1013,7 +1014,7 @@ var TOROW = {
       km:o.km||0, note:o.note||"", status:o.status||"active",
       pay_mode:o.payMode||"เที่ยว", days:o.days||1, return_of:o.returnOf||null,
       qty:((o.qty==null||o.qty==="")?null:Number(o.qty)), src:o.src||null, src_ref:o.srcRef||null,
-      incomplete:!!o.incomplete, incomplete_reason:o.incompleteReason||null,
+      incomplete:!!o.incomplete, incomplete_reason:o.incompleteReason||null, flat_trip:!!o.flatTrip,
       start_lat:o.start?o.start.lat:null, start_lng:o.start?o.start.lng:null, start_at:o.start?iso(o.start.at):null,
       end_lat:o.end?o.end.lat:null, end_lng:o.end?o.end.lng:null, end_at:o.end?iso(o.end.at):null,
       photos_start:o._ps||[], photos_end:o._pe||[] }; },
@@ -1195,6 +1196,7 @@ function bootstrap(){
     DB.set={ allow:num(S.allowance_per_month,3000), deduct:num(S.deduct_per_absent_day,100),
              night:num(S.night_rate_default,200), fuelPrice:num(S.fuel_price_default,31.94),
              general:num(S.general_day_rate,300),
+             genTrip:num(S.general_trip_rate,50),
              imgq: S.image_quality || "ประหยัด" };
     DB.tg={ token:(S.telegram&&S.telegram.token)||"", chat:(S.telegram&&S.telegram.chat_id)||"", log:[] };
     DB.lastTruck = S.last_truck || {};
@@ -1508,6 +1510,7 @@ function runSync(){
       {key:"deduct_per_absent_day", value:DB.set.deduct},
       {key:"night_rate_default",    value:DB.set.night},
       {key:"general_day_rate",      value:DB.set.general},
+      {key:"general_trip_rate",     value:DB.set.genTrip},
       {key:"fuel_price_default",    value:DB.set.fuelPrice},
       {key:"image_quality",         value:DB.set.imgq},
       {key:"last_truck",            value:DB.lastTruck||{}},
@@ -1521,7 +1524,7 @@ function runSync(){
 /* ---------- โครงว่างตอนหน้าเว็บเพิ่งเปิด (ยังไม่ล็อกอิน) ---------- */
 function load(){
   return {emp:[], truck:[], rate:[], job:[], fuel:[], absent:{}, lastTruck:{}, rot:{}, sizes:SIZES.slice(),
-          mats:[], set:{allow:3000, deduct:100, night:200, general:300, imgq:"ประหยัด", fuelPrice:31.94},
+          mats:[], set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, imgq:"ประหยัด", fuelPrice:31.94},
           tg:{token:"", chat:"", log:[]}};
 }
 /* ถามข้อความหนึ่งบรรทัด แบบไม่ใช้ window.prompt
@@ -2206,11 +2209,16 @@ function finishJobNow(j, gotGeo){
   j.status="done";
   var r=findRate(j.type, j.label);
   if(r){ j.price=r.price; j.priced=true; }
-  /* รถบริษัทไม่มีค่าเที่ยว ปิดงานแล้วจบเลย ไม่ต้องรบกวนเจ้าของ (ตรงกับ jobs_guard_money) */
-  if(isCompanyJob(j)){ j.price=0; j.priced=true; }
+  /* ลำดับต้องตรงกับ jobs_guard_money() เป๊ะ: ค่าเที่ยวเหมา → รถบริษัท → ปกติ */
+  var flat=flatTripFor(j);
+  if(flat!==null){ j.price=flat; j.priced=true; j.flatTrip=true; }
+  else if(isCompanyJob(j)){ j.price=0; j.priced=true; j.flatTrip=false; }
   save();
   if(!j.priced) notifyOwner(j);
-  var msg = isCompanyJob(j) ? "งานสำเร็จ — รถบริษัท ไม่มีค่าเที่ยว"
+  var msg = j.flatTrip
+          ? (payOf(j)>0 ? "งานสำเร็จ — ค่าเที่ยวเหมา "+baht(payOf(j))+" บาท"
+                        : "งานสำเร็จ — วันนี้คิดค่าเที่ยวเหมาไปแล้ว งานนี้จึงไม่บวกเพิ่ม")
+          : isCompanyJob(j) ? "งานสำเร็จ — รถบริษัท ไม่มีค่าเที่ยว"
           : (j.priced ? "งานสำเร็จ "+baht(payOf(j))+" บาท"
                       : "งานสำเร็จ — แจ้งเจ้าของให้ใส่ค่าเที่ยวแล้ว");
   toast(gotGeo ? msg : msg+" (ปักพิกัดปลายทางไม่ได้)");
@@ -2251,6 +2259,28 @@ function payOf(j){ return payBase(j)+nightPay(j); }
 /* ค่าแรงงานทั่วไปคิดเป็นรายวัน วันละครั้ง งานทั่วไปงานที่ 2 ของวันเดียวกันจึงเป็น 0
    (เจ้าของเข้าไปแก้ยอดทีหลังได้ ถ้าวันนั้นตกลงจ่ายมากกว่านั้น)
    กติกานี้ต้องตรงกับ jobs_guard_money() ใน DB เป๊ะ ไม่งั้นจอกับคลาวด์จะไม่ตรงกัน */
+/* ค่าเที่ยวเหมาวันงานทั่วไป (เจ้าของยืนยัน 3 ก.ย. 2569)
+   วันไหนลงงาน "ทั่วไป" (ค่าแรง 300/วัน) แล้ววันนั้นมีงานส่ง/รับสินค้าด้วย
+   → คิดค่าเที่ยวเหมาให้ 50 บาท/วัน **แทนค่าเที่ยวปกติ** ไม่ใช้สมุดราคางาน
+   → ใบที่ 2 ของวันเดียวกันได้ 0 (รูปเดียวกับกติกางานทั่วไปวันละครั้ง)
+   → รวมวันนั้น 300 + 50 = 350 · **เบี้ยเลี้ยงยังเป็น 3,000/เดือนเหมือนเดิม ห้ามบวก 100/วัน ซ้ำ**
+   กติกาต้องตรงกับ jobs_guard_money() ฝั่งฐานข้อมูลเป๊ะ (rungchai_v16_general_trip.sql)
+   **มาก่อนกติการถบริษัท** เพราะ 50 นี้เป็นค่าแรงของคนที่กินรายวัน ไม่ใช่ค่าเช่ารถ */
+function hasGeneralDay(empId, date){
+  return DB.job.some(function(j){ return j.emp===empId && j.date===date && j.type==="ทั่วไป"; });
+}
+function flatTripUsed(empId, date, exceptId){
+  return DB.job.some(function(j){
+    return j.emp===empId && j.date===date && j.id!==exceptId &&
+           (j.type==="ส่งสินค้า"||j.type==="รับสินค้า") && (j.price||0)>0;
+  });
+}
+/* คืนจำนวนเงินที่งานใบนี้ควรได้ตามกติกาเหมา · คืน null ถ้าไม่เข้าเงื่อนไข */
+function flatTripFor(j){
+  if(!j || (j.type!=="ส่งสินค้า" && j.type!=="รับสินค้า")) return null;
+  if(!hasGeneralDay(j.emp, j.date)) return null;
+  return flatTripUsed(j.emp, j.date, j.id) ? 0 : (DB.set.genTrip==null?50:DB.set.genTrip);
+}
 function genDayUsed(empId, date, exceptId){
   return DB.job.some(function(j){
     return j.emp===empId && j.date===date && j.type==="ทั่วไป" && j.id!==exceptId && (j.price||0)>0;
@@ -2292,7 +2322,8 @@ function jobList(host,list,showEmp){
         (showEmp?'<span>'+emp(j.emp).name+'</span>':'') +
         '<span class="num">'+fmtDate(j.date)+'</span>' +
         (j.km?'<span class="num">'+j.km.toFixed(1)+' กม.</span>':'') +
-        (j.nights?'<span>🌙 ค้าง '+j.nights+' คืน</span>':'') + geo +
+        (j.nights?'<span>🌙 ค้าง '+j.nights+' คืน</span>':'') +
+      (j.flatTrip&&(j.price||0)>0?'<span class="pill t3">เหมาวันงานทั่วไป</span>':'') + geo +
         (j.status==="active"?'<span class="pill live"><i class="dot"></i> กำลังทำงาน</span>':'') +
       '</div>' +
       (j.note?'<div class="hint">'+esc(j.note)+'</div>':'');
@@ -2763,6 +2794,15 @@ function renderWait(){
     pin.oninput=calc; nin.oninput=calc; rin.oninput=calc;
     qin.oninput=calc; mSel.onchange=calc;
     suggest();
+    /* ลงงานทั่วไปทีหลังจะทำให้งานส่งใบนี้ค้างคิวอยู่ (ตอนปิดงานยังไม่เข้าเงื่อนไข)
+       เสนอค่าเที่ยวเหมาให้ตรงนี้ เจ้าของกดยืนยันทีเดียวจบ ไม่ต้องจำเรตเอง */
+    var flatW=flatTripFor(j);
+    if(flatW!==null){
+      sug.innerHTML = flatW>0
+        ? ('วันนี้ '+esc(emp(j.emp).name)+' ลงงานทั่วไปด้วย → <b>ค่าเที่ยวเหมา '+baht(flatW)+' บาท</b> (ใส่ให้แล้ว กดยืนยันได้เลย)')
+        : ('วันนี้คิดค่าเที่ยวเหมาไปแล้วในงานอื่น งานนี้ตามกติกาจึงเป็น 0');
+      if(flatW>0){ pin.value=flatW; mSel.value="เที่ยว"; calc(); }
+    }
     var ok=document.createElement("button"); ok.className="btn primary"; ok.textContent="ยืนยันราคา";
     ok.onclick=function(){
       var m=mSel.value, per=(m!=="เที่ยว");
@@ -3378,6 +3418,7 @@ function orphDelete(){
 function renderSettings(){
   $("sAllow").value=DB.set.allow; $("sDeduct").value=DB.set.deduct; $("sNight").value=DB.set.night;
   $("sGeneral").value=(DB.set.general==null?300:DB.set.general);
+  $("sGenTrip").value=(DB.set.genTrip==null?50:DB.set.genTrip);
   $("sImgq").value=DB.set.imgq||"ประหยัด";
   $("sFuel").value=DB.set.fuelPrice||"";
   var pics=0, bytes=0;
@@ -4093,6 +4134,7 @@ $("sSave").onclick=function(){
   DB.set.deduct=parseFloat($("sDeduct").value)||0;
   DB.set.night=parseFloat($("sNight").value)||0;
   DB.set.general=parseFloat($("sGeneral").value)||0;
+  DB.set.genTrip=parseFloat($("sGenTrip").value)||0;
   DB.set.imgq=$("sImgq").value;
   DB.set.fuelPrice=parseFloat($("sFuel").value)||0;
   save(); toast("บันทึกค่าตั้งต้นแล้ว"); render();
