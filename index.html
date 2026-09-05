@@ -490,6 +490,16 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
           <a class="btn sm block hidden" id="linkRoute" target="_blank" rel="noopener" style="margin-top:10px">🗺️ เช็คระยะทางจริงใน Google Maps</a>
         </div>
 
+        <div id="stopBox" class="hidden">
+          <div class="row" style="justify-content:space-between">
+            <span class="hint" style="font-weight:600; color:var(--ink2)">จุดแวะรับสินค้า</span>
+            <span class="hint" id="stopSum">ยังไม่มี</span>
+          </div>
+          <div id="stopList" style="margin-top:8px"></div>
+          <button class="btn block" id="btnAddStop" style="margin-top:8px">＋ แวะรับสินค้า</button>
+          <p class="hint" style="margin:6px 0 0">ส่งของปลายทางแล้วยังแวะรับของต่อได้ เพิ่มได้ไม่จำกัดจุด · แวะครบแล้วค่อยกดจบงานด้านล่าง</p>
+        </div>
+
         <div>
           <div class="hint" style="font-weight:600; color:var(--ink2); margin-bottom:8px">ค้างคืน (คืน)</div>
           <div class="step">
@@ -509,6 +519,50 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <button class="btn dark big block" id="btnDone">✓ งานสำเร็จ — ส่งให้เจ้าของ</button>
         <p class="hint" style="margin:0; text-align:center">ค่าเที่ยวเจ้าของเป็นคนใส่ให้ ระบบจะแจ้งเตือนเจ้าของทันที</p>
         <button class="btn ghost block" id="btnCancelJob">ยกเลิกงานนี้</button>
+      </div>
+    </section>
+
+    <!-- ========== DRIVER: จุดแวะรับสินค้า ========== -->
+    <section id="v-stop" class="view hidden">
+      <div class="sec-title" id="stopTitle">จุดแวะรับสินค้า</div>
+      <div class="card pad stack">
+        <div id="stopHead"></div>
+
+        <div>
+          <div class="hint" style="font-weight:600; color:var(--ink2); margin-bottom:8px">สินค้าที่รับ</div>
+          <div class="chips" id="stopMatChips"></div>
+        </div>
+
+        <div>
+          <div class="row" style="justify-content:space-between">
+            <span class="hint" style="font-weight:600; color:var(--ink2)">พิกัดจุดแวะ</span>
+            <span class="hint" id="stopGeoText">กำลังหาพิกัด…</span>
+          </div>
+          <button class="btn block" id="btnStopGeo" style="margin-top:8px">📍 ปักพิกัดจุดนี้</button>
+        </div>
+
+        <div>
+          <div class="row" style="justify-content:space-between">
+            <span class="hint" style="font-weight:600; color:var(--ink2)">รูปบิลรับสินค้า</span>
+            <span class="hint" id="cnt5">0/3</span>
+          </div>
+          <div class="row" style="margin-top:-4px"><span class="hint" id="shot5Req"></span></div>
+          <label class="shotdrop" style="margin-top:8px">
+            <span style="font-size:30px">🧾</span>
+            <b>ถ่ายรูปบิลรับสินค้า</b>
+            <span class="hint">แตะเพื่อเปิดกล้อง · ได้สูงสุด 3 รูป</span>
+            <input type="file" accept="image/*" capture="environment" multiple id="cam5" class="hidden">
+          </label>
+          <div class="row" style="margin-top:8px; justify-content:center">
+            <label class="btn sm ghost" style="cursor:pointer">🖼️ เลือกจากคลังรูป<input type="file" accept="image/*" multiple id="file5" class="hidden"></label>
+          </div>
+          <div class="car" id="car5" style="margin-top:10px"></div>
+        </div>
+
+        <label class="f">หมายเหตุ<input type="text" id="stopNote" placeholder="เช่น รับเหล็กที่อุดรโชค"></label>
+
+        <button class="btn dark big block" id="btnSaveStop">✓ บันทึกจุดแวะนี้</button>
+        <button class="btn ghost block" id="btnStopBack">ย้อนกลับ ไม่บันทึกจุดนี้</button>
       </div>
     </section>
 
@@ -745,6 +799,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <label class="f" data-money="1">ค่าค้างคืน/คืน ตั้งต้น (บาท)<input type="number" id="sNight" step="50"></label>
         <label class="f" data-money="1">ค่าแรงงานทั่วไป/วัน (บาท)<input type="number" id="sGeneral" step="50" min="0"></label>
         <label class="f" data-money="1">ค่าเที่ยวเหมา วันที่ลงงานทั่วไป (บาท)<input type="number" id="sGenTrip" step="10" min="0"></label>
+        <label class="f" data-money="1">ค่าจุดแวะรับสินค้า (บาท/จุด)<input type="number" id="sStopRate" step="10" min="0"></label>
         <label class="f">ราคาน้ำมัน/ลิตร ตั้งต้น (บาท)<input type="number" id="sFuel" step="0.01"></label>
         <label class="f">คุณภาพรูปที่เก็บ<select id="sImgq"><option>ประหยัด</option><option>ปกติ</option><option>ชัด</option></select></label>
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="sSave">บันทึก</button></label>
@@ -921,8 +976,8 @@ function seed(){
     {id:uid("f"), date:d1, emp:"e3", truck:"t3", amount:5000, price:31.94, liters:156.54, odo:308200, prevOdo:0,
      note:"บางจาก บ้านผือ", shots:[], odoShots:[], lat:17.680, lng:102.470, at:Math.min(new Date(d1+"T16:40:00").getTime(), Date.now()-7200000)}
   ];
-  return {emp:E, truck:T, rate:R, job:J, fuel:F, absent:{}, lastTruck:{}, rot:{}, mats:["หิน","ทราย","ลูกรัง","บล็อค"],
-          set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, imgq:"ประหยัด", fuelPrice:31.94}, tg:{token:"", chat:"", log:[]}};
+  return {emp:E, truck:T, rate:R, job:J, stop:[], fuel:F, absent:{}, lastTruck:{}, rot:{}, mats:["หิน","ทราย","ลูกรัง","บล็อค"],
+          set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, stopRate:100, imgq:"ประหยัด", fuelPrice:31.94}, tg:{token:"", chat:"", log:[]}};
   function r(t,l,p){ return {id:uid("r"), type:t, label:l, price:p, at:"2026-08-01"}; }
 }
 function job(date,emp,truck,type,label,mat,bill,price,sla,sln,ela,eln,km,dest,nights){
@@ -996,6 +1051,11 @@ function rowJob(r){
     at: ms(r.created_at),
     shots:[], shotsEnd:[], _ps:(r.photos_start||[]), _pe:(r.photos_end||[])};
 }
+function rowStop(r){
+  return {id:r.id, job:r.job_id, seq:r.seq||0, lat:r.lat, lng:r.lng,
+    mat:r.material||"", note:r.note||"", pay:num(r.pay,0), at:ms(r.at),
+    shots:[], _p:(r.photos||[])};
+}
 function rowFuel(r){
   return {id:r.id, date:r.fuel_date, emp:r.emp_id, truck:r.truck_id,
     amount:num(r.amount,0), price:num(r.price_per_l,0), liters:num(r.liters,0),
@@ -1022,14 +1082,17 @@ var TOROW = {
       start_lat:o.start?o.start.lat:null, start_lng:o.start?o.start.lng:null, start_at:o.start?iso(o.start.at):null,
       end_lat:o.end?o.end.lat:null, end_lng:o.end?o.end.lng:null, end_at:o.end?iso(o.end.at):null,
       photos_start:o._ps||[], photos_end:o._pe||[] }; },
+  stop: function(o){ return {
+      job_id:o.job, seq:o.seq||0, lat:(o.lat==null?null:o.lat), lng:(o.lng==null?null:o.lng),
+      material:o.mat||null, note:o.note||null, photos:o._p||[] }; },
   fuel: function(o){ return {
       fuel_date:o.date, emp_id:o.emp, truck_id:o.truck,
       amount:o.amount, price_per_l:o.price, odo:o.odo,
       note:o.note||"", lat:o.lat||null, lng:o.lng||null,
       photos_receipt:o._pr||[], photos_odo:o._po||[] }; }
 };
-var TABLE = { emp:"employees", truck:"trucks", rate:"job_rates", job:"jobs", fuel:"fuel" };
-var LISTS = ["emp","truck","rate","job","fuel"];
+var TABLE = { emp:"employees", truck:"trucks", rate:"job_rates", job:"jobs", stop:"job_stops", fuel:"fuel" };
+var LISTS = ["emp","truck","rate","job","stop","fuel"];
 
 /* ---------- ล็อกอินด้วย LINE ---------- */
 function loginMsg(t,bad){
@@ -1181,7 +1244,8 @@ function bootstrap(){
     rest("fuel?select=*"+mine+"&order=created_at.desc&limit=400"),
     rest("absences?select=*"),
     rest("settings?select=*"),
-    rest("photo_rot?select=path,deg")
+    rest("photo_rot?select=path,deg"),
+    rest("job_stops?select=*&order=seq")
   ]).then(function(a){
     DB.emp   = a[0].map(rowEmp);
     DB.truck = a[1].map(rowTruck);
@@ -1189,6 +1253,7 @@ function bootstrap(){
     DB.rate  = a[3].map(rowRate);
     DB.job   = a[4].map(rowJob).reverse();   /* หน้าจอคาดว่าเรียงเก่า→ใหม่ */
     DB.fuel  = a[5].map(rowFuel).reverse();
+    DB.stop  = (a[9]||[]).map(rowStop);
 
     DB.absent={};
     a[6].forEach(function(x){
@@ -1201,6 +1266,7 @@ function bootstrap(){
              night:num(S.night_rate_default,200), fuelPrice:num(S.fuel_price_default,31.94),
              general:num(S.general_day_rate,300),
              genTrip:num(S.general_trip_rate,50),
+             stopRate:num(S.stop_rate,100),
              imgq: S.image_quality || "ประหยัด" };
     DB.tg={ token:(S.telegram&&S.telegram.token)||"", chat:(S.telegram&&S.telegram.chat_id)||"", log:[] };
     DB.lastTruck = S.last_truck || {};
@@ -1216,6 +1282,7 @@ function signPhotos(){
   var paths=[];
   DB.job.forEach(function(j){ (j._ps||[]).forEach(function(p){paths.push(p);}); (j._pe||[]).forEach(function(p){paths.push(p);}); });
   DB.fuel.forEach(function(f){ (f._pr||[]).forEach(function(p){paths.push(p);}); (f._po||[]).forEach(function(p){paths.push(p);}); });
+  (DB.stop||[]).forEach(function(t){ (t._p||[]).forEach(function(p){paths.push(p);}); });
   if(!paths.length){ return Promise.resolve(); }
   return fetch(CFG.url+"/storage/v1/object/sign/"+CFG.bucket,{
     method:"POST", headers:sbHead(),
@@ -1232,6 +1299,7 @@ function signPhotos(){
     }
     DB.job.forEach(function(j){ j.shots=fill(j._ps); j.shotsEnd=fill(j._pe); });
     DB.fuel.forEach(function(f){ f.shots=fill(f._pr); f.odoShots=fill(f._po); });
+    (DB.stop||[]).forEach(function(t){ t.shots=fill(t._p); });
   }).catch(function(){ /* เปิดรูปไม่ได้ ไม่ควรทำให้ทั้งแอปพัง */ });
 }
 
@@ -1372,6 +1440,9 @@ function runSync(){
     photoWork.push(pushShots(f.shots, f._pr).then(function(p){ f._pr=p; }));
     photoWork.push(pushShots(f.odoShots, f._po).then(function(p){ f._po=p; }));
   });
+  (DB.stop||[]).forEach(function(t){
+    photoWork.push(pushShots(t.shots, t._p).then(function(p){ t._p=p; }));
+  });
 
   Promise.all(photoWork)
     .then(function(){ return syncTable("emp"); })
@@ -1379,6 +1450,8 @@ function runSync(){
     .then(syncMats)
     .then(function(){ return syncTable("rate"); })
     .then(function(){ remapRefs(idMap); return syncTable("job"); })
+    /* จุดแวะอ้างถึงงาน ต้องส่งหลังงานเสมอ และต้องแปลง id ชั่วคราวของงานเป็น id จริงก่อน */
+    .then(function(){ remapStops(idMap); return syncTable("stop"); })
     .then(function(){ return syncTable("fuel"); })
     .then(syncAbsent)
     .then(syncRot)
@@ -1411,6 +1484,10 @@ function runSync(){
       if(map[f.emp]) f.emp=map[f.emp];
       if(map[f.truck]) f.truck=map[f.truck];
     });
+  }
+
+  function remapStops(map){
+    (DB.stop||[]).forEach(function(t){ if(map[t.job]) t.job=map[t.job]; });
   }
 
   function syncTable(t){
@@ -1515,6 +1592,7 @@ function runSync(){
       {key:"night_rate_default",    value:DB.set.night},
       {key:"general_day_rate",      value:DB.set.general},
       {key:"general_trip_rate",     value:DB.set.genTrip},
+      {key:"stop_rate",            value:DB.set.stopRate},
       {key:"fuel_price_default",    value:DB.set.fuelPrice},
       {key:"image_quality",         value:DB.set.imgq},
       {key:"last_truck",            value:DB.lastTruck||{}},
@@ -1527,8 +1605,8 @@ function runSync(){
 
 /* ---------- โครงว่างตอนหน้าเว็บเพิ่งเปิด (ยังไม่ล็อกอิน) ---------- */
 function load(){
-  return {emp:[], truck:[], rate:[], job:[], fuel:[], absent:{}, lastTruck:{}, rot:{}, sizes:SIZES.slice(),
-          mats:[], set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, imgq:"ประหยัด", fuelPrice:31.94},
+  return {emp:[], truck:[], rate:[], job:[], stop:[], fuel:[], absent:{}, lastTruck:{}, rot:{}, sizes:SIZES.slice(),
+          mats:[], set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, stopRate:100, imgq:"ประหยัด", fuelPrice:31.94},
           tg:{token:"", chat:"", log:[]}};
 }
 /* ถามข้อความหนึ่งบรรทัด แบบไม่ใช้ window.prompt
@@ -1699,6 +1777,15 @@ function haversine(a,b){
 }
 function mapsPoint(p){ return "https://www.google.com/maps?q="+p.lat+","+p.lng; }
 function mapsRoute(a,b){ return "https://www.google.com/maps/dir/?api=1&origin="+a.lat+","+a.lng+"&destination="+b.lat+","+b.lng+"&travelmode=driving"; }
+/* เส้นทางที่มีจุดแวะระหว่างทาง — Google Maps รับ waypoints ได้สูงสุด 9 จุด */
+function mapsRouteVia(pts){
+  if(!pts || pts.length<2) return "";
+  var o=pts[0], d=pts[pts.length-1], mid=pts.slice(1,-1).slice(0,9);
+  var u="https://www.google.com/maps/dir/?api=1&origin="+o.lat+","+o.lng+
+        "&destination="+d.lat+","+d.lng+"&travelmode=driving";
+  if(mid.length) u+="&waypoints="+mid.map(function(p){ return p.lat+","+p.lng; }).join("|");
+  return u;
+}
 
 var me=null, tab="", fin=null, mineLimit=10;
 var draft={type:"ส่งสินค้า", mat:"หิน", shots:[]};
@@ -1828,7 +1915,11 @@ function lbGo(step){
   paintLbCount(); lbPaint();
 }
 function lbClose(){ $("lb").classList.remove("on"); document.body.style.overflow=""; }
-function allShots(j){ return (j.shots||[]).concat(j.shotsEnd||[]); }
+function allShots(j){
+  var out=(j.shots||[]).concat(j.shotsEnd||[]);
+  stopsOf(j).forEach(function(t){ out=out.concat(t.shots||[]); });
+  return out;
+}
 function esc(s){ return String(s).replace(/[&<>"]/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
 
 function tabsFor(){
@@ -2158,6 +2249,8 @@ function openFinish(j){
     (j.shots.length?'<button class="btn sm ghost" id="seeBill" style="padding:2px 9px">🧾 ดูรูปบิล '+j.shots.length+' รูป</button>':'') +
     '</div>';
   if($("seeBill")) $("seeBill").onclick=function(){ zoom(fin.shots,0); };
+  $("stopBox").classList.toggle("hidden", !TWO_STEP[j.type]);
+  paintStops();
   paintDest(); paintEndGeo(); refreshCar2();
   go("finish");
 }
@@ -2168,12 +2261,14 @@ function paintDest(){
 function paintEndGeo(){
   var e=fin.end, s=fin.start;
   $("endGeoText").textContent=(e&&e.lat!=null)?(e.lat.toFixed(5)+", "+e.lng.toFixed(5)):"ยังไม่ได้ปัก";
-  var d=haversine(s,e);
+  var d=routeKm(fin), ns=stopsOf(fin).length;
   if(d!=null){
-    fin.km=Math.round(d*10)/10;
+    fin.km=d;
     $("kmVal").textContent=fin.km.toFixed(1)+" กม.";
-    $("straightTxt").textContent="คำนวณจากพิกัดต้นทาง–ปลายทาง (เส้นตรง) กดปุ่มด้านล่างดูระยะถนนจริงได้";
-    $("linkRoute").classList.remove("hidden"); $("linkRoute").href=mapsRoute(s,e);
+    $("straightTxt").textContent = ns
+      ? "รวมช่วงที่แวะรับของ "+ns+" จุดแล้ว (คิดเส้นตรงระหว่างจุด) กดปุ่มด้านล่างดูระยะถนนจริงได้"
+      : "คำนวณจากพิกัดต้นทาง–ปลายทาง (เส้นตรง) กดปุ่มด้านล่างดูระยะถนนจริงได้";
+    $("linkRoute").classList.remove("hidden"); $("linkRoute").href=mapsRouteVia(routePts(fin));
   } else {
     $("kmVal").textContent="–";
     $("straightTxt").textContent="ปักพิกัดปลายทางแล้วระบบจะคำนวณให้";
@@ -2213,6 +2308,7 @@ function finishJobNow(j, gotGeo){
   if(!j.end) j.end={lat:null,lng:null,at:Date.now()};
   j.end.at=Date.now();
   j.status="done";
+  var rk=routeKm(j); if(rk!=null) j.km=rk;
   var r=findRate(j.type, j.label);
   if(r){ j.price=r.price; j.priced=true; }
   /* ลำดับต้องตรงกับ jobs_guard_money() เป๊ะ: ค่าเที่ยวเหมา → รถบริษัท → ปกติ */
@@ -2261,7 +2357,35 @@ function payBase(j){
   if(j.payMode==="คิว") return p*(j.qty||0);
   return p;
 }
-function payOf(j){ return payBase(j)+nightPay(j); }
+/* ---------- จุดแวะรับสินค้า (v17 · เจ้าของสั่ง 5 ก.ย. 2569) ----------
+   หนึ่งสายเดินทาง = งานหนึ่งใบ · ส่งปลายทางแล้วแวะรับของต่อได้ไม่จำกัดจุด จุดละเรตในหน้าตั้งค่า
+   **กติกาเงินต้องตรงกับ stops_guard() + total_pay ฝั่งฐานข้อมูลเป๊ะ**
+   ฐานข้อมูลเป็นคนใส่ pay ให้เอง หน้าเว็บจึงไม่ส่งช่องนี้ขึ้นไป (เหมือน liters ของน้ำมัน)
+   ของที่เพิ่งบันทึกในเครื่องยัง pay=0 อยู่ ตอนโชว์จึงตกไปใช้เรตในตั้งค่าแทน */
+function stopsOf(j){
+  if(!j || !DB.stop) return [];
+  return DB.stop.filter(function(t){ return t.job===j.id; })
+                .sort(function(a,b){ return (a.seq||0)-(b.seq||0) || (a.at||0)-(b.at||0); });
+}
+function stopRate(){ return (DB.set.stopRate==null?100:DB.set.stopRate); }
+function stopPay(t){ return (t.pay||0)>0 ? t.pay : stopRate(); }
+function stopsPay(j){ var n=0; stopsOf(j).forEach(function(t){ n+=stopPay(t); }); return n; }
+/* จุดแวะสุดท้าย = จุดจบงาน (เจ้าของยืนยัน) → ระยะทางต้องคิดสะสมทั้งสาย ไม่ใช่ต้นทาง–ปลายทางอย่างเดียว */
+function routePts(j){
+  var pts=[];
+  if(j.start && j.start.lat!=null) pts.push({lat:j.start.lat, lng:j.start.lng});
+  if(j.end   && j.end.lat!=null)   pts.push({lat:j.end.lat,   lng:j.end.lng});
+  stopsOf(j).forEach(function(t){ if(t.lat!=null) pts.push({lat:t.lat, lng:t.lng}); });
+  return pts;
+}
+function routeKm(j){
+  var pts=routePts(j);
+  if(pts.length<2) return null;
+  var d=0;
+  for(var i=1;i<pts.length;i++) d+=haversine(pts[i-1], pts[i]);
+  return Math.round(d*10)/10;
+}
+function payOf(j){ return payBase(j)+nightPay(j)+stopsPay(j); }
 /* ค่าแรงงานทั่วไปคิดเป็นรายวัน วันละครั้ง งานทั่วไปงานที่ 2 ของวันเดียวกันจึงเป็น 0
    (เจ้าของเข้าไปแก้ยอดทีหลังได้ ถ้าวันนั้นตกลงจ่ายมากกว่านั้น)
    กติกานี้ต้องตรงกับ jobs_guard_money() ใน DB เป๊ะ ไม่งั้นจอกับคลาวด์จะไม่ตรงกัน */
@@ -2314,7 +2438,8 @@ function jobList(host,list,showEmp){
     }
     var body=document.createElement("div"); body.className="body";
     var geo="";
-    if(j.start&&j.start.lat!=null&&j.end&&j.end.lat!=null) geo='<a class="geo" target="_blank" rel="noopener" href="'+mapsRoute(j.start,j.end)+'">🗺️ เส้นทาง</a>';
+    var rp=routePts(j);
+    if(rp.length>1) geo='<a class="geo" target="_blank" rel="noopener" href="'+mapsRouteVia(rp)+'">🗺️ เส้นทาง</a>';
     else if(j.end&&j.end.lat!=null) geo='<a class="geo" target="_blank" rel="noopener" href="'+mapsPoint(j.end)+'">📍 ปลายทาง</a>';
     else if(j.start&&j.start.lat!=null) geo='<a class="geo" target="_blank" rel="noopener" href="'+mapsPoint(j.start)+'">📍 ต้นทาง</a>';
     body.innerHTML=
@@ -2329,7 +2454,8 @@ function jobList(host,list,showEmp){
         '<span class="num">'+fmtDate(j.date)+'</span>' +
         (j.km?'<span class="num">'+j.km.toFixed(1)+' กม.</span>':'') +
         (j.nights?'<span>🌙 ค้าง '+j.nights+' คืน</span>':'') +
-      (j.flatTrip&&(j.price||0)>0?'<span class="pill t3">เหมาวันงานทั่วไป</span>':'') + geo +
+      (j.flatTrip&&(j.price||0)>0?'<span class="pill t3">เหมาวันงานทั่วไป</span>':'') +
+        (stopsOf(j).length?'<span class="pill t3">🛑 แวะรับ '+stopsOf(j).length+' จุด +'+baht(stopsPay(j))+'</span>':'') + geo +
         (j.status==="active"?'<span class="pill live"><i class="dot"></i> กำลังทำงาน</span>':'') +
       '</div>' +
       (j.note?'<div class="hint">'+esc(j.note)+'</div>':'');
@@ -3425,6 +3551,7 @@ function renderSettings(){
   $("sAllow").value=DB.set.allow; $("sDeduct").value=DB.set.deduct; $("sNight").value=DB.set.night;
   $("sGeneral").value=(DB.set.general==null?300:DB.set.general);
   $("sGenTrip").value=(DB.set.genTrip==null?50:DB.set.genTrip);
+  $("sStopRate").value=stopRate();
   $("sImgq").value=DB.set.imgq||"ประหยัด";
   $("sFuel").value=DB.set.fuelPrice||"";
   var pics=0, bytes=0;
@@ -4043,6 +4170,130 @@ function fuelSummary(tbl, list, by){
   tbl.innerHTML=h;
 }
 
+/* =============== หน้าจุดแวะรับสินค้า =============== */
+var sDraft=null;
+function paintStops(){
+  var box=$("stopList"); if(!box) return;
+  box.innerHTML="";
+  var list=stopsOf(fin);
+  $("stopSum").textContent = list.length ? (list.length+" จุด · +"+baht(stopsPay(fin))+" บาท") : "ยังไม่มี";
+  list.forEach(function(t,i){
+    var d=document.createElement("div");
+    d.className="card pad";
+    d.style.cssText="box-shadow:none; background:var(--surface2); margin-bottom:8px";
+    d.innerHTML=
+      '<div class="row" style="justify-content:space-between; align-items:flex-start; gap:10px">' +
+        '<div><b>จุดแวะที่ '+(i+1)+(t.mat?' · '+esc(t.mat):'')+'</b>' +
+          '<div class="hint">'+(t.lat!=null?'📍 '+t.lat.toFixed(5)+', '+t.lng.toFixed(5):'ไม่มีพิกัด')+
+          ' · '+((t.shots&&t.shots.length)||0)+' รูป</div>' +
+          (t.note?'<div class="hint">'+esc(t.note)+'</div>':'') +
+        '</div>' +
+        '<div class="num" style="font-weight:700; white-space:nowrap">+'+baht(stopPay(t))+'</div>' +
+      '</div>';
+    var bar=document.createElement("div"); bar.className="row"; bar.style.marginTop="8px";
+    if(t.lat!=null){
+      var mb=document.createElement("a");
+      mb.className="btn sm ghost"; mb.textContent="📍 ดูจุด"; mb.target="_blank"; mb.rel="noopener";
+      mb.href=mapsPoint({lat:t.lat, lng:t.lng});
+      bar.appendChild(mb);
+    }
+    if(t.shots && t.shots.length){
+      var vb=document.createElement("button");
+      vb.className="btn sm ghost"; vb.textContent="🧾 ดูรูป";
+      vb.onclick=function(){ zoom(t.shots,0); };
+      bar.appendChild(vb);
+    }
+    var xb=document.createElement("button");
+    xb.className="btn sm ghost"; xb.style.color="var(--accent)"; xb.textContent="🗑️ ลบจุดนี้";
+    armBtn(xb, "ลบจริงไหม? กดอีกครั้ง", function(){
+      DB.stop=DB.stop.filter(function(x){ return x.id!==t.id; });
+      save(); paintStops(); paintEndGeo();
+      toast("ลบจุดแวะแล้ว");
+    });
+    bar.appendChild(xb);
+    d.appendChild(bar);
+    box.appendChild(d);
+  });
+}
+function buildStopMats(){
+  var mc=$("stopMatChips"); mc.innerHTML="";
+  (DB.mats||MATS).forEach(function(m){
+    var b=document.createElement("button");
+    b.className="chip"; b.type="button"; b.textContent=m; b.dataset.m=m;
+    b.onclick=function(){ if(sDraft){ sDraft.mat=m; paintStopMats(); } };
+    mc.appendChild(b);
+  });
+  var add=document.createElement("button");
+  add.className="chip"; add.type="button"; add.textContent="＋ เพิ่มสินค้า"; add.style.borderStyle="dashed";
+  add.onclick=function(){
+    askText("เพิ่มสินค้า", "เช่น เหล็ก · ปูน · เสาไฟฟ้า", function(n){
+      DB.mats=DB.mats||MATS.slice();
+      if(DB.mats.indexOf(n)<0) DB.mats.push(n);
+      if(sDraft) sDraft.mat=n;
+      save(); buildStopMats(); paintStopMats();
+      toast("เพิ่ม \""+n+"\" แล้ว ครั้งหน้าเลือกได้เลย");
+    });
+  };
+  mc.appendChild(add);
+}
+function paintStopMats(){
+  var mc=$("stopMatChips").children;
+  for(var i=0;i<mc.length;i++)
+    if(mc[i].dataset.m) mc[i].setAttribute("aria-pressed", (sDraft && mc[i].dataset.m===sDraft.mat)?"true":"false");
+}
+function paintStopGeo(){
+  $("stopGeoText").textContent = (sDraft && sDraft.lat!=null)
+    ? (sDraft.lat.toFixed(5)+", "+sDraft.lng.toFixed(5)) : "ยังไม่ได้ปัก";
+}
+function refreshCar5(){
+  carousel($("car5"), sDraft?sDraft.shots:[], "cnt5", refreshCar5);
+  $("shot5Req").innerHTML = (sDraft && sDraft.shots.length)
+    ? '<span style="color:var(--ok); font-weight:600">✓ แนบรูปแล้ว</span>'
+    : '<span style="color:var(--accent); font-weight:600">* ต้องมีรูปบิลรับสินค้า อย่างน้อย 1 รูป</span>';
+}
+function openStop(){
+  if(!fin) return;
+  sDraft={ id:uid("s"), job:fin.id, seq:stopsOf(fin).length+1,
+           lat:null, lng:null, mat:"", note:"", pay:0, shots:[], _p:[] };
+  $("stopTitle").textContent="จุดแวะที่ "+sDraft.seq;
+  $("stopHead").innerHTML=
+    '<div class="jt">'+esc(jobTitle(fin))+'</div>' +
+    '<div class="meta"><span class="pill '+TYPE_PILL[fin.type]+'">'+TYPE_LABEL[fin.type]+'</span>' +
+    plateChip(fin)+'<span class="num">'+fmtDate(fin.date)+'</span>' +
+    '<span class="pill t3">+'+baht(stopRate())+' บาท</span></div>';
+  $("stopNote").value="";
+  buildStopMats(); paintStopMats(); refreshCar5();
+  $("stopGeoText").textContent="กำลังหาพิกัด…";
+  go("stop");
+  getGeo(function(p){
+    if(!sDraft) return;
+    if(p){ sDraft.lat=p.lat; sDraft.lng=p.lng; }
+    paintStopGeo();
+  });
+}
+/* ปักพิกัดไม่ได้ก็ยังบันทึกได้ — กติกาเดียวกับปิดงาน ห้ามให้เรื่องพิกัดขวางงานหน้างาน
+   แต่รูปบิลกับสินค้าบังคับ เพราะเป็นหลักฐานว่าแวะรับจริง (เจ้าของสั่ง) */
+function saveStop(){
+  if(!sDraft) return;
+  if(!sDraft.mat){ toast("เลือกสินค้าที่รับก่อน"); return; }
+  if(!sDraft.shots.length){
+    toast("ต้องแนบรูปบิลรับสินค้าอย่างน้อย 1 รูป");
+    $("car5").scrollIntoView({behavior:"smooth", block:"center"});
+    return;
+  }
+  sDraft.note=$("stopNote").value.trim();
+  sDraft.at=Date.now();
+  DB.stop.push(sDraft);
+  var n=sDraft.seq, noGeo=(sDraft.lat==null);
+  sDraft=null;
+  var rk=routeKm(fin); if(rk!=null) fin.km=rk;
+  save();
+  paintStops(); paintEndGeo();
+  go("finish");
+  toast("บันทึกจุดแวะที่ "+n+" แล้ว +"+baht(stopRate())+" บาท"+(noGeo?" (ไม่มีพิกัด)":"")+
+        " — แวะเพิ่มอีกจุด หรือกดจบงานได้เลย");
+}
+
 /* ---------- CSV ---------- */
 function copy(text){
   if(navigator.clipboard&&navigator.clipboard.writeText)
@@ -4109,6 +4360,23 @@ $("cam2").onchange=function(){ addShots(this.files, fin.shotsEnd, refreshCar2); 
 $("file2").onchange=function(){ addShots(this.files, fin.shotsEnd, refreshCar2); this.value=""; };
 $("nMinus").onclick=function(){ var v=parseInt($("nightVal").textContent,10)||0; $("nightVal").textContent=Math.max(0,v-1); };
 $("nPlus").onclick=function(){ var v=parseInt($("nightVal").textContent,10)||0; $("nightVal").textContent=Math.min(30,v+1); };
+$("cam5").onchange=function(){ if(sDraft) addShots(this.files, sDraft.shots, refreshCar5); this.value=""; };
+$("file5").onchange=function(){ if(sDraft) addShots(this.files, sDraft.shots, refreshCar5); this.value=""; };
+$("btnAddStop").onclick=openStop;
+$("btnSaveStop").onclick=saveStop;
+$("btnStopBack").onclick=function(){ sDraft=null; go("finish"); };
+$("btnStopGeo").onclick=function(){
+  if(!sDraft) return;
+  var b=$("btnStopGeo"), orig=b.textContent;
+  b.disabled=true; b.textContent="กำลังหาพิกัด…";
+  getGeo(function(p){
+    b.disabled=false; b.textContent=orig;
+    if(!sDraft) return;
+    if(!p){ $("stopGeoText").textContent="ปักไม่ได้"; toast("เปิดสิทธิ์ตำแหน่งในเบราว์เซอร์ก่อน แล้วลองใหม่"); return; }
+    sDraft.lat=p.lat; sDraft.lng=p.lng; paintStopGeo();
+    toast("ปักพิกัดจุดแวะแล้ว");
+  });
+};
 $("cam3").onchange=function(){ addShots(this.files, uDraft.shots, refreshCar3); this.value=""; };
 $("file3").onchange=function(){ addShots(this.files, uDraft.shots, refreshCar3); this.value=""; };
 $("cam4").onchange=function(){ addShots(this.files, uDraft.odoShots, refreshCar4); this.value=""; };
@@ -4196,6 +4464,7 @@ $("sSave").onclick=function(){
   DB.set.night=parseFloat($("sNight").value)||0;
   DB.set.general=parseFloat($("sGeneral").value)||0;
   DB.set.genTrip=parseFloat($("sGenTrip").value)||0;
+  DB.set.stopRate=parseFloat($("sStopRate").value)||0;
   DB.set.imgq=$("sImgq").value;
   DB.set.fuelPrice=parseFloat($("sFuel").value)||0;
   save(); toast("บันทึกค่าตั้งต้นแล้ว"); render();
