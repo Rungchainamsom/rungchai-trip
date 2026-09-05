@@ -1084,7 +1084,7 @@ var TOROW = {
       photos_start:o._ps||[], photos_end:o._pe||[] }; },
   stop: function(o){ return {
       job_id:o.job, seq:o.seq||0, lat:(o.lat==null?null:o.lat), lng:(o.lng==null?null:o.lng),
-      material:o.mat||null, note:o.note||null, photos:o._p||[] }; },
+      material:o.mat||null, note:o.note||null, pay:(o.pay||0), photos:o._p||[] }; },
   fuel: function(o){ return {
       fuel_date:o.date, emp_id:o.emp, truck_id:o.truck,
       amount:o.amount, price_per_l:o.price, odo:o.odo,
@@ -2626,6 +2626,34 @@ function trashScan(){
       out.innerHTML='<div class="hint">อ่านไม่ได้ — '+esc((e&&e.message)||"")+'</div>';
     });
 }
+/* ช่องเลือกสินค้าที่ "เพิ่มของใหม่" ได้ในตัว — ใช้ทั้งสินค้าของงานและสินค้าของจุดแวะ
+   Why: หน้าคนขับมีชิป "＋ เพิ่มสินค้า" มาแต่แรก แต่ฝั่งเจ้าของเลือกได้จากรายการเดิมอย่างเดียว
+        พอเจอของที่ยังไม่มีในระบบ (เช่น "เหล็ก") เจ้าของแก้ให้ถูกไม่ได้เลย ต้องรอคนขับเพิ่มให้
+   เลือก "＋ เพิ่มสินค้าใหม่…" แล้วเด้งกล่องพิมพ์ชื่อ · กดยกเลิกก็คืนค่าเดิม ไม่ค้างเป็นช่องว่าง */
+function matOptions(cur){
+  var mats=(DB.mats||MATS||[]).slice();
+  if(cur && mats.indexOf(cur)<0) mats.unshift(cur);
+  return '<option value="">–</option>' +
+    mats.map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join("") +
+    '<option value="__add">＋ เพิ่มสินค้าใหม่…</option>';
+}
+function matSelect(el, cur, after){
+  el.innerHTML=matOptions(cur);
+  el.value=cur||"";
+  el.dataset.prev=el.value;
+  el.onchange=function(){
+    if(el.value!=="__add"){ el.dataset.prev=el.value; if(after) after(el.value); return; }
+    el.value=el.dataset.prev||"";        /* คืนค่าเดิมก่อน เผื่อกดยกเลิกในกล่องถาม */
+    askText("เพิ่มสินค้า", "เช่น เหล็ก · ปูน · เสาไฟฟ้า", function(n){
+      DB.mats=(DB.mats&&DB.mats.length)?DB.mats:MATS.slice();
+      if(DB.mats.indexOf(n)<0) DB.mats.push(n);
+      save();
+      el.innerHTML=matOptions(n); el.value=n; el.dataset.prev=n;
+      if(after) after(n);
+      toast("เพิ่ม \""+n+"\" แล้ว ครั้งหน้าเลือกได้เลย");
+    });
+  };
+}
 function buildJobEdit(j, pan){
   pan.innerHTML=
     '<div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap">' +
@@ -2651,6 +2679,7 @@ function buildJobEdit(j, pan){
     '<label class="row" style="gap:9px; margin-top:10px; font-size:15px; color:var(--ink2); align-items:center">' +
       '<input type="checkbox" data-k="sync" style="width:20px; height:20px; flex:none">' +
       'อัปเดตราคามาตรฐานในสมุดราคางานด้วย</label>' +
+    '<div data-k="stops" style="margin-top:12px"></div>' +
     '<div class="hint" data-k="tot" style="margin-top:9px"></div>' +
     '<div class="row" style="margin-top:11px; gap:9px">' +
       '<button class="btn primary" data-k="save">บันทึกการแก้ไข</button>' +
@@ -2664,11 +2693,7 @@ function buildJobEdit(j, pan){
   g("mlab").style.display = hasMat ? "" : "none";
   g("dlab").style.display = (j.type==="รับสินค้า") ? "" : "none";
   if(hasMat){
-    var mats=(DB.mats||[]).slice();
-    if(j.mat && mats.indexOf(j.mat)<0) mats.unshift(j.mat);
-    g("mat").innerHTML='<option value="">–</option>'+mats.map(function(m){
-      return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join("");
-    g("mat").value=j.mat||"";
+    matSelect(g("mat"), j.mat);
     g("dest").value=j.dest||"";
   }
   /* ช่องชื่องานตัวเดียวกับหน้ารอใส่ราคา — เลือกงานเดิมแล้วราคา/วิธีคิดเด้งตาม */
@@ -2679,6 +2704,68 @@ function buildJobEdit(j, pan){
     if(r){ g("price").value=r.price; g("mode").value=r.unit||"เที่ยว"; }
     calc();
   });
+  /* ---------- จุดแวะรับสินค้า (เจ้าของขอ 5 ก.ย. 2569) ----------
+     Why: เปิดฟอร์มแก้ไขมาไม่เห็นจุดแวะเลย แล้วบรรทัด "รวมจ่ายงานนี้" ยังไม่บวกค่าจุดแวะด้วย
+          ตัวเลขในฟอร์มเลยไม่ตรงกับยอดบนการ์ด (500 กับ 700) ดูแล้วนึกว่าจุดแวะหาย
+     คนขับลบจุดแวะได้แค่ตอนยังไม่จบงาน ของเจ้าของแก้ได้ตลอด (policy ฝั่ง DB เปิดให้ staff อยู่แล้ว) */
+  function paintStopsEdit(){
+    var host=g("stops"), list=stopsOf(j);
+    if(!list.length){ host.innerHTML=""; return; }
+    var h='<div class="hint" style="font-weight:600; color:var(--ink2); margin-bottom:6px">' +
+          '🛑 จุดแวะรับสินค้า '+list.length+' จุด</div>';
+    list.forEach(function(t,i){
+      h+='<div class="card pad" style="box-shadow:none; background:var(--surface2); margin-bottom:8px">' +
+         '<div class="row" style="justify-content:space-between; align-items:flex-start; gap:8px">' +
+           '<b>จุดแวะที่ '+(i+1)+'</b>' +
+           '<span class="hint">'+(t.lat!=null?'📍 '+t.lat.toFixed(5)+', '+t.lng.toFixed(5):'ไม่มีพิกัด')+
+             ' · บิล '+((t.shots&&t.shots.length)||0)+' รูป</span>' +
+         '</div>' +
+         '<div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap; margin-top:8px">' +
+           '<label class="f" style="width:142px">สินค้า<select data-k="smat'+i+'"></select></label>' +
+           '<label class="f" style="width:124px">ค่าจุดแวะ (บาท)' +
+             '<input type="number" min="0" step="10" data-k="spay'+i+'" value="'+stopPay(t)+'"></label>' +
+           '<label class="f" style="flex:1; min-width:190px">หมายเหตุ' +
+             '<input type="text" data-k="snote'+i+'" value="'+esc(t.note||"")+'"></label>' +
+         '</div>' +
+         '<div class="row" style="margin-top:8px; gap:8px" data-k="sbar'+i+'"></div>' +
+         '</div>';
+    });
+    host.innerHTML=h;
+    list.forEach(function(t,i){
+      matSelect(pan.querySelector('[data-k="smat'+i+'"]'), t.mat);
+      pan.querySelector('[data-k="spay'+i+'"]').oninput=calc;
+      var bar=pan.querySelector('[data-k="sbar'+i+'"]');
+      if(t.lat!=null){
+        var a=document.createElement("a");
+        a.className="btn sm ghost"; a.textContent="📍 ดูจุดบนแผนที่";
+        a.target="_blank"; a.rel="noopener"; a.href=mapsPoint({lat:t.lat, lng:t.lng});
+        bar.appendChild(a);
+      }
+      if(t.shots && t.shots.length){
+        var vb=document.createElement("button");
+        vb.className="btn sm ghost"; vb.textContent="🧾 ดูรูปบิล "+t.shots.length+" รูป";
+        vb.onclick=function(){ zoom(t.shots,0); };
+        bar.appendChild(vb);
+      }
+      var xb=document.createElement("button");
+      xb.className="btn sm ghost"; xb.style.color="var(--accent)"; xb.textContent="🗑️ ลบจุดนี้";
+      armBtn(xb, "ลบจริงไหม? กดอีกครั้ง", function(){
+        DB.stop=DB.stop.filter(function(x){ return x.id!==t.id; });
+        var rk=routeKm(j); if(rk!=null) j.km=rk;
+        save(); paintStopsEdit(); calc();
+        toast("ลบจุดแวะแล้ว — ระยะทางกับยอดจ่ายคิดใหม่ให้แล้ว");
+      });
+      bar.appendChild(xb);
+    });
+  }
+  function stopsPayNow(){
+    var n=0;
+    stopsOf(j).forEach(function(t,i){
+      var el=pan.querySelector('[data-k="spay'+i+'"]');
+      n += el ? (Math.max(0, parseFloat(el.value)||0)) : stopPay(t);
+    });
+    return n;
+  }
   g("mode").value = j.payMode||"เที่ยว";
   function unitWord(){ return g("mode").value==="วัน" ? "วัน" : (g("mode").value==="คิว" ? "คิว" : "เที่ยว"); }
   function calc(){
@@ -2692,14 +2779,16 @@ function buildJobEdit(j, pan){
     var q = per ? (parseFloat(g("qty").value)||0) : 1;
     var base = per ? pv*q : pv;
     g("rate").parentNode.style.display = n>0 ? "" : "none";
-    var was=payOf(j);
-    g("tot").innerHTML='<b style="color:var(--ink); font-size:15px">รวมจ่ายงานนี้ '+baht(base+n*rr)+' บาท</b>' +
+    var was=payOf(j), sp=stopsPayNow(), ns=stopsOf(j).length;
+    g("tot").innerHTML='<b style="color:var(--ink); font-size:15px">รวมจ่ายงานนี้ '+baht(base+n*rr+sp)+' บาท</b>' +
       (per ? ' ('+baht(pv)+' × '+q+' '+unitWord()+' = '+baht(base)+')' : '') +
       (n>0 ? ' + ค้างคืน '+n+' × '+baht(rr) : '') +
+      (ns ? ' + จุดแวะ '+ns+' จุด '+baht(sp)+' บาท' : '') +
       '<br>ยอดเดิม '+baht(was)+' บาท';
   }
   ["price","nights","rate","qty"].forEach(function(k){ g(k).oninput=calc; });
   g("mode").onchange=calc;
+  paintStopsEdit();
   calc();
   g("cancel").onclick=function(){
     pan.classList.add("hidden"); pan.innerHTML="";
@@ -2724,6 +2813,15 @@ function buildJobEdit(j, pan){
       j.mat=g("mat").value;
       if(j.type==="รับสินค้า") j.dest=g("dest").value;
     }
+    /* จุดแวะ: ลำดับใน DOM มาจาก stopsOf(j) ชุดเดียวกับตอนวาด ลบจุดไหนไปแล้ววาดใหม่ทุกครั้ง */
+    stopsOf(j).forEach(function(t,i){
+      var ms=pan.querySelector('[data-k="smat'+i+'"]');
+      var ps=pan.querySelector('[data-k="spay'+i+'"]');
+      var nt=pan.querySelector('[data-k="snote'+i+'"]');
+      if(ms) t.mat=ms.value;
+      if(ps) t.pay=Math.max(0, parseFloat(ps.value)||0);
+      if(nt) t.note=nt.value.trim();
+    });
     j.priced=true;
     if(g("sync").checked && lbl){
       var r=findRate(j.type,lbl);
@@ -3473,17 +3571,22 @@ function orphScan(){
     /* รูปของงานที่ถูกลบไปแล้ว ยังต้องนับว่า "มีคนใช้อยู่"
        Why: เจ้าของกู้คืนงานได้ ถ้าเก็บกวาดลบรูปทิ้งไปก่อน จะกู้งานกลับมาได้แต่ไม่มีบิล
        ซึ่งแปลว่าไม่มีหลักฐานว่าลูกค้าเซ็นรับของ */
-    pullAllCol("edit_log","snapshot").catch(function(){ return null; })
+    pullAllCol("edit_log","snapshot").catch(function(){ return null; }),
+    /* v17: จุดแวะเป็นที่เก็บ path รูปที่ใหม่ ต้องนับด้วย ไม่งั้นเก็บกวาดจะลบบิลจุดแวะทิ้งทั้งหมด
+       (บทเรียนเดิมข้อ 20 — เพิ่มที่เก็บรูปที่ไหน ต้องมาบอกปุ่มเก็บกวาดที่นี่เสมอ) */
+    pullAllCol("job_stops","photos")
   ]).then(function(a){
-    var J=a[0], F=a[1], files=a[2], L=a[3];
+    var J=a[0], F=a[1], files=a[2], L=a[3], S=a[4];
     if(!L || L.total===null || L.rows.length!==L.total){
       orphSay('<b style="color:var(--accent)">ตรวจไม่สำเร็จ — อ่านประวัติงานที่ถูกลบไม่ครบ</b><br>' +
               'รูปของงานที่ถูกลบต้องเก็บไว้ให้กู้คืนได้ ยังไม่ลบอะไรทั้งนั้น ลองใหม่อีกครั้ง');
       return;
     }
-    if(J.total===null || J.rows.length!==J.total || F.total===null || F.rows.length!==F.total){
+    if(J.total===null || J.rows.length!==J.total || F.total===null || F.rows.length!==F.total ||
+       !S || S.total===null || S.rows.length!==S.total){
       orphSay('<b style="color:var(--accent)">ตรวจไม่สำเร็จ — ดึงรายการงานมาได้ไม่ครบ</b><br>' +
               'งาน '+J.rows.length+'/'+J.total+' · เติมน้ำมัน '+F.rows.length+'/'+F.total+
+              ' · จุดแวะ '+((S&&S.rows.length)||0)+'/'+((S&&S.total)===null?'?':((S&&S.total)||0))+
               '<br>ยังไม่ลบอะไรทั้งนั้น ลองใหม่อีกครั้ง');
       return;
     }
@@ -3491,11 +3594,13 @@ function orphScan(){
     function mark(v){ (v||[]).forEach(function(p){ if(p) used[p]=1; }); }
     J.rows.forEach(function(r){ mark(r.photos_start); mark(r.photos_end); });
     F.rows.forEach(function(r){ mark(r.photos_receipt); mark(r.photos_odo); });
+    S.rows.forEach(function(r){ mark(r.photos); });
     var keptDel=0;
     L.rows.forEach(function(r){
       var sn=r.snapshot; if(!sn) return;
       var before=Object.keys(used).length;
       mark(sn.photos_start); mark(sn.photos_end); mark(sn.photos_receipt); mark(sn.photos_odo);
+      mark(sn.photos);
       keptDel += Object.keys(used).length-before;
     });
 
