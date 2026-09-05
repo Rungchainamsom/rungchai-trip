@@ -615,17 +615,21 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
     <section id="v-ofuel" class="view hidden">
       <div class="row" style="justify-content:space-between; margin-top:18px">
         <div class="sec-title" style="margin:0">ค่าน้ำมัน</div>
-        <select id="ofuelPick" class="month"></select>
+        <div class="row" style="gap:8px; align-items:center">
+          <button id="ofuelNow" class="btn sm ghost hidden" type="button">◀ เดือนนี้</button>
+          <select id="ofuelPick" class="month"></select>
+        </div>
       </div>
       <div class="tiles" id="ofuelTiles" style="margin-top:10px"></div>
-      <div class="sec-title">อัตราสิ้นเปลืองแยกตามรถ</div>
-      <p class="hint" style="margin:0 0 10px">คิดจากเลขไมล์ — ระยะที่วิ่งระหว่างการเติมสองครั้ง หารด้วยลิตรที่เติม
-        การเติมครั้งแรกของรถแต่ละคันยังคิดไม่ได้ เพราะไม่มีเลขไมล์ครั้งก่อนให้เทียบ</p>
-      <div id="ofuelEff"></div>
-      <div class="sec-title">แยกตามรถ</div>
-      <div class="tablewrap"><table id="ofuelTruck"></table></div>
-      <div class="sec-title">แยกตามพนักงาน</div>
-      <div class="tablewrap"><table id="ofuelEmp"></table></div>
+      <div class="row" style="justify-content:space-between; align-items:center; gap:10px; margin-top:18px">
+        <div class="sec-title" style="margin:0" id="ofuelSumTitle">สรุปแยกตามรถ</div>
+        <div class="chips" id="ofuelByChips">
+          <button class="chip" type="button" data-by="truck" aria-pressed="true">🚛 ตามรถ</button>
+          <button class="chip" type="button" data-by="emp" aria-pressed="false">👤 ตามคนขับ</button>
+        </div>
+      </div>
+      <p class="hint" style="margin:6px 0 10px" id="ofuelSumHint"></p>
+      <div class="tablewrap"><table id="ofuelSum"></table></div>
       <div class="sec-title">รายการเติมทั้งหมด</div>
       <div class="card" id="ofuelList"></div>
     </section>
@@ -1960,7 +1964,7 @@ function fillSelect(el,items,valFn,labFn,keep){
   });
   if(cur) el.value=cur;
 }
-function monthOptions(el,keep,count){
+function monthOptions(el,keep,count,markNow){
   var cur=keep?el.value:null;
   var now=today(), y=parseInt(now.slice(0,4),10), m=parseInt(now.slice(5,7),10);
   var n=count||18;
@@ -1969,7 +1973,9 @@ function monthOptions(el,keep,count){
     var mm=m-i, yy=y;
     while(mm<=0){ mm+=12; yy--; }
     var v=yy+"-"+pad(mm);
-    var o=document.createElement("option"); o.value=v; o.textContent=fmtMonth(v); el.appendChild(o);
+    var o=document.createElement("option"); o.value=v;
+    o.textContent=fmtMonth(v)+((markNow && i===0) ? " (เดือนนี้)" : "");
+    el.appendChild(o);
   }
   el.value=cur||ym(now);
 }
@@ -3872,9 +3878,13 @@ function renderFuel(){
   fuelList($("fuelList"), mine, false);
   refreshCar3(); refreshCar4();
 }
+/* เจ้าของเลือกได้ว่าจะดูสรุปแบบไหน — จำไว้ระหว่างที่เปิดแอปอยู่ (เจ้าของสั่ง 5 ก.ย. 2569) */
+var ofuelBy="truck";
 function renderOwnerFuel(){
-  monthOptions($("ofuelPick"), true);
+  monthOptions($("ofuelPick"), true, null, true);
   var m=$("ofuelPick").value;
+  /* เปิดมาให้อยู่เดือนปัจจุบันเสมอ · ปุ่มกลับเดือนนี้โผล่เฉพาะตอนย้อนดูเดือนเก่า */
+  $("ofuelNow").classList.toggle("hidden", m===ym(today()));
   var list=DB.fuel.filter(function(f){ return ym(f.date)===m; }).sort(function(a,b){ return b.at-a.at; });
   var lit=sum(list,"liters");
   $("ofuelTiles").innerHTML=
@@ -3882,9 +3892,14 @@ function renderOwnerFuel(){
     tile("จำนวนลิตร", lit?lit.toFixed(0):"–", lit?"ลิตร (เฉพาะที่กรอก)":"ยังไม่ได้กรอกลิตร") +
     tile("เฉลี่ยต่อครั้ง", list.length?baht(sum(list,"amount")/list.length):"0", "บาท") +
     tile("ราคาเฉลี่ย/ลิตร", lit?(sum(list,"amount")/lit).toFixed(2):"–", "บาท");
-  fuelEffCards($("ofuelEff"), list);
-  fuelGroup($("ofuelTruck"), list, function(f){return f.truck;}, function(k){return truck(k).plate+" · "+truck(k).size;}, "รถ");
-  fuelGroup($("ofuelEmp"), list, function(f){return f.emp;}, function(k){return emp(k).name;}, "พนักงาน");
+  var ch=$("ofuelByChips").children;
+  for(var i=0;i<ch.length;i++)
+    ch[i].setAttribute("aria-pressed", ch[i].dataset.by===ofuelBy ? "true" : "false");
+  $("ofuelSumTitle").textContent = (ofuelBy==="emp") ? "สรุปแยกตามคนขับ" : "สรุปแยกตามรถ";
+  $("ofuelSumHint").textContent =
+    ((ofuelBy==="emp") ? "รถ = คันที่คนนั้นเติมในเดือนนี้ · " : "คนขับ = คนที่เติมของคันนั้นในเดือนนี้ · ") +
+    "กม./ล. กับ บาท/กม. คิดจากเลขไมล์ นับเฉพาะการเติมที่มีเลขไมล์ครั้งก่อนให้เทียบ (ครั้งแรกของแต่ละคันยังคิดไม่ได้)";
+  fuelSummary($("ofuelSum"), list, ofuelBy);
   fuelList($("ofuelList"), list, true);
 }
 /* ใครแก้ทะเบียนของรายการที่บันทึกไปแล้วได้ (เจ้าของตัดสิน 1 ก.ย. 2569)
@@ -3933,7 +3948,9 @@ function openFixTruck(f, body, btn){
     render();
   };
 }
-/* การ์ดสรุปอัตราสิ้นเปลืองแยกตามรถ
+/* [เลิกใช้ 5 ก.ย. 2569 — ตัวเลขไปอยู่ในตาราง fuelSummary() หมดแล้ว เก็บฟังก์ชันไว้เผื่อเอากลับมา
+   จะเอากลับ: ใส่ <div id="ofuelEff"></div> ในหน้า ofuel แล้วเรียก fuelEffCards($("ofuelEff"), list)]
+   การ์ดสรุปอัตราสิ้นเปลืองแยกตามรถ
    ใช้วิธีถ่วงน้ำหนัก (ระยะรวม ÷ ลิตรรวม) ไม่ใช่เฉลี่ยตัวเลขของแต่ละครั้ง
    Why: เติมครั้งละ 200 บาท กับเติมเต็มถัง ถ้าเฉลี่ยตรงๆ ครั้งเล็กจะดึงตัวเลขเพี้ยน
    และนับเฉพาะครั้งที่มีเลขไมล์ครั้งก่อนให้เทียบ ไม่งั้นลิตรของครั้งแรกจะไปหารระยะที่ไม่มี */
@@ -3969,20 +3986,60 @@ function fuelEffCards(host, list){
   });
   host.innerHTML=h;
 }
-function fuelGroup(tbl,list,keyFn,label,head){
-  var g={}; list.forEach(function(f){ var k=keyFn(f); (g[k]=g[k]||[]).push(f); });
-  var keys=Object.keys(g);
-  var h='<thead><tr><th>'+head+'</th><th class="r">ครั้ง</th><th class="r">ลิตร</th><th class="r">รวมเงิน</th></tr></thead><tbody>';
-  if(!keys.length) h+='<tr><td colspan="4" style="color:var(--ink3)">ไม่มีรายการ</td></tr>';
-  keys.forEach(function(k){
-    var L=g[k];
-    h+='<tr><td>'+label(k)+'</td><td class="r num">'+L.length+'</td>' +
-       '<td class="r num">'+(sum(L,"liters")||0).toFixed(1)+'</td>' +
-       '<td class="r num">'+baht(sum(L,"amount"))+'</td></tr>';
+/* ตารางสรุปน้ำมันแยกตามรถ — รวม "แยกตามรถ" กับ "แยกตามพนักงาน" เป็นตารางเดียว (เจ้าของสั่ง 5 ก.ย. 2569)
+   Why: คนขับผูกกับรถ 1:1 สองตารางเดิมจึงให้ตัวเลขชุดเดียวกันเป๊ะ อ่านแล้วซ้ำซ้อน
+   กม./ล. กับ บาท/กม. ใช้ถ่วงน้ำหนัก (ระยะรวม ÷ ลิตรรวม) เหมือนการ์ดอัตราสิ้นเปลือง
+   และนับเฉพาะครั้งที่มีเลขไมล์ครั้งก่อน ไม่งั้นลิตรของครั้งแรกจะไปหารระยะที่ไม่มี */
+function fuelSummary(tbl, list, by){
+  var isEmp = (by==="emp");
+  var keyOf = isEmp ? function(f){ return f.emp||""; } : function(f){ return f.truck||""; };
+  var subOf = isEmp ? function(f){ return f.truck||""; } : function(f){ return f.emp||""; };
+  var nameOf= isEmp ? function(k){ return String(emp(k).name||"?"); }
+                    : function(k){ return truck(k).plate+" · "+(truck(k).size||""); };
+  var subName=isEmp ? function(k){ return String(truck(k).plate||"?"); }
+                    : function(k){ return String(emp(k).name||"?"); };
+  var g={};
+  list.forEach(function(f){
+    var k=keyOf(f);
+    if(!g[k]) g[k]={n:0, liters:0, amount:0, run:0, runL:0, runB:0, runN:0, sub:{}};
+    var v=g[k];
+    v.n++; v.liters+=(f.liters||0); v.amount+=(f.amount||0);
+    if(subOf(f)) v.sub[subOf(f)]=true;
+    var r=fuelRun(f);
+    if(r>0 && f.liters>0){ v.run+=r; v.runL+=f.liters; v.runB+=(f.amount||0); v.runN++; }
   });
-  h+='</tbody><tfoot><tr><td>รวม</td><td class="r num">'+list.length+'</td>' +
-     '<td class="r num">'+(sum(list,"liters")||0).toFixed(1)+'</td>' +
-     '<td class="r num">'+baht(sum(list,"amount"))+'</td></tr></tfoot>';
+  var keys=Object.keys(g);
+  keys.sort(function(a,b){ return nameOf(a).localeCompare(nameOf(b),"th"); });
+  var T={n:0, liters:0, amount:0, run:0, runL:0, runB:0};
+  var h='<thead><tr><th>'+(isEmp?"คนขับ":"รถ")+'</th><th>'+(isEmp?"รถ":"คนขับ")+'</th>' +
+        '<th class="r">ครั้ง</th><th class="r">ลิตร</th><th class="r">รวมเงิน</th>' +
+        '<th class="r">ระยะ (กม.)</th><th class="r">กม./ล.</th><th class="r">บาท/กม.</th></tr></thead><tbody>';
+  if(!keys.length) h+='<tr><td colspan="8" style="color:var(--ink3)">ไม่มีรายการ</td></tr>';
+  keys.forEach(function(k){
+    var v=g[k];
+    T.n+=v.n; T.liters+=v.liters; T.amount+=v.amount;
+    T.run+=v.run; T.runL+=v.runL; T.runB+=v.runB;
+    /* ชื่อมาจาก LINE มี & < > ได้ ต้อง esc ก่อนเสมอ (ตารางชุดเดิมลืมจุดนี้) */
+    var subs=Object.keys(v.sub).map(subName)
+               .sort(function(a,b){ return a.localeCompare(b,"th"); }).join(" · ");
+    var kml=v.runL>0 ? v.run/v.runL : 0;
+    h+='<tr><td>'+esc(nameOf(k))+'</td>' +
+       '<td>'+esc(subs||"–")+'</td>' +
+       '<td class="r num">'+v.n+'</td>' +
+       '<td class="r num">'+v.liters.toFixed(1)+'</td>' +
+       '<td class="r num">'+baht(v.amount)+'</td>' +
+       '<td class="r num">'+(v.run?v.run.toLocaleString("th-TH"):"–")+'</td>' +
+       '<td class="r num">'+(kml?kml.toFixed(2):"–")+'</td>' +
+       '<td class="r num">'+(v.run>0?(v.runB/v.run).toFixed(2):"–")+'</td></tr>';
+  });
+  var tk=T.runL>0 ? T.run/T.runL : 0;
+  h+='</tbody><tfoot><tr><td>รวม</td><td>–</td>' +
+     '<td class="r num">'+T.n+'</td>' +
+     '<td class="r num">'+T.liters.toFixed(1)+'</td>' +
+     '<td class="r num">'+baht(T.amount)+'</td>' +
+     '<td class="r num">'+(T.run?T.run.toLocaleString("th-TH"):"–")+'</td>' +
+     '<td class="r num">'+(tk?tk.toFixed(2):"–")+'</td>' +
+     '<td class="r num">'+(T.run>0?(T.runB/T.run).toFixed(2):"–")+'</td></tr></tfoot>';
   tbl.innerHTML=h;
 }
 
@@ -4063,6 +4120,10 @@ $("uPrice").oninput=calcLiters;
 $("uOdo").oninput=paintOdoHint;
 $("uSave").onclick=saveFuel;
 $("ofuelPick").onchange=renderOwnerFuel;
+$("ofuelNow").onclick=function(){ $("ofuelPick").value=ym(today()); renderOwnerFuel(); };
+(function(){ var c=$("ofuelByChips").children;
+  for(var i=0;i<c.length;i++) c[i].onclick=function(){ ofuelBy=this.dataset.by; renderOwnerFuel(); };
+})();
 $("n1Minus").onclick=function(){ var v=parseInt($("night1Val").textContent,10)||0; $("night1Val").textContent=Math.max(0,v-1); };
 $("n1Plus").onclick=function(){ var v=parseInt($("night1Val").textContent,10)||0; $("night1Val").textContent=Math.min(30,v+1); };
 $("moreToggle").onclick=function(){ $("moreBox").classList.toggle("hidden"); };
