@@ -298,6 +298,9 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 .sheet td.r,.sheet th.r{text-align:right}
 .sheet td.c,.sheet th.c{text-align:center}
 .sheet tfoot td{font-weight:700; background:#f2f2f2}
+/* บรรทัดจุดแวะ — เยื้องเข้าไปและตัวเล็กลง จะได้อ่านออกว่าเป็นลูกของงานบรรทัดบน */
+.sheet tr.sh-stop td{font-size:.88em; padding-top:1.2pt; padding-bottom:1.2pt}
+.sheet tr.sh-stop td:nth-child(3){padding-left:14pt}
 .sheet .sh-lab{font-size:10.5pt; font-weight:700; margin:7pt 0 3pt}
 .sheet .sh-2col{display:flex; gap:4mm; align-items:flex-start}
 .sheet .sh-off{display:none}
@@ -3236,9 +3239,16 @@ function slipSheet(e, m){
   var ab=(DB.absent[e.id]||{})[m]||0;
   var anyJob=workedMonth(e.id,m);
   var allow=anyJob ? Math.max(0, (DB.set.allow||0)-ab*(DB.set.deduct||0)) : 0;
-  var base=0, nightTot=0, nightsN=0;
-  list.forEach(function(j){ base+=(j.price||0); nightTot+=nightPay(j); nightsN+=(j.nights||0); });
-  var fee=base+nightTot, net=fee+allow;
+  /* 🔴 ของเดิมบวก j.price ตรงๆ → ตกค่าจุดแวะทั้งก้อน และคิดโหมด "คิว"/"วัน" ผิดด้วย
+     แถวในตารางโชว์ payOf(j) ซึ่งรวมจุดแวะอยู่แล้ว ยอดรวมข้างล่างจึงน้อยกว่าผลบวกของแถว
+     (เจอ 7 ก.ย. 2569 ใบของสัญจร เดือน ก.ย. รวม 3,700 ทั้งที่แถวบวกกันได้ 3,900)
+     **บวกเงินในใบสรุปต้องใช้ฟังก์ชันเดียวกับที่หน้าจอใช้เสมอ อย่าอ่านช่องดิบ** */
+  var base=0, nightTot=0, nightsN=0, stopTot=0, stopN=0;
+  list.forEach(function(j){
+    base+=payBase(j); nightTot+=nightPay(j); nightsN+=(j.nights||0);
+    stopTot+=stopsPay(j); stopN+=stopsOf(j).length;
+  });
+  var fee=base+nightTot+stopTot, net=fee+allow;
 
   var fuelBaht=0, fuelL=0;
   fuels.forEach(function(f){
@@ -3250,12 +3260,23 @@ function slipSheet(e, m){
   var fs="10.5pt", pd="3.2pt";
 
   var plates=slipPlates(mine);
+  /* จุดแวะแยกบรรทัดของตัวเอง (เจ้าของขอ 7 ก.ย. 2569)
+     Why: เดิมยอดจุดแวะถูกบวกซ่อนอยู่ในเงินของงานหลัก คนขับอ่านแล้วไม่รู้ว่ามาจากไหน
+     บรรทัดงาน = ค่างาน + ค่าค้างคืน · บรรทัด ↳ = ค่าจุดแวะจุดนั้น · บวกลงมาได้ตรงกับยอดรวม */
   function slipRow(j){
-    return '<tr><td class="c num">'+fmtDate(j.date).slice(0,5)+'</td>' +
+    var h='<tr><td class="c num">'+fmtDate(j.date).slice(0,5)+'</td>' +
       '<td class="num">'+esc(truck(j.truck).plate)+'</td>' +
       '<td>'+esc(jobTitle(j))+'</td>' +
       '<td class="c num">'+(j.nights?j.nights:"–")+'</td>' +
-      '<td class="r num">'+baht(payOf(j))+'</td></tr>';
+      '<td class="r num">'+baht(payBase(j)+nightPay(j))+'</td></tr>';
+    stopsOf(j).forEach(function(t,i){
+      h+='<tr class="sh-stop"><td></td><td></td>' +
+         '<td>↳ แวะรับ จุดที่ '+(t.seq||i+1) +
+           (t.mat?' · '+esc(t.mat):'') + (t.note?' — '+esc(t.note):'') + '</td>' +
+         '<td class="c"></td>' +
+         '<td class="r num">'+baht(stopPay(t))+'</td></tr>';
+    });
+    return h;
   }
   var HEAD='<thead><tr><th class="c">วันที่</th><th>ทะเบียน</th><th>รายการงาน</th>' +
            '<th class="c">คืน</th><th class="r">เงิน</th></tr></thead>';
@@ -3297,6 +3318,7 @@ function slipSheet(e, m){
       '<div class="sh-row"><span>ค่าเที่ยว ('+list.length+' งาน)</span><b class="num">'+baht(fee)+'</b></div>' +
       '<div class="sh-row sub"><span>ค่างาน</span><span class="num">'+baht(base)+'</span></div>' +
       '<div class="sh-row sub"><span>ค่าค้างคืน '+nightsN+' คืน</span><span class="num">'+baht(nightTot)+'</span></div>' +
+      (stopN ? '<div class="sh-row sub"><span>ค่าแวะรับสินค้า '+stopN+' จุด</span><span class="num">'+baht(stopTot)+'</span></div>' : '') +
       '<div class="sh-row"><span>เบี้ยเลี้ยง</span><b class="num">'+baht(allow)+'</b></div>' +
       '<div class="sh-row sub"><span>'+(anyJob
         ? 'เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0)+' − ขาดงาน '+ab+' วัน × '+baht(DB.set.deduct||0)+' = '+baht(ab*(DB.set.deduct||0))
