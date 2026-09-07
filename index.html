@@ -437,6 +437,10 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
           <span class="hint">วันที่ <b class="num" id="dateLabel" style="color:var(--ink); font-size:15px"></b></span>
           <span class="datewrap"><span class="lbl" style="padding:6px 12px; font-size:14px; font-family:inherit">เปลี่ยนวัน</span><input type="date" id="fDate"></span>
         </div>
+        <div id="busyWarn" class="card pad hidden" style="box-shadow:none; background:var(--accent-soft); border:1px solid var(--accent)">
+          <b style="color:var(--accent)">⚠️ ยังมีงานค้างอยู่</b>
+          <div class="hint" id="busyWarnText" style="margin-top:4px"></div>
+        </div>
         <button class="btn primary big block" id="btnStart">📍 เริ่มงาน — ปักจุดเริ่มต้น</button>
         <p class="hint" id="startHint" style="margin:0; text-align:center"></p>
       </div>
@@ -2135,6 +2139,25 @@ function paintNew(){
     ? "ปักพิกัดต้นทางแล้วออกรถได้เลย ค่อยมากดปิดงานตอนถึงปลายทาง"
     : "งานประเภทนี้บันทึกจบในครั้งเดียว";
   $("dateLabel").textContent=fmtDate($("fDate").value);
+  paintBusy();
+}
+/* กันคนขับเปิดงานใหม่ทั้งที่ยังมีงานค้าง (เจ้าของสั่ง 6 ก.ย. 2569)
+   Why (ของจริง): นายบอยกดเริ่มงาน 2 ครั้งห่างกัน 90 วินาที เพราะนึกว่าครั้งแรกไม่ติด
+     เกิดงาน active ซ้อนกัน 2 ใบ รถคันเดียวกัน พิกัดห่างกัน 10 ซม.
+   ที่แย่กว่านั้น: การ์ด "กำลังทำงาน" โชว์ได้ทีละใบ (activeJob() คืนใบล่าสุด)
+     ใบเก่าเลยถูกบัง คนขับกดปิดงานไม่ได้เลย เหลือทางเดียวคือกดลบทิ้ง
+   จึงไม่บล็อกเฉยๆ แต่เปลี่ยนปุ่มเป็นทางลัดพาไปหน้าปิดงานของใบที่ค้าง จะได้ไม่ตันอยู่ตรงนั้น */
+function paintBusy(){
+  var b = me ? activeJob(me.id) : null;
+  $("busyWarn").classList.toggle("hidden", !b);
+  if(b){
+    $("busyWarnText").innerHTML =
+      esc(jobTitle(b)) + ' · เริ่ม ' + clock(b.start && b.start.at) + ' น.' +
+      '<br>ปิดงานใบนี้ก่อน ถึงจะเปิดงานใหม่ได้';
+    $("btnStart").textContent = "✓ ไปปิดงานที่ค้างก่อน";
+    $("startHint").textContent = "กดแล้วพาไปหน้าปิดงานของใบที่ค้างอยู่";
+  }
+  return b;
 }
 /* งานประเภท "ทั่วไป" บางงานคนขับไม่ได้ขับรถ จึงใส่ตัวเลือก "ไม่ได้ใช้รถ" ให้เฉพาะประเภทนี้
    ประเภทอื่นไม่มีตัวเลือกนี้ ต้องเลือกรถเสมอเหมือนเดิม
@@ -2170,6 +2193,13 @@ function getGeo(cb){
     {enableHighAccuracy:true, timeout:10000});
 }
 function startJob(){
+  /* กันอีกชั้น เผื่อหน้าจอค้างอยู่ตั้งแต่ก่อนมีงานค้าง แล้วกดปุ่มเดิม */
+  var busyJob = me ? activeJob(me.id) : null;
+  if(busyJob){
+    toast("ยังมีงานค้างอยู่ ปิดงานนั้นก่อนถึงจะเปิดงานใหม่ได้");
+    openFinish(busyJob);
+    return;
+  }
   var two=!!TWO_STEP[draft.type];
   if(draft.type==="อื่นๆ"){
     draft.other=$("fOther").value.trim();
@@ -2511,11 +2541,21 @@ function canEditJob(j){ return !!(isOwner(me) && j.status==="done"); }
    คนขับ = ของตัวเอง เฉพาะงานวันนี้ และต้องยังไม่ใส่ราคา
            ยกเว้นงานทั่วไปที่ระบบใส่ค่าแรง 300 ให้ทันที อันนั้นลบได้ถ้าเป็นของวันนี้
    ฝั่งฐานข้อมูลมี policy jobs_delete_own + trigger jobs_del_guard กันไว้อีกชั้น */
+/* หน้าต่างลบของคนขับ 30 นาที (เจ้าของสั่ง 6 ก.ย. 2569 · v18)
+   Why: เดิมคนขับลบงานของวันนี้ได้ทุกใบที่ยังไม่ใส่ราคา ปิดงานส่งของไปแล้วก็ยังลบได้ หลักฐานหายเงียบ
+        เหตุผลจริงที่คนขับต้องลบคือ "กดซ้ำ / กดผิดคัน" ซึ่งรู้ตัวภายในไม่กี่นาที
+        งานที่ปิดไปแล้วจึงต้องให้เจ้าของหรือแอดมินลบให้เท่านั้น
+   งานขั้นเดียว (ทั่วไป · อื่นๆ) เกิดมาเป็น done ตั้งแต่แรก จึงไม่เอาเงื่อนไข status มาใช้
+   **กติกาต้องตรงกับ policy jobs_delete_own ฝั่งฐานข้อมูลเป๊ะ** ไม่งั้นปุ่มโผล่แต่กดแล้วเด้ง */
+var DEL_WINDOW_MS = 30*60*1000;
 function canDelJob(j){
   if(!me) return false;
   if(isOwner(me)) return true;
   if(isAdmin(me)) return !j.priced;
-  return j.emp===me.id && j.date===today() && (!j.priced || j.type==="ทั่วไป");
+  if(j.emp!==me.id || j.date!==today()) return false;
+  if(j.priced && j.type!=="ทั่วไป" && !isCompanyJob(j)) return false;
+  if(TWO_STEP[j.type] && j.status!=="active") return false;
+  return (Date.now()-(j.at||0)) <= DEL_WINDOW_MS;
 }
 function delJob(j){
   if(busyGuard()) return;
@@ -4448,7 +4488,11 @@ $("logoutBtn").onclick=function(){
 $("btnNew").onclick=openNew;
 $("cancelNew").onclick=function(){ go("home"); };
 $("fDate").onchange=function(){ $("dateLabel").textContent=fmtDate(this.value); };
-$("btnStart").onclick=startJob;
+$("btnStart").onclick=function(){
+  var b = me ? activeJob(me.id) : null;
+  if(b){ openFinish(b); return; }
+  startJob();
+};
 $("backFinish").onclick=function(){ go("home"); };
 $("btnEndGeo").onclick=function(){
   $("endGeoText").textContent="กำลังหาพิกัด…";
