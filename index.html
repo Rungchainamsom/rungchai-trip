@@ -844,6 +844,17 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="tAdd">เพิ่ม</button></label>
       </div>
 
+      <div class="sec-title">รายการสินค้า</div>
+      <div class="tablewrap"><table id="matTable"></table></div>
+      <div class="card pad row" style="margin-top:10px">
+        <label class="f" style="flex:2; min-width:160px">ชื่อสินค้า<input type="text" id="mName" placeholder="เช่น หินคลุก"></label>
+        <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="mAdd">เพิ่ม</button></label>
+      </div>
+      <p class="hint" style="margin:8px 0 0">
+        ลำดับในตารางนี้คือลำดับที่โผล่ในช่องเลือกสินค้า ·
+        แก้ชื่อแล้วงานเก่าที่ใช้ชื่อเดิมจะถูกแก้ตามให้ด้วย · ลบแล้วงานเก่ายังเก็บชื่อเดิมไว้เหมือนเดิม
+      </p>
+
       <div id="trashBlock">
       <div class="sec-title">งานที่ถูกลบ</div>
       <div class="card pad stack">
@@ -1466,7 +1477,13 @@ function runSync(){
     .catch(function(e){
       syncBadge("bad");
       var m=(e&&e.message)?e.message:String(e);
-      if(/foreign key|violates foreign/i.test(m)){
+      if(/RCDUP/.test(m)){
+        /* v19 · คนขับ 1 คนมีงานที่ยังไม่ปิดได้ 1 ใบ ฐานข้อมูลไม่รับใบที่ 2
+           ดึงของจริงกลับมาโชว์ ใบที่คลาวด์ไม่รับจะหายไปจากจอ แล้วแถบเตือน
+           "ไปปิดงานที่ค้างก่อน" จะพาไปปิดใบเดิมเอง */
+        m="\u0e40\u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19\u0e43\u0e2b\u0e21\u0e48\u0e44\u0e21\u0e48\u0e44\u0e14\u0e49 \u2014 \u0e22\u0e31\u0e07\u0e21\u0e35\u0e07\u0e32\u0e19\u0e17\u0e35\u0e48\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e1b\u0e34\u0e14\u0e2d\u0e22\u0e39\u0e48 1 \u0e43\u0e1a \u0e1b\u0e34\u0e14\u0e07\u0e32\u0e19\u0e43\u0e1a\u0e40\u0e14\u0e34\u0e21\u0e01\u0e48\u0e2d\u0e19";
+        bootstrap().then(function(){ render(); }).catch(function(){});
+      }else if(/foreign key|violates foreign/i.test(m)){
         /* ลบพนักงาน/รถ ที่ยังมีงานหรือค่าน้ำมันผูกอยู่ ฐานข้อมูลจะไม่ยอม
            ดึงของจริงกลับมาโชว์ ไม่งั้นหน้าจอจะไม่ตรงกับคลาวด์ */
         m="ลบไม่ได้ เพราะยังมีงานหรือรายการที่บันทึกไว้ผูกอยู่ — ใช้ปุ่ม \u201cปิดใช้งาน\u201d แทน";
@@ -1512,6 +1529,16 @@ function runSync(){
       if(isUuid(id) && !have[id]) gone.push(id);
     });
     var chain=Promise.resolve();
+    /* ส่ง "แก้ไขแถวเดิม" ก่อน "แถวใหม่" เสมอ
+       Why: ถ้าแถวใหม่ถูกฐานข้อมูลตีกลับ (เช่น v19 กันงานซ้อน) ทั้งสายจะหยุดตรงนั้น
+       ของเดิมส่งแถวใหม่ก่อน แปลว่า "ปิดงานใบที่ทำอยู่" จะไม่ได้ขึ้นคลาวด์เลย
+       สลับลำดับแล้ว งานที่ทำจริงขึ้นครบก่อน แถวที่มีปัญหาค่อยว่ากัน */
+    if(ups.length){
+      chain=chain.then(function(){
+        return rest(TABLE[t], {method:"POST", body:ups,
+          headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
+      });
+    }
     if(news.length){
       chain=chain.then(function(){
         return rest(TABLE[t], {method:"POST", body:news.map(function(n){return n.row;}),
@@ -1525,12 +1552,6 @@ function runSync(){
           });
       });
     }
-    if(ups.length){
-      chain=chain.then(function(){
-        return rest(TABLE[t], {method:"POST", body:ups,
-          headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
-      });
-    }
     if(gone.length){
       chain=chain.then(function(){
         /* กันพลาด: ถ้าจู่ๆ จะลบทีเดียวเยอะผิดปกติ แปลว่าข้อมูลในเครื่องเพี้ยน ไม่ใช่ผู้ใช้กดลบ */
@@ -1542,14 +1563,39 @@ function runSync(){
     return chain;
   }
 
+  /* ของเดิมส่งได้อย่างเดียวคือ "เพิ่ม" — ลบกับแก้ชื่อกับจัดลำดับหายไปตอนรีเฟรช
+     ตอนนี้ส่งครบสามทาง เหมือนที่ syncTable ทำกับตารางอื่น (บทเรียนกับดักข้อ 9) */
   function syncMats(){
     if(SNAP._mats===JSON.stringify(DB.mats)) return Promise.resolve();
-    var old=[]; try{ old=JSON.parse(SNAP._mats||"[]"); }catch(e){}
-    var add=DB.mats.filter(function(m){ return old.indexOf(m)<0; });
-    if(!add.length) return Promise.resolve();
-    return rest("materials", {method:"POST",
-      body: add.map(function(m,i){ return {name:m, sort_order:100+i}; }),
-      headers:{Prefer:"resolution=ignore-duplicates,return=minimal"}});
+    var was=[]; try{ was=JSON.parse(SNAP._mats||"[]"); }catch(e){}
+    var now=DB.mats||[];
+    /* คนขับมีสิทธิ์แค่ "เพิ่ม" (policy mat_add) แตะแถวเดิมไม่ได้เลย
+       ถ้าส่ง merge-duplicates ไปด้วย มันจะกลายเป็น UPDATE แล้วโดน RLS ตีกลับ
+       → จุดสถานะแดงค้างทั้งที่คนขับไม่ได้ทำอะไรผิด (บทเรียนกับดักข้อ 24) */
+    if(!isStaff(me)){
+      var add=now.filter(function(m){ return was.indexOf(m)<0; });
+      if(!add.length) return Promise.resolve();
+      return rest("materials", {method:"POST",
+        body: add.map(function(m,i){ return {name:m, sort_order:100+i}; }),
+        headers:{Prefer:"resolution=ignore-duplicates,return=minimal"}});
+    }
+    var gone=was.filter(function(m){ return now.indexOf(m)<0; });
+    var chain=Promise.resolve();
+    gone.forEach(function(m){
+      chain=chain.then(function(){
+        return rest("materials?name=eq."+encodeURIComponent(m),
+                    {method:"DELETE", headers:{Prefer:"return=minimal"}});
+      });
+    });
+    if(now.length){
+      chain=chain.then(function(){
+        /* on_conflict=name → ชื่อเดิมอัปเดตลำดับ ชื่อใหม่เพิ่มเข้าไป จบในคำสั่งเดียว */
+        return rest("materials?on_conflict=name", {method:"POST",
+          body: now.map(function(m,i){ return {name:m, sort_order:(i+1)*10}; }),
+          headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
+      });
+    }
+    return chain;
   }
 
   function syncAbsent(){
@@ -3712,6 +3758,7 @@ function renderSettings(){
   $("trashBlock").classList.toggle("hidden", !isOwner(me));
   paintEmpList();
   $("empSearch").oninput=paintEmpList;
+  wireMatAdd();
   var sizes=(DB.sizes&&DB.sizes.length?DB.sizes:SIZES);
   /* คนขับประจำรถ — งานที่นำเข้าจากท่าทรายรู้แค่ทะเบียน ต้องอาศัยตรงนี้ลงชื่อคนให้
      **เอาเฉพาะคนขับ ไม่เอาเจ้าของ** เพราะเงินค่าเที่ยวเป็นของคนขับ เจ้าของเป็นคนใส่ราคาให้
@@ -3796,6 +3843,93 @@ function wireTruckEdit(){
       }, x.plate);
     };
   });
+  paintMats();
+}
+
+/* =============== รายการสินค้า (หน้าตั้งค่า) ===============
+   Why: ชื่อสินค้าเพิ่มเข้าระบบได้จากทั้งฝั่งคนขับและฝั่งเจ้าของ แต่ไม่เคยมีทางลบหรือแก้เลย
+        พิมพ์ผิดครั้งเดียวก็ค้างอยู่ในช่องเลือกตลอดไป (7 ก.ย. 2569 ค้างอยู่ 10 ชื่อ)
+   ลำดับในตารางนี้ = sort_order ในฐานข้อมูล = ลำดับที่โผล่ในช่องเลือกสินค้าทุกที่ */
+function matList(){ return (DB.mats && DB.mats.length) ? DB.mats : (DB.mats = MATS.slice()); }
+function matUsed(name){
+  var n=0;
+  DB.job.forEach(function(j){ if((j.mat||"")===name) n++; });
+  (DB.stop||[]).forEach(function(t){ if((t.mat||"")===name) n++; });
+  DB.rate.forEach(function(r){ if((r.mat||"")===name) n++; });
+  return n;
+}
+/* แก้ชื่อแล้วต้องไล่แก้ของเก่าด้วย ไม่งั้นชื่อที่พิมพ์ผิดยังค้างอยู่ในงานที่ลงไปแล้ว
+   ไม่ต้องยิง REST เอง — แก้ในหน่วยความจำแล้ว save() ชั้นซิงก์จะเห็นว่าแถวเปลี่ยนแล้วส่งเอง */
+function matRename(from, to){
+  var n=0;
+  DB.job.forEach(function(j){ if((j.mat||"")===from){ j.mat=to; n++; } });
+  (DB.stop||[]).forEach(function(t){ if((t.mat||"")===from){ t.mat=to; n++; } });
+  DB.rate.forEach(function(r){ if((r.mat||"")===from){ r.mat=to; n++; } });
+  return n;
+}
+function paintMats(){
+  var box=$("matTable"); if(!box) return;
+  var list=matList();
+  var t='<thead><tr><th>ชื่อสินค้า</th><th class="r">ใช้อยู่</th><th class="r">ลำดับ</th><th></th></tr></thead><tbody>';
+  list.forEach(function(m,i){
+    var used=matUsed(m);
+    t+='<tr><td>'+esc(m)+'</td>' +
+       '<td class="r num">'+(used?used+' รายการ':"—")+'</td>' +
+       '<td class="r"><button class="btn sm ghost" data-mup="'+i+'"'+(i===0?" disabled":"")+'>▲</button> ' +
+         '<button class="btn sm ghost" data-mdn="'+i+'"'+(i===list.length-1?" disabled":"")+'>▼</button></td>' +
+       '<td class="r"><button class="btn sm ghost" data-mren="'+i+'">แก้ชื่อ</button> ' +
+         '<button class="btn sm ghost" data-mdel="'+i+'">ลบ</button></td></tr>';
+  });
+  if(!list.length) t+='<tr><td colspan="4" class="hint">ยังไม่มีรายการสินค้า</td></tr>';
+  box.innerHTML=t+'</tbody>';
+
+  function move(i, d){
+    var a=matList();
+    if(i+d<0 || i+d>=a.length) return;
+    var x=a[i]; a[i]=a[i+d]; a[i+d]=x;
+    save(); render(); toast("จัดลำดับใหม่แล้ว");
+  }
+  document.querySelectorAll("[data-mup]").forEach(function(b){
+    b.onclick=function(){ move(+b.getAttribute("data-mup"), -1); };
+  });
+  document.querySelectorAll("[data-mdn]").forEach(function(b){
+    b.onclick=function(){ move(+b.getAttribute("data-mdn"), 1); };
+  });
+  document.querySelectorAll("[data-mren]").forEach(function(b){
+    b.onclick=function(){
+      var a=matList(), i=+b.getAttribute("data-mren"), from=a[i];
+      askText("แก้ชื่อสินค้า", "งานเก่าที่ใช้ \""+from+"\" จะถูกแก้ตามให้ด้วย", function(v){
+        v=(v||"").trim();
+        if(!v || v===from) return;
+        if(a.indexOf(v)>=0){ toast("\""+v+"\" มีอยู่ในรายการแล้ว"); return; }
+        a[i]=v;
+        var n=matRename(from, v);
+        save(); render();
+        toast("แก้เป็น \""+v+"\" แล้ว" + (n ? " · แก้ในของเก่า "+n+" รายการด้วย" : ""));
+      }, from);
+    };
+  });
+  document.querySelectorAll("[data-mdel]").forEach(function(b){
+    var a=matList(), i=+b.getAttribute("data-mdel"), name=a[i], used=matUsed(name);
+    armBtn(b, used ? "กดอีกครั้ง = ลบ ("+used+" รายการยังใช้อยู่)" : "กดอีกครั้ง = ลบ", function(){
+      var arr=matList(), k=arr.indexOf(name);
+      if(k<0) return;
+      arr.splice(k,1);
+      save(); render();
+      toast("ลบ \""+name+"\" ออกจากรายการแล้ว" + (used ? " · งานเก่ายังเก็บชื่อเดิมไว้" : ""));
+    });
+  });
+}
+function wireMatAdd(){
+  var btn=$("mAdd"); if(!btn) return;
+  btn.onclick=function(){
+    var el=$("mName"), v=(el.value||"").trim();
+    if(!v){ toast("ยังไม่ได้พิมพ์ชื่อสินค้า"); el.focus(); return; }
+    var a=matList();
+    if(a.indexOf(v)>=0){ toast("\""+v+"\" มีอยู่ในรายการแล้ว"); return; }
+    a.push(v); el.value="";
+    save(); render(); toast("เพิ่ม \""+v+"\" แล้ว");
+  };
 }
 function wireDel(attr,arr){
   document.querySelectorAll("["+attr+"]").forEach(function(b){
