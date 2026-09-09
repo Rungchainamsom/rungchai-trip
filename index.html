@@ -1772,6 +1772,34 @@ function rateWhat(r){
   var s=[]; if(r.mat) s.push(r.mat); if(r.dest) s.push(r.dest);
   return s.join(" → ");
 }
+/* เดา "งานเหมือนเดิม" ให้ใบที่ยังไม่มีชื่องาน — จับคู่จาก สินค้า + ระยะทางใกล้เคียง
+   Why ต้องมีระยะทางด้วย: ของจริง "ส่งทราย" มีถึง 5 ชื่องาน ราคา 50/100/250/250/300
+        ดูแค่สินค้าจะเลือกผิดแน่ๆ · งานส่งไม่มีช่องปลายทาง ระยะทางจึงเป็นตัวเดียวที่แยกปลายทางได้
+   Why ราคาเอาจากสมุดราคางาน ไม่ใช่จากใบเก่า: เจ้าของแก้ราคาในสมุดแล้วต้องได้ราคาใหม่ทันที
+   Why ตัดใบที่ km<=0 ทิ้ง: ใบที่ GPS ไม่ติดจะ km=0 กันหมด เอามาเทียบแล้วชนกันมั่ว
+   คืน null เมื่อไม่ชัด (เจอมากกว่า 1 ชื่องานในระยะใกล้กัน) — ไม่เดามั่ว ให้เจ้าของเลือกเอง */
+var GUESS_KM = 3;
+function guessRate(j){
+  if(!j || (j.label||"").trim()) return null;
+  var km=j.km; if(km==null || !(km>0)) return null;
+  var mat=(j.mat||"").trim(); if(!mat) return null;
+  var hit={}, keys=[];
+  DB.job.forEach(function(o){
+    if(!o || o.id===j.id) return;
+    if(!o.priced || o.flatTrip || isCompanyJob(o)) return;
+    if(o.type!==j.type) return;
+    if((o.mat||"").trim()!==mat) return;
+    if(o.km==null || !(o.km>0)) return;
+    if(Math.abs(o.km-km)>GUESS_KM) return;
+    var L=(o.label||"").trim(); if(!L) return;
+    if(!hit[L]){ hit[L]=0; keys.push(L); }
+    hit[L]++;
+  });
+  if(keys.length!==1) return null;
+  var r=findRate(j.type, keys[0]);
+  if(!r || !(r.price>0)) return null;
+  return { rate:r, n:hit[keys[0]] };
+}
 /* ช่องกรอกชื่องาน = ช่องเลือกงานเดิม + ช่องพิมพ์ชื่อใหม่ (โผล่เมื่อกด ＋ พิมพ์ชื่องานใหม่)
    Why ใช้ <select> ไม่ใช่ datalist: บนมือถือ datalist บางเบราว์เซอร์ไม่ขึ้นรายการเลย
         และเจ้าของอยาก "เลือก" ไม่ใช่ "พิมพ์ให้ตรงเป๊ะ" ซึ่งเดิมพิมพ์ผิดตัวเดียว = กลายเป็นงานใหม่
@@ -1809,6 +1837,15 @@ function jobNameField(type, initial, caption){
   return {
     box: box,
     get: function(){ return (sel.value==="__new" ? inp.value : sel.value).trim(); },
+    /* เลือกชื่องานให้จากโค้ด (ตอนระบบเดาให้) — ไม่ยิง cb เพราะคนเรียกเติมราคาเองอยู่แล้ว
+       คืน false ถ้าชื่อนั้นไม่มีในช่องเลือก คนเรียกจะได้ไม่เติมราคาค้างไว้เฉยๆ */
+    set: function(label){
+      var L=(label||"").trim(); if(!L) return false;
+      var ok=false;
+      for(var i=0;i<sel.options.length;i++) if(sel.options[i].value===L) ok=true;
+      if(!ok) return false;
+      sel.value=L; showInput(false); inp.value=""; return true;
+    },
     onPick: function(fn){ cb=fn; }
   };
 }
@@ -3113,6 +3150,21 @@ function renderWait(){
     pin.oninput=calc; nin.oninput=calc; rin.oninput=calc;
     qin.oninput=calc; mSel.onchange=calc;
     suggest();
+    /* งานที่เหมือนเดิม — ใส่ชื่องาน+ราคาให้เลย เจ้าของแค่ตรวจแล้วกดยืนยัน
+       เติมเฉพาะใบที่ยังไม่มีชื่องาน และจับคู่ได้ชัดเจนใบเดียว (ดู guessRate)
+       Why ยังต้องกดยืนยัน: ราคาผิดแล้วจ่ายผิดเงียบๆ แพงกว่าการกดปุ่มหนึ่งครั้งมาก */
+    var g=guessRate(j);
+    if(g && nf.set(g.rate.label)){
+      pin.value=g.rate.price; mSel.value=g.rate.unit||"เที่ยว";
+      if(mSel.value==="วัน" && !qin.value) qin.value=1;
+      var gw=rateWhat(g.rate);
+      sug.innerHTML='<b style="color:var(--ink)">งานเดิม: '+esc(g.rate.label)+'</b> · ' +
+        baht(g.rate.price)+' บาท/'+esc(g.rate.unit||"เที่ยว")+
+        ' <span class="pill t3">ระบบใส่ให้</span><br>จับคู่จากสินค้า '+esc(j.mat||"")+
+        ' + ระยะ '+j.km.toFixed(1)+' กม. ใกล้กับงานเดิม '+g.n+' ใบ' +
+        (gw && gw!==(j.mat||"") ? ' · ปกติ '+esc(gw) : '')+' — ตรวจแล้วกดยืนยันได้เลย';
+      calc();
+    }
     /* ลงงานทั่วไปทีหลังจะทำให้งานส่งใบนี้ค้างคิวอยู่ (ตอนปิดงานยังไม่เข้าเงื่อนไข)
        เสนอค่าเที่ยวเหมาให้ตรงนี้ เจ้าของกดยืนยันทีเดียวจบ ไม่ต้องจำเรตเอง */
     var flatW=flatTripFor(j);
