@@ -598,7 +598,21 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
           <div class="hint" id="uTruckHint" style="margin-top:6px"></div>
         </div>
 
-        <label class="f"><span>จำนวนเงิน (บาท) <b style="color:var(--accent)">*</b></span>
+        <div>
+          <div class="hint" style="font-weight:600; color:var(--ink2); margin-bottom:8px">เติมที่ไหน <b style="color:var(--accent)">*</b></div>
+          <div class="choices" id="uSrcChips">
+            <button class="choice" type="button" data-src="pump" aria-pressed="false"><span class="ic">⛽</span>ปั๊มน้ำมัน<small>กรอกยอดเงินตามใบเสร็จ</small></button>
+            <button class="choice" type="button" data-src="tank" aria-pressed="false"><span class="ic">🛢️</span>ถังท่าทราย<small>กรอกลิตรตามมิเตอร์ถัง</small></button>
+          </div>
+          <div class="hint" id="uSrcHint" style="margin-top:6px"></div>
+        </div>
+
+        <label class="f hidden" id="uLitersBox"><span>จำนวนลิตร ตามมิเตอร์ถัง <b style="color:var(--accent)">*</b></span>
+          <input type="number" id="uLiters" inputmode="decimal" step="0.01" min="0" placeholder="0"
+                 style="font-size:30px; font-family:'IBM Plex Mono',monospace; font-weight:600; text-align:right; padding:14px">
+        </label>
+
+        <label class="f" id="uAmountBox"><span>จำนวนเงิน (บาท) <b style="color:var(--accent)">*</b></span>
           <input type="number" id="uAmount" inputmode="decimal" step="10" min="0" placeholder="0"
                  style="font-size:30px; font-family:'IBM Plex Mono',monospace; font-weight:600; text-align:right; padding:14px">
         </label>
@@ -609,7 +623,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         </label>
         <div class="card kv-box" style="box-shadow:none; background:var(--surface2); margin-top:-4px">
           <div class="kv">
-            <span>ได้น้ำมัน (ลิตร)</span>
+            <span id="uCalcLbl">ได้น้ำมัน (ลิตร)</span>
             <b class="num" id="uLitersOut" style="font-size:24px">–</b>
           </div>
         </div>
@@ -643,13 +657,13 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 
         <div>
           <div class="row" style="justify-content:space-between">
-            <span class="hint" style="font-weight:600; color:var(--ink2)">รูปใบเสร็จ / หน้าปั๊ม</span>
+            <span class="hint" style="font-weight:600; color:var(--ink2)" id="uShotTitle">รูปใบเสร็จ / หน้าปั๊ม</span>
             <span class="hint" id="cnt3">0/3</span>
           </div>
           <div class="row" style="margin-top:-4px"><span class="hint" id="shot3Req"></span></div>
           <label class="shotdrop" style="margin-top:8px">
-            <span style="font-size:30px">⛽</span>
-            <b>ถ่ายรูปใบเสร็จ</b>
+            <span style="font-size:30px" id="uShotIcon">⛽</span>
+            <b id="uShotBig">ถ่ายรูปใบเสร็จ</b>
             <span class="hint">แตะเพื่อเปิดกล้อง · ได้สูงสุด 3 รูป</span>
             <input type="file" accept="image/*" capture="environment" multiple id="cam3" class="hidden">
           </label>
@@ -808,6 +822,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <label class="f" data-money="1">ค่าเที่ยวเหมา วันที่ลงงานทั่วไป (บาท)<input type="number" id="sGenTrip" step="10" min="0"></label>
         <label class="f" data-money="1">ค่าจุดแวะรับสินค้า (บาท/จุด)<input type="number" id="sStopRate" step="10" min="0"></label>
         <label class="f">ราคาน้ำมัน/ลิตร ตั้งต้น (บาท)<input type="number" id="sFuel" step="0.01"></label>
+        <label class="f">ราคาน้ำมันถังท่าทราย/ลิตร (บาท)<input type="number" id="sTankPrice" step="0.01" min="0"></label>
         <label class="f">คุณภาพรูปที่เก็บ<select id="sImgq"><option>ประหยัด</option><option>ปกติ</option><option>ชัด</option></select></label>
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="sSave">บันทึก</button></label>
         <p class="hint" id="imgStat" style="grid-column:1/-1; margin:0"></p>
@@ -995,7 +1010,7 @@ function seed(){
      note:"บางจาก บ้านผือ", shots:[], odoShots:[], lat:17.680, lng:102.470, at:Math.min(new Date(d1+"T16:40:00").getTime(), Date.now()-7200000)}
   ];
   return {emp:E, truck:T, rate:R, job:J, stop:[], fuel:F, absent:{}, lastTruck:{}, rot:{}, mats:["หิน","ทราย","ลูกรัง","บล็อค"],
-          set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, stopRate:100, imgq:"ประหยัด", fuelPrice:31.94}, tg:{token:"", chat:"", log:[]}};
+          set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, stopRate:100, imgq:"ประหยัด", fuelPrice:31.94, tankPrice:36.30}, tg:{token:"", chat:"", log:[]}};
   function r(t,l,p){ return {id:uid("r"), type:t, label:l, price:p, at:"2026-08-01"}; }
 }
 function job(date,emp,truck,type,label,mat,bill,price,sla,sln,ela,eln,km,dest,nights){
@@ -1077,7 +1092,8 @@ function rowStop(r){
 function rowFuel(r){
   return {id:r.id, date:r.fuel_date, emp:r.emp_id, truck:r.truck_id,
     amount:num(r.amount,0), price:num(r.price_per_l,0), liters:num(r.liters,0),
-    odo:r.odo, prevOdo:r.prev_odo||0, note:r.note||"", lat:r.lat, lng:r.lng, at:ms(r.created_at),
+    odo:r.odo, prevOdo:r.prev_odo||0, note:r.note||"", src:(r.source==="tank"?"tank":"pump"),
+    lat:r.lat, lng:r.lng, at:ms(r.created_at),
     shots:[], odoShots:[], _pr:(r.photos_receipt||[]), _po:(r.photos_odo||[])};
 }
 
@@ -1105,7 +1121,7 @@ var TOROW = {
       material:o.mat||null, note:o.note||null, pay:(o.pay||0), photos:o._p||[] }; },
   fuel: function(o){ return {
       fuel_date:o.date, emp_id:o.emp, truck_id:o.truck,
-      amount:o.amount, price_per_l:o.price, odo:o.odo,
+      amount:o.amount, price_per_l:o.price, odo:o.odo, source:(o.src==="tank"?"tank":"pump"),
       note:o.note||"", lat:o.lat||null, lng:o.lng||null,
       photos_receipt:o._pr||[], photos_odo:o._po||[] }; }
 };
@@ -1285,6 +1301,7 @@ function bootstrap(){
              general:num(S.general_day_rate,300),
              genTrip:num(S.general_trip_rate,50),
              stopRate:num(S.stop_rate,100),
+             tankPrice:num(S.tank_price,36.30),
              imgq: S.image_quality || "ประหยัด" };
     DB.tg={ token:(S.telegram&&S.telegram.token)||"", chat:(S.telegram&&S.telegram.chat_id)||"", log:[] };
     DB.lastTruck = S.last_truck || {};
@@ -1647,6 +1664,7 @@ function runSync(){
       {key:"general_trip_rate",     value:DB.set.genTrip},
       {key:"stop_rate",            value:DB.set.stopRate},
       {key:"fuel_price_default",    value:DB.set.fuelPrice},
+      {key:"tank_price",            value:DB.set.tankPrice||36.30},
       {key:"image_quality",         value:DB.set.imgq},
       {key:"last_truck",            value:DB.lastTruck||{}},
       {key:"truck_sizes",           value:DB.sizes||SIZES}
@@ -1659,7 +1677,7 @@ function runSync(){
 /* ---------- โครงว่างตอนหน้าเว็บเพิ่งเปิด (ยังไม่ล็อกอิน) ---------- */
 function load(){
   return {emp:[], truck:[], rate:[], job:[], stop:[], fuel:[], absent:{}, lastTruck:{}, rot:{}, sizes:SIZES.slice(),
-          mats:[], set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, stopRate:100, imgq:"ประหยัด", fuelPrice:31.94},
+          mats:[], set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, stopRate:100, imgq:"ประหยัด", fuelPrice:31.94, tankPrice:36.30},
           tg:{token:"", chat:"", log:[]}};
 }
 /* ถามข้อความหนึ่งบรรทัด แบบไม่ใช้ window.prompt
@@ -3819,6 +3837,7 @@ function renderSettings(){
   $("sStopRate").value=stopRate();
   $("sImgq").value=DB.set.imgq||"ประหยัด";
   $("sFuel").value=DB.set.fuelPrice||"";
+  $("sTankPrice").value=DB.set.tankPrice||36.30;
   var pics=0, bytes=0;
   DB.job.forEach(function(j){ var a=allShots(j); pics+=a.length; bytes+=sizeOf(a); });
   $("imgStat").textContent="เก็บรูปไว้แล้ว "+pics+" รูป รวม "+bytes+" KB (เฉลี่ย "+(pics?Math.round(bytes/pics):0)+" KB/รูป) · โหมด "+
@@ -4233,8 +4252,45 @@ function rechainFuel(truckId){
   var prev=0;
   L.forEach(function(f){ f.prevOdo=prev; prev=f.odo||prev; });
 }
+/* แหล่งเติม ⛽ ปั๊ม / 🛢️ ถังท่าทราย (เจ้าของสั่ง 11 ก.ย. 2569 — คู่กับ SQL v23 ตรวจเทียบกับโปรแกรมท่าทราย)
+   บังคับเลือกทุกครั้ง ไม่มีค่าเริ่มต้น
+   Why: ถ้าตั้งไว้ให้ คนขับจะกดผ่านจนติดมือ แล้วระบบเทียบกับท่าทรายจะเตือนผิดคัน
+   ถัง = กรอก "ลิตร" ตามมิเตอร์ตรงๆ (ตัวเลขเดียวกับที่ท่าทรายบันทึกเบิก) ราคามาจากค่าตั้ง tank_price แล้วคิดเงินให้
+   Why กรอกลิตร: 11 ก.ย. แม็กเติม 100 ลิตรแต่ลง 120 เพราะต้องคิดเงินเองแล้วพิมพ์ยอด */
+var uSrc="";
+function tankPrice(){ return (DB.set && DB.set.tankPrice) || 36.30; }
+function paintFuelSrc(){
+  var ch=$("uSrcChips").children;
+  for(var i=0;i<ch.length;i++) ch[i].setAttribute("aria-pressed", ch[i].dataset.src===uSrc ? "true" : "false");
+  var tank=(uSrc==="tank");
+  $("uLitersBox").classList.toggle("hidden", !tank);
+  $("uAmountBox").classList.toggle("hidden", tank);
+  $("uCalcLbl").textContent = tank ? "คิดเป็นเงิน (บาท)" : "ได้น้ำมัน (ลิตร)";
+  $("uShotTitle").textContent = tank ? "รูปมิเตอร์ที่ถัง" : "รูปใบเสร็จ / หน้าปั๊ม";
+  $("uShotBig").textContent = tank ? "ถ่ายรูปมิเตอร์ถัง" : "ถ่ายรูปใบเสร็จ";
+  $("uShotIcon").textContent = tank ? "🛢️" : "⛽";
+  $("uSrcHint").innerHTML = !uSrc
+    ? '<span style="color:var(--accent); font-weight:600">* เลือกก่อนว่าเติมที่ไหน</span>'
+    : (tank ? '<span style="color:var(--ink3)">ระบบจะเทียบลิตรกับที่ท่าทรายบันทึกเบิก ถ้าไม่ตรงจะแจ้งเจ้าของ</span>' : '');
+  calcLiters();
+  refreshCar3();
+}
+function setFuelSrc(v){
+  if(v===uSrc) return;
+  uSrc=v;
+  $("uPrice").value = (v==="tank") ? tankPrice() : (DB.set.fuelPrice||"");
+  paintFuelSrc();
+  if(v==="tank") $("uLiters").focus();
+}
 function calcLiters(){
-  var amt=parseFloat($("uAmount").value)||0, pr=parseFloat($("uPrice").value)||0;
+  var pr=parseFloat($("uPrice").value)||0;
+  if(uSrc==="tank"){
+    var lt=parseFloat($("uLiters").value)||0;
+    var money=(lt>0 && pr>0) ? Math.round(lt*pr*100)/100 : 0;
+    $("uLitersOut").textContent = money ? baht(money) : "–";
+    return lt;
+  }
+  var amt=parseFloat($("uAmount").value)||0;
   var l = (amt>0 && pr>0) ? amt/pr : 0;
   $("uLitersOut").textContent = l ? l.toFixed(2) : "–";
   return l;
@@ -4262,7 +4318,7 @@ function refreshCar3(){
   carousel($("car3"), uDraft.shots, "cnt3", refreshCar3);
   $("shot3Req").innerHTML = uDraft.shots.length
     ? '<span style="color:var(--ok); font-weight:600">✓ แนบรูปแล้ว</span>'
-    : '<span style="color:var(--accent); font-weight:600">* ต้องมีรูปใบเสร็จอย่างน้อย 1 รูป</span>';
+    : '<span style="color:var(--accent); font-weight:600">* ต้องมีรูป'+(uSrc==="tank"?"มิเตอร์ถัง":"ใบเสร็จ")+'อย่างน้อย 1 รูป</span>';
 }
 function refreshCar4(){
   carousel($("car4"), uDraft.odoShots, "cnt4", refreshCar4);
@@ -4272,10 +4328,24 @@ function refreshCar4(){
 }
 function saveFuel(){
   if(busyGuard()) return;
-  var amt=parseFloat($("uAmount").value);
-  if(!amt||amt<=0){ toast("ใส่จำนวนเงินก่อน"); $("uAmount").focus(); return; }
-  var pr=parseFloat($("uPrice").value);
-  if(!pr||pr<=0){ toast("ใส่ราคาต่อลิตรก่อน"); $("uPrice").focus(); return; }
+  if(uSrc!=="pump" && uSrc!=="tank"){
+    toast("เลือกก่อนว่าเติมที่ปั๊ม หรือถังท่าทราย");
+    $("uSrcChips").scrollIntoView({behavior:"smooth", block:"center"}); return;
+  }
+  var pr=parseFloat($("uPrice").value), amt, lit;
+  if(uSrc==="tank"){
+    lit=parseFloat($("uLiters").value);
+    if(!lit||lit<=0){ toast("ใส่จำนวนลิตรตามมิเตอร์ถังก่อน"); $("uLiters").focus(); return; }
+    if(lit>600){ toast("ลิตรเยอะผิดปกติ ("+lit+") ช่องนี้กรอกลิตร ไม่ใช่ยอดเงิน"); $("uLiters").focus(); return; }
+    if(!pr||pr<=0){ toast("ใส่ราคาต่อลิตรก่อน"); $("uPrice").focus(); return; }
+    lit=Math.round(lit*100)/100;
+    amt=Math.round(lit*pr*100)/100;
+  } else {
+    amt=parseFloat($("uAmount").value);
+    if(!amt||amt<=0){ toast("ใส่จำนวนเงินก่อน"); $("uAmount").focus(); return; }
+    if(!pr||pr<=0){ toast("ใส่ราคาต่อลิตรก่อน"); $("uPrice").focus(); return; }
+    lit=Math.round((amt/pr)*100)/100;
+  }
   var odo=parseInt($("uOdo").value,10);
   if(!odo||odo<=0){ toast("ต้องกรอกเลขไมล์"); $("uOdo").focus(); return; }
   var prev=lastOdo($("uTruck").value);
@@ -4284,7 +4354,7 @@ function saveFuel(){
     $("uOdo").focus(); return;
   }
   if(!uDraft.shots.length){
-    toast("ต้องแนบรูปใบเสร็จอย่างน้อย 1 รูป");
+    toast("ต้องแนบรูป"+(uSrc==="tank"?"มิเตอร์ถัง":"ใบเสร็จ")+"อย่างน้อย 1 รูป");
     $("car3").scrollIntoView({behavior:"smooth", block:"center"}); return;
   }
   if(!uDraft.odoShots.length){
@@ -4292,7 +4362,7 @@ function saveFuel(){
     $("car4").scrollIntoView({behavior:"smooth", block:"center"}); return;
   }
   var f={ id:uid("f"), date:today(), emp:me.id, truck:$("uTruck").value,
-    amount:amt, price:pr, liters:Math.round((amt/pr)*100)/100, odo:odo,
+    amount:amt, price:pr, liters:lit, odo:odo, src:uSrc,
     prevOdo: prev?prev.odo:0, note:$("uNote").value.trim(),
     shots:uDraft.shots.slice(), odoShots:uDraft.odoShots.slice(),
     lat:null, lng:null, at:Date.now() };
@@ -4301,10 +4371,11 @@ function saveFuel(){
     if(pos){ f.lat=pos.lat; f.lng=pos.lng; }
     DB.fuel.push(f); save();
     uDraft={shots:[], odoShots:[]};
-    $("uAmount").value=""; $("uOdo").value=""; $("uNote").value="";
+    $("uAmount").value=""; $("uLiters").value=""; $("uOdo").value=""; $("uNote").value="";
     $("uMoreBox").classList.add("hidden");
-    refreshCar3(); refreshCar4(); calcLiters();
-    toast("บันทึกแล้ว "+baht(amt)+" บาท · "+f.liters.toFixed(2)+" ลิตร");
+    uSrc="";
+    refreshCar4(); paintFuelSrc();
+    toast("บันทึกแล้ว "+(f.src==="tank" ? f.liters+" ลิตร จากถังท่าทราย" : baht(amt)+" บาท · "+f.liters.toFixed(2)+" ลิตร"));
     renderFuel();
   });
 }
@@ -4325,6 +4396,7 @@ function fuelList(host,list,showEmp){
     var run = fuelRun(f), kml = fuelKmL(f);
     body.innerHTML='<div class="jt">'+esc(truck(f.truck).plate)+(f.note?' · '+esc(f.note):'')+'</div>' +
       '<div class="meta">' +
+      (f.src==="tank"?'<span class="pill t4">🛢️ ถังท่าทราย</span>':'') +
       (f.liters?'<span class="pill t3 num">'+f.liters.toFixed(2)+' ลิตร</span>':'') +
       (kml?'<span class="pill t2 num">'+kml.toFixed(2)+' กม./ล.</span>':'') +
       (f.price?'<span class="num">฿'+f.price.toFixed(2)+'/ล.</span>':'') +
@@ -4333,7 +4405,7 @@ function fuelList(host,list,showEmp){
       (f.odo?'<span class="num">ไมล์ '+f.odo.toLocaleString("th-TH")+'</span>':'') +
       (run?'<span class="num">วิ่ง '+run.toLocaleString("th-TH")+' กม.</span>':'') +
       (run&&f.amount?'<span class="num">฿'+(f.amount/run).toFixed(2)+'/กม.</span>':'') +
-      (f.lat!=null?'<a class="geo" target="_blank" rel="noopener" href="'+mapsPoint(f)+'">📍 ปั๊ม</a>':'') +
+      (f.lat!=null?'<a class="geo" target="_blank" rel="noopener" href="'+mapsPoint(f)+'">'+(f.src==="tank"?'📍 จุดเติม':'📍 ปั๊ม')+'</a>':'') +
       '</div>';
     var amt=document.createElement("div"); amt.className="amt"; amt.textContent=baht(f.amount);
     row.appendChild(body); row.appendChild(amt); host.appendChild(row);
@@ -4346,8 +4418,8 @@ function renderFuel(){
     var def=defaultTruckId();
     if(def) $("uTruck").value=def;
   }
-  if(!$("uPrice").value) $("uPrice").value=DB.set.fuelPrice||"";
-  calcLiters(); paintOdoHint(); paintTruckHint();
+  if(!$("uPrice").value) $("uPrice").value = (uSrc==="tank") ? tankPrice() : (DB.set.fuelPrice||"");
+  paintFuelSrc(); paintOdoHint(); paintTruckHint();
   var m=ym(today());
   var mine=DB.fuel.filter(function(f){ return f.emp===me.id && ym(f.date)===m; })
                   .sort(function(a,b){ return b.at-a.at; });
@@ -4391,7 +4463,7 @@ function canFixTruck(f){
 }
 function fixTruckBtn(f, body){
   var b=document.createElement("button");
-  b.className="btn sm ghost"; b.textContent="✏️ แก้ทะเบียน";
+  b.className="btn sm ghost"; b.textContent = isStaff(me) ? "✏️ แก้รายการ" : "✏️ แก้ทะเบียน";
   b.style.marginTop="8px";
   b.onclick=function(){ openFixTruck(f, body, b); };
   return b;
@@ -4414,17 +4486,60 @@ function openFixTruck(f, body, btn){
   no.className="btn sm ghost"; no.textContent="ยกเลิก";
   var bar=document.createElement("div"); bar.className="row"; bar.style.marginTop="8px";
   bar.appendChild(ok); bar.appendChild(no);
-  box.appendChild(sel); box.appendChild(bar);
+  box.appendChild(sel);
+  /* เจ้าของ/แอดมินแก้แหล่งเติม ลิตร/เงิน และราคาได้ด้วย (11 ก.ย. 2569 — ใช้ตอนระบบเทียบถังท่าทรายเตือนว่าไม่ตรง)
+     ถัง = แก้เป็นลิตร · ปั๊ม = แก้เป็นยอดเงินตามใบเสร็จ · ฐานข้อมูลคิดลิตรจาก เงิน÷ราคา เอง
+     คนขับยังแก้ได้แค่ทะเบียนเหมือนเดิม (fuel_guard_edit กันอีกชั้น) */
+  var staff=isStaff(me), srcSel=null, qty=null, prc=null;
+  if(staff){
+    ok.textContent="บันทึก";
+    var g=document.createElement("div"); g.className="grid";
+    g.style.cssText="grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin-top:8px";
+    srcSel=document.createElement("select");
+    [["pump","⛽ ปั๊ม"],["tank","🛢️ ถังท่าทราย"]].forEach(function(p){
+      var o=document.createElement("option"); o.value=p[0]; o.textContent=p[1];
+      if((f.src||"pump")===p[0]) o.selected=true;
+      srcSel.appendChild(o);
+    });
+    qty=document.createElement("input"); qty.type="number"; qty.step="0.01"; qty.min="0"; qty.inputMode="decimal";
+    prc=document.createElement("input"); prc.type="number"; prc.step="0.01"; prc.min="0"; prc.inputMode="decimal";
+    prc.value=f.price||"";
+    var ls=document.createElement("label"); ls.className="f"; ls.appendChild(document.createTextNode("แหล่งเติม")); ls.appendChild(srcSel);
+    var lq=document.createElement("label"); lq.className="f"; var lqt=document.createElement("span"); lq.appendChild(lqt); lq.appendChild(qty);
+    var lp=document.createElement("label"); lp.className="f"; lp.appendChild(document.createTextNode("ราคา/ลิตร")); lp.appendChild(prc);
+    var shown="";
+    var paintQty=function(){
+      var t=(srcSel.value==="tank"), p=parseFloat(prc.value)||0, v=parseFloat(qty.value)||0;
+      if(!shown) qty.value = t ? (f.liters||"") : (f.amount||"");
+      else if(shown!==srcSel.value && v>0 && p>0) qty.value = t ? Math.round(v/p*100)/100 : Math.round(v*p*100)/100;
+      lqt.textContent = t ? "ลิตร (ตามมิเตอร์)" : "จำนวนเงิน (บาท)";
+      shown=srcSel.value;
+    };
+    srcSel.onchange=paintQty; paintQty();
+    g.appendChild(ls); g.appendChild(lq); g.appendChild(lp);
+    box.appendChild(g);
+  }
+  box.appendChild(bar);
   body.appendChild(box);
   no.onclick=function(){ render(); };
   ok.onclick=function(){
-    var nw=sel.value, old=f.truck;
-    if(!nw || nw===old){ render(); return; }
-    f.truck=nw;
+    var nw=sel.value, old=f.truck, changed=false, src=null, amt=0, p=0;
+    if(staff){
+      src=srcSel.value; p=parseFloat(prc.value); var v=parseFloat(qty.value);
+      if(!p||p<=0){ toast("ใส่ราคาต่อลิตรก่อน"); prc.focus(); return; }
+      if(!v||v<=0){ toast(src==="tank" ? "ใส่จำนวนลิตรก่อน" : "ใส่จำนวนเงินก่อน"); qty.focus(); return; }
+      if(src==="tank" && v>600){ toast("ลิตรเยอะผิดปกติ ("+v+") ช่องนี้เป็นลิตร ไม่ใช่ยอดเงิน"); qty.focus(); return; }
+      amt = (src==="tank") ? Math.round(v*p*100)/100 : Math.round(v*100)/100;
+    }
+    if(nw && nw!==old){ f.truck=nw; changed=true; }
+    if(staff && (src!==(f.src||"pump") || amt!==f.amount || p!==f.price)){
+      f.src=src; f.amount=amt; f.price=p; f.liters=Math.round(amt/p*100)/100; changed=true;
+    }
+    if(!changed){ render(); return; }
     /* ระยะที่วิ่งของทั้งคันเก่าและคันใหม่เปลี่ยนหมด ต้องไล่เลขไมล์ครั้งก่อนใหม่ทั้งสองคัน */
-    rechainFuel(old); rechainFuel(nw);
+    if(f.truck!==old){ rechainFuel(old); rechainFuel(f.truck); }
     save();
-    toast("เปลี่ยนเป็น "+truck(nw).plate+" แล้ว");
+    toast(f.truck!==old ? "เปลี่ยนเป็น "+truck(f.truck).plate+" แล้ว" : "แก้รายการแล้ว · "+f.liters.toFixed(2)+" ลิตร");
     render();
   };
 }
@@ -4742,6 +4857,11 @@ $("uMoreToggle").onclick=function(){ $("uMoreBox").classList.toggle("hidden"); }
 $("uTruck").onchange=function(){ this.dataset.touched="1"; paintOdoHint(); paintTruckHint(); };
 $("uAmount").oninput=calcLiters;
 $("uPrice").oninput=calcLiters;
+$("uLiters").oninput=calcLiters;
+$("uSrcChips").onclick=function(e){
+  var b=e.target && e.target.closest ? e.target.closest("[data-src]") : null;
+  if(b) setFuelSrc(b.dataset.src);
+};
 $("uOdo").oninput=paintOdoHint;
 $("uSave").onclick=saveFuel;
 $("ofuelPick").onchange=renderOwnerFuel;
@@ -4824,6 +4944,7 @@ $("sSave").onclick=function(){
   DB.set.stopRate=parseFloat($("sStopRate").value)||0;
   DB.set.imgq=$("sImgq").value;
   DB.set.fuelPrice=parseFloat($("sFuel").value)||0;
+  DB.set.tankPrice=parseFloat($("sTankPrice").value)||DB.set.tankPrice||36.30;
   save(); toast("บันทึกค่าตั้งต้นแล้ว"); render();
 };
 $("tSizeAdd").onclick=function(){
