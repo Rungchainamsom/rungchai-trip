@@ -1279,7 +1279,9 @@ function bootstrap(){
     rest("absences?select=*"),
     rest("settings?select=*"),
     rest("photo_rot?select=path,deg"),
-    rest("job_stops?select=*&order=seq")
+    rest("job_stops?select=*&order=seq"),
+    /* คำขอแก้พิกัดที่ยังรอเจ้าของอนุมัติ (v23) — ฐานข้อมูลเก่ายังไม่มีฟังก์ชันนี้ก็ไม่พัง */
+    rest("rpc/fix_req_open",{method:"POST", body:{}}).catch(function(){ return []; })
   ]).then(function(a){
     DB.emp   = a[0].map(rowEmp);
     DB.truck = a[1].map(rowTruck);
@@ -1288,6 +1290,8 @@ function bootstrap(){
     DB.job   = a[4].map(rowJob).reverse();   /* หน้าจอคาดว่าเรียงเก่า→ใหม่ */
     DB.fuel  = a[5].map(rowFuel).reverse();
     DB.stop  = (a[9]||[]).map(rowStop);
+    DB.fixOpen = {};
+    (a[10]||[]).forEach(function(f){ DB.fixOpen[f.job_id] = f; });
 
     DB.absent={};
     a[6].forEach(function(x){
@@ -2631,6 +2635,23 @@ function jobList(host,list,showEmp){
       side.appendChild(xb);
       armBtn(xb, "ลบจริงไหม? กดอีกครั้ง", function(){ delJob(j); });
     }
+    var fp=fixPending(j);
+    if(fp){
+      var fpm=document.createElement("div"); fpm.className="hint";
+      fpm.style.cssText="text-align:right; max-width:190px";
+      fpm.textContent="⏳ รออนุมัติแก้พิกัด";
+      fpm.title="ขอแก้พิกัด"+(fp.which==="start"?"ต้นทาง":"ปลายทาง")+"แล้ว รอเจ้าของกดอนุมัติใน Telegram";
+      side.appendChild(fpm);
+    } else if(canReqFix(j)){
+      var fb=document.createElement("button");
+      fb.className="btn sm ghost"; fb.textContent="📍 "+(isOwner(me)?"แก้พิกัด":"ขอแก้พิกัด");
+      side.appendChild(fb);
+      fb.onclick=function(){
+        if(!pan.classList.contains("hidden") && pan.dataset.k==="fix"){ panShut(); return; }
+        pan.classList.remove("hidden"); pan.dataset.k="fix";
+        buildFixReq(j, pan);
+      };
+    }
     host.appendChild(row);
   });
 }
@@ -2668,6 +2689,134 @@ function delJob(j){
   toast(isOwner(me) ? "ลบแล้ว — กู้คืนได้ที่หน้าตั้งค่า"
                     : "ลบแล้ว — แจ้งเจ้าของแล้ว ถ้าลบผิดให้บอกเจ้าของกู้คืนให้");
 }
+/* =============== ขอแก้พิกัด (v23 · 13 ก.ย. 2569) ===============
+   คนขับ/แอดมินกด "ขอแก้พิกัด" → การ์ดเข้ากลุ่ม Telegram พร้อมปุ่ม
+   เจ้าของกด ✅ อนุมัติ → ฐานข้อมูลแก้พิกัด + คิดระยะทางใหม่ให้เอง แล้วตอบในแชท
+   เจ้าของกดในแอปเอง = แก้ทันที ไม่ต้องเดินเรื่อง (ก็เป็นคนอนุมัติอยู่ดี)
+   Why: เดือน ก.ย. แก้พิกัดด้วย SQL ไปหลายใบ (คนขับกดปิดงานผิดที่/ลืมกด) ทุกครั้งต้องรบกวนคนทำระบบ
+        เรื่องนี้ไม่แตะเงินเลย แต่ทำให้ระยะทางผิด แล้วระบบเดาราคางานเดิมไม่ได้
+   กติกาฝั่งฐานข้อมูล (public.req_fix) ตรวจซ้ำอีกชั้น: คนขับขอได้เฉพาะงานตัวเอง · งานต้องปิดแล้ว ·
+   พิกัดต้องอยู่ในกรอบไทย/ลาว · หนึ่งงานเปิดคำขอค้างได้ทีละใบ */
+function canReqFix(j){
+  if(!me || !j || j.status!=="done") return false;
+  if(isStaff(me)) return true;
+  return j.emp===me.id;
+}
+function fixPending(j){ return (DB.fixOpen && DB.fixOpen[j.id]) || null; }
+
+/* จุดที่เคยไป — รวมจากงานเก่าในเครื่อง ปัดพิกัดทศนิยม 2 ตำแหน่ง (~1 กม.) เป็นกลุ่มเดียวกัน
+   ชื่อจุด = ชื่องานที่ใช้บ่อยสุดในกลุ่มนั้น · พิกัดที่ส่งไป = ของใบล่าสุดในกลุ่ม (ของจริง ไม่ใช่ค่าเฉลี่ย)
+   คนขับเห็นเฉพาะงานตัวเอง (bootstrap โหลดมาแค่นั้น) ซึ่งพอสำหรับจุดที่ตัวเองเคยวิ่ง */
+function knownPins(which, skipId){
+  var m={}, out=[];
+  DB.job.forEach(function(o){
+    var p = which==="end" ? o.end : o.start;
+    if(!p || p.lat==null || p.lng==null) return;
+    if(o.id===skipId) return;
+    var k=p.lat.toFixed(2)+","+p.lng.toFixed(2);
+    var g=m[k]; if(!g){ g=m[k]={n:0, lat:p.lat, lng:p.lng, date:o.date||"", nm:{}}; }
+    g.n++;
+    if((o.date||"")>=g.date){ g.date=o.date||g.date; g.lat=p.lat; g.lng=p.lng; }
+    var nm=(o.label||"").trim() || (o.dest||"").trim();
+    if(nm) g.nm[nm]=(g.nm[nm]||0)+1;
+  });
+  Object.keys(m).forEach(function(k){
+    var g=m[k], best="", bn=0;
+    Object.keys(g.nm).forEach(function(s){ if(g.nm[s]>bn){ bn=g.nm[s]; best=s; } });
+    out.push({name: best || ("จุด "+g.lat.toFixed(4)+", "+g.lng.toFixed(4)), lat:g.lat, lng:g.lng, n:g.n});
+  });
+  out.sort(function(a,b){ return b.n-a.n; });
+  /* ชื่อซ้ำได้ (เช่นงานชื่อเดียวกันแต่ออกคนละท่า) — เติมเลขไว้ให้แยกออก */
+  var seen={};
+  out.forEach(function(p){
+    seen[p.name]=(seen[p.name]||0)+1;
+    if(seen[p.name]>1) p.name = p.name+" (จุดที่ "+seen[p.name]+")";
+  });
+  return out.slice(0,12);
+}
+
+/* รูปที่จะแนบไปกับการ์ดใน Telegram — เอารูปตอนปิดงานก่อน (ปกติเป็นบิล) ไม่มีค่อยใช้รูปตอนเริ่ม
+   ส่งเป็น "ลิงก์ชั่วคราว" ที่แอปได้มาจาก signPhotos() (อายุ 12 ชม.) Telegram ไปดึงรูปเองทันที
+   ฝั่งฐานข้อมูลรับเฉพาะลิงก์ของถัง trip-photos เท่านั้น */
+function fixPhoto(j){
+  var a=(j.shotsEnd&&j.shotsEnd[0]) || (j.shots&&j.shots[0]) || null;
+  return a || null;
+}
+function buildFixReq(j, pan){
+  var owner=isOwner(me), goText = owner ? "แก้พิกัดเลย" : "ส่งคำขอให้เจ้าของ";
+  pan.innerHTML="";
+  var wrap=document.createElement("div"); wrap.className="stack";
+  var t=document.createElement("div"); t.className="hint";
+  t.textContent = (owner ? "เลือกจุดที่ถูกต้อง ระบบจะแก้พิกัดกับระยะทางให้ทันที และแจ้งในกลุ่ม Telegram"
+                         : "เลือกจุดที่ถูกต้อง แล้วส่งให้เจ้าของกดอนุมัติในกลุ่ม Telegram") +
+                  (fixPhoto(j) ? " · แนบรูปงานไปให้ 1 รูป" : " · งานนี้ไม่มีรูปให้แนบ");
+  wrap.appendChild(t);
+
+  var row=document.createElement("div"); row.className="row"; row.style.alignItems="flex-end";
+  var lw=document.createElement("label"); lw.className="f"; lw.style.width="140px";
+  lw.innerHTML='แก้จุดไหน<select><option value="end">ปลายทาง</option><option value="start">ต้นทาง</option></select>';
+  var wSel=lw.querySelector("select");
+  var lp=document.createElement("label"); lp.className="f"; lp.style.flex="2"; lp.style.minWidth="220px";
+  lp.innerHTML='จุดที่ถูกต้อง (เลือกจากที่เคยไป)<select></select>';
+  var pSel=lp.querySelector("select");
+  var ln=document.createElement("label"); ln.className="f"; ln.style.flex="1"; ln.style.minWidth="180px";
+  ln.innerHTML='หมายเหตุ (ไม่ใส่ก็ได้)<input type="text" maxlength="120" placeholder="เช่น ลืมกดปิดงานที่ปลายทาง">';
+  var nIn=ln.querySelector("input");
+  row.appendChild(lw); row.appendChild(lp); row.appendChild(ln);
+  wrap.appendChild(row);
+
+  var info=document.createElement("div"); info.className="hint";
+  var bar=document.createElement("div"); bar.className="row";
+  var go=document.createElement("button"); go.className="btn sm"; go.textContent=goText;
+  bar.appendChild(go);
+  wrap.appendChild(info); wrap.appendChild(bar);
+  pan.appendChild(wrap);
+
+  var pins=[];
+  function calc(){
+    var p=pins[num(pSel.value,-1)];
+    if(!p){ info.textContent=""; return; }
+    var a = wSel.value==="end" ? j.start : p;
+    var b = wSel.value==="end" ? p : j.end;
+    var d = haversine(a,b);
+    info.textContent = "ระยะทางใหม่: " + (d==null ? "คำนวณไม่ได้ (อีกจุดยังไม่มีพิกัด)" : d.toFixed(1)+" กม.") +
+                       "  ·  เดิม " + (j.km||0).toFixed(1) + " กม.";
+  }
+  function fill(){
+    pins=knownPins(wSel.value, j.id);
+    pSel.innerHTML="";
+    if(!pins.length){
+      var z=document.createElement("option"); z.value=""; z.textContent="— ยังไม่มีจุดเก่าให้เลือก —"; pSel.appendChild(z);
+    }
+    pins.forEach(function(p,i){
+      var o=document.createElement("option"); o.value=String(i);
+      o.textContent=p.name+" · "+p.n+" ใบ ("+p.lat.toFixed(4)+", "+p.lng.toFixed(4)+")";
+      pSel.appendChild(o);
+    });
+    calc();
+  }
+  wSel.onchange=fill; pSel.onchange=calc; fill();
+
+  go.onclick=function(){
+    var p=pins[num(pSel.value,-1)];
+    if(!p){ toast("ยังไม่ได้เลือกจุด"); return; }
+    go.disabled=true; go.textContent="กำลังส่ง…";
+    function back(){ go.disabled=false; go.textContent=goText; }
+    rest("rpc/req_fix",{method:"POST", body:{ p_job:j.id, p_which:wSel.value,
+         p_lat:p.lat, p_lng:p.lng, p_place:p.name, p_note:nIn.value||null, p_photo:fixPhoto(j) }})
+      .then(function(r){
+        if(!r || !r.ok){ toast((r&&r.msg)||"ส่งคำขอไม่สำเร็จ"); back(); return; }
+        toast(r.msg||"ส่งคำขอแล้ว");
+        pan.classList.add("hidden"); pan.innerHTML="";
+        if(r.applied){ return bootstrap().then(function(){ render(); }); }   /* เจ้าของแก้เอง — ดึงค่าใหม่มาโชว์ */
+        DB.fixOpen=DB.fixOpen||{};
+        DB.fixOpen[j.id]={job_id:j.id, which:wSel.value, place:p.name};
+        render();
+      })
+      .catch(function(e){ toast("ส่งคำขอไม่สำเร็จ "+((e&&e.message)||"")); back(); });
+  };
+}
+
 /* ---------- ประวัติการแก้ไข (ตาราง edit_log) ---------- */
 var LOGACT={add:"➕ บันทึกใหม่", edit:"✏️ แก้ไข", del:"🗑️ ลบ", restore:"♻️ กู้คืน"};
 var LOGF={ job_date:"วันที่งาน", emp_id:"คนขับ", truck_id:"รถ", job_type:"ประเภทงาน",
@@ -3107,6 +3256,22 @@ function renderWait(){
     c.appendChild(head);
     var pics=allShots(j);
     if(pics.length){ var cc=document.createElement("div"); cc.className="car"; c.appendChild(cc); carousel(cc,pics,null,null); }
+    /* ระยะทางผิดตั้งแต่ตรงนี้ = เดาราคางานเดิมไม่ได้ จึงให้แก้พิกัดได้จากหน้านี้เลย (v23) */
+    if(canReqFix(j)){
+      var fpan=document.createElement("div"); fpan.className="jobedit hidden";
+      var fbar=document.createElement("div"); fbar.className="row";
+      var fbtn=document.createElement("button"); fbtn.className="btn sm ghost";
+      var fpd=fixPending(j);
+      if(fpd){ fbtn.disabled=true; fbtn.textContent="⏳ ขอแก้พิกัดแล้ว รออนุมัติ"; }
+      else {
+        fbtn.textContent="📍 "+(isOwner(me)?"แก้พิกัด":"ขอแก้พิกัด");
+        fbtn.onclick=function(){
+          if(!fpan.classList.contains("hidden")){ fpan.classList.add("hidden"); fpan.innerHTML=""; return; }
+          fpan.classList.remove("hidden"); buildFixReq(j, fpan);
+        };
+      }
+      fbar.appendChild(fbtn); c.appendChild(fbar); c.appendChild(fpan);
+    }
     var form=document.createElement("div"); form.className="row"; form.style.alignItems="flex-end";
     var nf=jobNameField(j.type, j.label, "ชื่องาน (เลือกงานเดิมแล้วราคาเด้งมาให้)");
     var lab=nf.box; lab.style.flex="2"; lab.style.minWidth="210px";
