@@ -2454,7 +2454,7 @@ function finishJobNow(j, gotGeo){
   if(flat!==null){ j.price=flat; j.priced=true; j.flatTrip=true; }
   else if(isCompanyJob(j)){ j.price=0; j.priced=true; j.flatTrip=false; }
   save();
-  if(!j.priced) notifyOwner(j);
+  if(!j.priced){ notifyOwner(j); sendCardPhoto(j); }
   var msg = j.flatTrip
           ? (payOf(j)>0 ? "งานสำเร็จ — ค่าเที่ยวเหมา "+baht(payOf(j))+" บาท"
                         : "งานสำเร็จ — วันนี้คิดค่าเที่ยวเหมาไปแล้ว งานนี้จึงไม่บวกเพิ่ม")
@@ -2463,6 +2463,27 @@ function finishJobNow(j, gotGeo){
                       : "งานสำเร็จ — แจ้งเจ้าของให้ใส่ค่าเที่ยวแล้ว");
   toast(gotGeo ? msg : msg+" (ปักพิกัดปลายทางไม่ได้)");
   go("home");
+}
+/* ---------- ส่งลิงก์รูปบิลให้บอทเอาไปแนบการ์ด "รอใส่ราคา" (v25 · 14 ก.ย. 2569) ----------
+   ถังรูปเป็นถังปิด บอทเข้าไม่ได้ → แอปขอ "ลิงก์ชั่วคราว 12 ชม." ของรูปใบนั้นแล้วส่ง path นี้ให้ฐานข้อมูล
+   ฝั่งฐานข้อมูลรับเฉพาะลิงก์ของถัง trip-photos และเก็บไว้ไม่เกิน 2 วัน
+   Why ต้องเป็นแอปส่ง: ฐานข้อมูลเซ็นลิงก์เองไม่ได้ (ไม่มีคีย์) และ pg_net เรียกแล้วรอผลตอบกลับไม่ได้
+   ถ้าส่งไม่สำเร็จ/ออฟไลน์ ไม่เป็นไร — ฐานข้อมูลจะส่งการ์ดเป็นข้อความล้วนให้เองใน 45 วินาที
+   **ห้าม throw** เรื่องรูปต้องไม่ขวางการปิดงาน */
+function sendCardPhoto(j){
+  try{
+    var path = (j._pe && j._pe[0]) || (j._ps && j._ps[0]);
+    if(!path) return;
+    fetch(CFG.url+"/storage/v1/object/sign/"+CFG.bucket,{
+      method:"POST", headers:sbHead(),
+      body: JSON.stringify({expiresIn:43200, paths:[path]})
+    }).then(function(r){ return r.json(); }).then(function(list){
+      var u = list && list[0] && (list[0].signedURL || list[0].signedUrl);
+      if(!u) return;
+      return rest("rpc/set_card_photo",{method:"POST",
+        body:{ p_job: j.id, p_url: CFG.url+"/storage/v1"+u }});
+    }).catch(function(){});
+  }catch(e){}
 }
 function notifyOwner(j){
   var msg="🚛 งานใหม่รอใส่ค่าเที่ยว\n"+
