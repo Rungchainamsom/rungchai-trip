@@ -2656,6 +2656,16 @@ function jobList(host,list,showEmp){
       side.appendChild(xb);
       armBtn(xb, "ลบจริงไหม? กดอีกครั้ง", function(){ delJob(j); });
     }
+    if(canSwapPhoto(j)){
+      var sb=document.createElement("button");
+      sb.className="btn sm ghost"; sb.textContent=swapBtnLabel();
+      side.appendChild(sb);
+      sb.onclick=function(){
+        if(!pan.classList.contains("hidden") && pan.dataset.k==="swap"){ panShut(); return; }
+        pan.classList.remove("hidden"); pan.dataset.k="swap";
+        buildSwapPhoto("job", j, pan);
+      };
+    }
     var fp=fixPending(j);
     if(fp){
       var fpm=document.createElement("div"); fpm.className="hint";
@@ -2835,6 +2845,239 @@ function buildFixReq(j, pan){
         render();
       })
       .catch(function(e){ toast("ส่งคำขอไม่สำเร็จ "+((e&&e.message)||"")); back(); });
+  };
+}
+
+/* =============== เปลี่ยนรูป (v26 · 15 ก.ย. 2569 — เจ้าของสั่ง) ===============
+   ใช้ได้ทั้งงานวิ่งรถ (รูปตอนเริ่ม/ตอนปิดงาน) และรายการเติมน้ำมัน (ใบเสร็จ/เลขไมล์)
+   ใครกดได้: เจ้าของ + แอดมิน = ทุกรายการ · คนขับ = ของตัวเองเฉพาะวันนี้
+   **ไม่มีการลบรูป**: รูปใหม่อัปเป็นไฟล์ใหม่ · รายการชี้ไปรูปใหม่ · ไฟล์เดิมยังอยู่ในถัง + จดในตาราง photo_swap
+   ฐานข้อมูล (public.swap_photo) ตรวจสิทธิ์ซ้ำอีกชั้น แล้วแจ้งกลุ่ม Telegram พร้อมรูปใหม่ + ลิงก์รูปเดิม
+   trigger photo_keep กันเครื่องที่ยังถือรูปเดิมซิงก์ทับ (แปลง path เดิม → รูปใหม่ให้เอง) */
+var SWAP_FIELDS = {
+  job:  [["photos_end","_pe","shotsEnd","รูปตอนปิดงาน (บิล)"], ["photos_start","_ps","shots","รูปตอนเริ่มงาน"]],
+  fuel: [["photos_receipt","_pr","shots","รูปใบเสร็จ"], ["photos_odo","_po","odoShots","รูปเลขไมล์"]]
+};
+function canSwapPhoto(o){
+  if(!me || !o) return false;
+  if(isStaff(me)) return true;
+  return o.emp===me.id && o.date===today();
+}
+function swapBtnLabel(){ return "🖼️ เปลี่ยนรูป"; }
+/* ลิงก์ชั่วคราว (ที่หน้าจอถืออยู่) ของ path นี้ — ใช้ ROTPATH ย้อนกลับ เพราะ index อาจไม่ตรงถ้าบางรูปขอลิงก์ไม่ได้ */
+function urlOfPath(arr, path, paths){
+  for(var i=0;i<(arr||[]).length;i++){ if(ROTPATH[arr[i]]===path) return arr[i]; }
+  /* สำรอง: ลิงก์ครบทุกรูป ลำดับตรงกับ path แน่นอน */
+  if(paths && arr && arr.length===paths.length){ var k=paths.indexOf(path); if(k>=0) return arr[k]; }
+  return null;
+}
+function signOne(path){
+  return fetch(CFG.url+"/storage/v1/object/sign/"+CFG.bucket+"/"+path,{
+    method:"POST", headers:sbHead(), body:JSON.stringify({expiresIn:43200})
+  }).then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){ var u=j&&(j.signedURL||j.signedUrl); return u ? CFG.url+"/storage/v1"+u : null; })
+    .catch(function(){ return null; });
+}
+/* อัปรูปเข้าโฟลเดอร์ของ "คนขับเจ้าของรายการ" (ไม่ใช่ของคนกด)
+   Why: คนขับเปิดดูรูปได้เฉพาะโฟลเดอร์ตัวเอง (policy photos_read) ถ้าเจ้าของอัปเข้าโฟลเดอร์เจ้าของ คนขับจะเห็นรูปแตก */
+function uploadShotTo(dataUrl, folder){
+  var blob=dataUrlToBlob(dataUrl);
+  var ext=blob.type==="image/webp"?"webp":(blob.type==="image/png"?"png":"jpg");
+  var d=new Date();
+  var path=folder+"/"+d.getFullYear()+"-"+pad(d.getMonth()+1)+"/"+
+           Date.now()+"-"+Math.random().toString(36).slice(2,8)+"-swap."+ext;
+  return fetch(CFG.url+"/storage/v1/object/"+CFG.bucket+"/"+path,{
+    method:"POST",
+    headers:{ apikey:CFG.key, Authorization:"Bearer "+AUTH.token, "Content-Type":blob.type, "x-upsert":"false" },
+    body: blob
+  }).then(function(r){
+    if(!r.ok) return r.text().then(function(t){ throw new Error("อัปโหลดรูปไม่สำเร็จ "+r.status+" "+t.slice(0,120)); });
+    return path;
+  });
+}
+function swapThumb(src, label, on, isAdd){
+  var b=document.createElement("button"); b.type="button";
+  b.className="swap-pick"+(on?" on":"");
+  b.style.cssText="border:2px solid "+(on?"var(--accent)":"var(--line)")+"; border-radius:10px; padding:4px; background:var(--card,#fff);"+
+                  " width:92px; display:flex; flex-direction:column; align-items:center; gap:4px; cursor:pointer";
+  if(src){
+    var im=document.createElement("img"); im.src=src; im.alt=label;
+    im.style.cssText="width:80px; height:80px; object-fit:cover; border-radius:6px";
+    paintRot(im, src);
+    b.appendChild(im);
+  } else {
+    var ph=document.createElement("div"); ph.textContent= isAdd ? "➕" : "🖼️";
+    ph.style.cssText="width:80px; height:80px; display:flex; align-items:center; justify-content:center; font-size:26px; border-radius:6px; background:var(--line)";
+    b.appendChild(ph);
+  }
+  var t=document.createElement("span"); t.className="hint"; t.style.fontSize="12px"; t.textContent=label;
+  b.appendChild(t);
+  return b;
+}
+function buildSwapPhoto(kind, o, pan){
+  pan.innerHTML="";
+  var tbl = kind==="job" ? "jobs" : "fuel";
+  var fields = SWAP_FIELDS[kind];
+  var wrap=document.createElement("div"); wrap.className="stack";
+  pan.appendChild(wrap);
+
+  if(!isUuid(o.id)){
+    wrap.innerHTML='<div class="hint">รายการนี้ยังบันทึกขึ้นคลาวด์ไม่เสร็จ รอจุดสีบนแถบบนเป็นสีเขียวก่อนแล้วลองใหม่</div>';
+    return;
+  }
+  var head=document.createElement("div"); head.className="hint";
+  head.textContent = "เลือกรูปที่ผิด แล้วถ่าย/เลือกรูปที่ถูกต้องมาแทน · รูปเดิมไม่ถูกลบ เก็บไว้ดูย้อนหลังได้ · แจ้งกลุ่ม Telegram ทุกครั้ง";
+  wrap.appendChild(head);
+
+  var lf=document.createElement("label"); lf.className="f"; lf.style.maxWidth="260px";
+  lf.appendChild(document.createTextNode("ช่องรูป"));
+  var fSel=document.createElement("select");
+  fields.forEach(function(f){
+    var op=document.createElement("option"); op.value=f[0];
+    op.textContent=f[3]+" ("+((o[f[1]]||[]).length)+" รูป)";
+    fSel.appendChild(op);
+  });
+  /* เปิดมาที่ช่องที่มีรูปก่อน (งานที่ยังไม่ปิดจะไม่มีรูปตอนปิดงาน) */
+  for(var fi=0; fi<fields.length; fi++){ if((o[fields[fi][1]]||[]).length){ fSel.value=fields[fi][0]; break; } }
+  lf.appendChild(fSel);
+  wrap.appendChild(lf);
+
+  var pickTitle=document.createElement("div"); pickTitle.style.fontWeight="600"; pickTitle.textContent="1) แตะรูปที่จะเปลี่ยน";
+  var picks=document.createElement("div"); picks.className="row"; picks.style.cssText="gap:8px; flex-wrap:wrap";
+  wrap.appendChild(pickTitle); wrap.appendChild(picks);
+
+  var newTitle=document.createElement("div"); newTitle.style.fontWeight="600"; newTitle.textContent="2) รูปที่ถูกต้อง";
+  var nbar=document.createElement("div"); nbar.className="row"; nbar.style.cssText="gap:8px; flex-wrap:wrap; align-items:center";
+  var cam=document.createElement("input"); cam.type="file"; cam.accept="image/*"; cam.setAttribute("capture","environment"); cam.className="hidden";
+  var gal=document.createElement("input"); gal.type="file"; gal.accept="image/*"; gal.className="hidden";
+  var bCam=document.createElement("button"); bCam.type="button"; bCam.className="btn sm ghost"; bCam.textContent="📷 ถ่ายรูป";
+  var bGal=document.createElement("button"); bGal.type="button"; bGal.className="btn sm ghost"; bGal.textContent="🖼️ เลือกจากเครื่อง";
+  bCam.onclick=function(){ cam.click(); }; bGal.onclick=function(){ gal.click(); };
+  var prev=document.createElement("img"); prev.alt="รูปใหม่"; prev.className="hidden";
+  prev.style.cssText="width:120px; height:120px; object-fit:cover; border-radius:8px; border:2px solid var(--ok,#2a7); cursor:zoom-in";
+  nbar.appendChild(bCam); nbar.appendChild(bGal); nbar.appendChild(cam); nbar.appendChild(gal); nbar.appendChild(prev);
+  wrap.appendChild(newTitle); wrap.appendChild(nbar);
+
+  var ln=document.createElement("label"); ln.className="f";
+  ln.innerHTML='หมายเหตุ (ไม่ใส่ก็ได้)<input type="text" maxlength="120" placeholder="เช่น แนบรูปบิลผิดใบ">';
+  var nIn=ln.querySelector("input");
+  wrap.appendChild(ln);
+
+  var info=document.createElement("div"); info.className="hint";
+  var bar=document.createElement("div"); bar.className="row";
+  var go=document.createElement("button"); go.type="button"; go.className="btn sm primary"; go.textContent="เปลี่ยนรูป";
+  var no=document.createElement("button"); no.type="button"; no.className="btn sm ghost"; no.textContent="ยกเลิก";
+  go.style.marginRight="8px";
+  bar.appendChild(go); bar.appendChild(no);
+  wrap.appendChild(info); wrap.appendChild(bar);
+
+  var hisBtn=document.createElement("button"); hisBtn.type="button"; hisBtn.className="btn sm ghost"; hisBtn.textContent="🕘 ดูรูปเดิมที่เคยถูกเปลี่ยน";
+  var his=document.createElement("div");
+  wrap.appendChild(hisBtn); wrap.appendChild(his);
+
+  var st={ field:null, old:null, data:null };
+  function fdef(){ for(var i=0;i<fields.length;i++) if(fields[i][0]===fSel.value) return fields[i]; return fields[0]; }
+  function paint(){
+    var f=fdef(), paths=(o[f[1]]||[]), urls=(o[f[2]]||[]);
+    picks.innerHTML="";
+    paths.forEach(function(p, i){
+      var u=urlOfPath(urls, p, paths);
+      var b=swapThumb(u, "รูปที่ "+(i+1), st.old===p, false);
+      b.onclick=function(){ st.old=p; paint(); };
+      picks.appendChild(b);
+    });
+    if(paths.length<3){
+      var add=swapThumb(null, paths.length ? "เพิ่มอีกรูป" : "ยังไม่มีรูป · เพิ่ม", st.old===null, true);
+      add.onclick=function(){ st.old=null; paint(); };
+      picks.appendChild(add);
+    }
+    go.textContent = st.old ? "เปลี่ยนรูป" : "เพิ่มรูป";
+    info.textContent = !st.data ? "ยังไม่ได้เลือกรูปใหม่" :
+                       (st.old ? "พร้อมเปลี่ยน — รูปเดิมจะเก็บไว้ ไม่ถูกลบ" : "พร้อมเพิ่มรูปในช่องนี้");
+  }
+  fSel.onchange=function(){
+    var f=fdef(), paths=(o[f[1]]||[]);
+    st.old = paths.length ? (paths.length===1 ? paths[0] : null) : null;
+    paint();
+  };
+  fSel.onchange();
+  function took(inp){
+    var file=inp.files && inp.files[0]; inp.value="";
+    if(!file) return;
+    info.textContent="กำลังย่อรูป…";
+    shrink(file, function(d){
+      if(!d){ toast("อ่านรูปไม่ได้ ลองรูปอื่น"); paint(); return; }
+      st.data=d; prev.src=d; prev.classList.remove("hidden");
+      prev.onclick=function(){ zoom([d],0); };
+      paint();
+    });
+  }
+  cam.onchange=function(){ took(cam); }; gal.onchange=function(){ took(gal); };
+  no.onclick=function(){ pan.classList.add("hidden"); pan.innerHTML=""; };
+
+  hisBtn.onclick=function(){
+    his.innerHTML='<div class="hint">กำลังโหลด…</div>';
+    rest("photo_swap?select=*&row_id=eq."+o.id+"&order=id.desc&limit=30").then(function(rows){
+      rows=(rows||[]).filter(function(r){ return r.old_path; });
+      if(!rows.length){ his.innerHTML='<div class="hint">ยังไม่เคยมีการเปลี่ยนรูปในรายการนี้</div>'; return; }
+      return Promise.all(rows.map(function(r){ return signOne(r.old_path); })).then(function(urls){
+        his.innerHTML="";
+        rows.forEach(function(r, i){
+          var lbl=""; fields.forEach(function(f){ if(f[0]===r.field) lbl=f[3]; });
+          var line=document.createElement("div"); line.className="row";
+          line.style.cssText="gap:10px; align-items:center; margin-top:6px";
+          if(urls[i]){
+            var im=document.createElement("img"); im.src=urls[i]; im.alt="รูปเดิม";
+            im.style.cssText="width:64px; height:64px; object-fit:cover; border-radius:6px; cursor:zoom-in";
+            im.onclick=function(){ zoom([urls[i]],0); };
+            line.appendChild(im);
+          }
+          var tx=document.createElement("div"); tx.className="hint";
+          tx.textContent=lbl+" · เปลี่ยนโดย "+(r.by_emp ? (emp(r.by_emp).name||"ไม่ทราบชื่อ") : "–")+" · "+logWhen(r.at)+
+                         (r.note ? " · "+r.note : "")+(urls[i] ? "" : " · (เปิดรูปไม่ได้)");
+          line.appendChild(tx);
+          his.appendChild(line);
+        });
+      });
+    }).catch(function(e){ his.innerHTML='<div class="hint">โหลดไม่ได้ — '+esc((e&&e.message)||"")+'</div>'; });
+  };
+
+  go.onclick=function(){
+    if(busyGuard()) return;
+    if(!st.data){ toast("ถ่ายหรือเลือกรูปใหม่ก่อน"); return; }
+    var f=fdef(), paths=(o[f[1]]||[]);
+    if(!st.old && paths.length>=3){ toast("ช่องนี้มีครบ 3 รูปแล้ว แตะเลือกรูปที่จะเปลี่ยน"); return; }
+    go.disabled=true; no.disabled=true; go.textContent="กำลังอัปรูป…";
+    function back(){ go.disabled=false; no.disabled=false; paint(); }
+    var oldUrl = st.old ? urlOfPath(o[f[2]], st.old, paths) : null;
+    var newPath=null;
+    uploadShotTo(st.data, o.emp).then(function(p){
+      newPath=p; go.textContent="กำลังบันทึก…";
+      return signOne(p);
+    }).then(function(newUrl){
+      return rest("rpc/swap_photo",{method:"POST", body:{
+        p_tbl:tbl, p_id:o.id, p_field:f[0], p_old:st.old, p_new:newPath,
+        p_note:nIn.value||null, p_new_url:newUrl, p_old_url:oldUrl }})
+        .then(function(r){ return {r:r, url:newUrl}; });
+    }).then(function(x){
+      var r=x.r;
+      if(!r || !r.ok){ toast((r&&r.msg)||"เปลี่ยนรูปไม่สำเร็จ"); back(); return; }
+      /* อัปเดตในเครื่องเฉพาะช่องนี้ แล้วแก้ snapshot ช่องเดียวกัน
+         Why: ถ้าเรียก takeSnapshot() ทั้งก้อน แถวอื่นที่ยังรอส่งขึ้นคลาวด์จะถูกมองว่าส่งแล้ว (ข้อมูลหายเงียบ) */
+      var arr=(r.photos||[]).slice();
+      o[f[1]]=arr;
+      if(x.url){ ROTPATH[x.url]=newPath; }
+      var urls=[], cur=o[f[2]]||[];
+      arr.forEach(function(p){ var u=(p===newPath ? x.url : urlOfPath(cur, p, paths)); if(u) urls.push(u); });
+      o[f[2]]=urls;
+      var key=rowKey(kind, o);
+      if(SNAP[key]){
+        try{ var sn=JSON.parse(SNAP[key]); sn[f[0]]=arr; SNAP[key]=JSON.stringify(sn); }catch(e){}
+      }
+      toast(r.msg||"เปลี่ยนรูปแล้ว");
+      pan.classList.add("hidden"); pan.innerHTML="";
+      render();
+    }).catch(function(e){ toast("เปลี่ยนรูปไม่สำเร็จ "+((e&&e.message)||"")); back(); });
   };
 }
 
@@ -3292,6 +3535,16 @@ function renderWait(){
         };
       }
       fbar.appendChild(fbtn); c.appendChild(fbar); c.appendChild(fpan);
+    }
+    if(canSwapPhoto(j)){
+      var spn=document.createElement("div"); spn.className="jobedit hidden";
+      var sbr=document.createElement("div"); sbr.className="row";
+      var sbt=document.createElement("button"); sbt.className="btn sm ghost"; sbt.textContent=swapBtnLabel();
+      sbt.onclick=function(){
+        if(!spn.classList.contains("hidden")){ spn.classList.add("hidden"); spn.innerHTML=""; return; }
+        spn.classList.remove("hidden"); buildSwapPhoto("job", j, spn);
+      };
+      sbr.appendChild(sbt); c.appendChild(sbr); c.appendChild(spn);
     }
     var form=document.createElement("div"); form.className="row"; form.style.alignItems="flex-end";
     var nf=jobNameField(j.type, j.label, "ชื่องาน (เลือกงานเดิมแล้วราคาเด้งมาให้)");
@@ -3938,9 +4191,16 @@ function orphScan(){
     pullAllCol("edit_log","snapshot").catch(function(){ return null; }),
     /* v17: จุดแวะเป็นที่เก็บ path รูปที่ใหม่ ต้องนับด้วย ไม่งั้นเก็บกวาดจะลบบิลจุดแวะทิ้งทั้งหมด
        (บทเรียนเดิมข้อ 20 — เพิ่มที่เก็บรูปที่ไหน ต้องมาบอกปุ่มเก็บกวาดที่นี่เสมอ) */
-    pullAllCol("job_stops","photos")
+    pullAllCol("job_stops","photos"),
+    /* v26: รูปเดิมที่ถูก "เปลี่ยนรูป" ต้องเก็บไว้ถาวร (เจ้าของสั่ง ห้ามลบรูป) — นับว่ามีคนใช้ */
+    pullAllCol("photo_swap","old_path,new_path").catch(function(){ return null; })
   ]).then(function(a){
-    var J=a[0], F=a[1], files=a[2], L=a[3], S=a[4];
+    var J=a[0], F=a[1], files=a[2], L=a[3], S=a[4], W=a[5];
+    if(!W || W.total===null || W.rows.length!==W.total){
+      orphSay('<b style="color:var(--accent)">ตรวจไม่สำเร็จ — อ่านประวัติการเปลี่ยนรูปไม่ครบ</b><br>' +
+              'รูปเดิมที่ถูกเปลี่ยนต้องเก็บไว้ ยังไม่ลบอะไรทั้งนั้น ลองใหม่อีกครั้ง');
+      return;
+    }
     if(!L || L.total===null || L.rows.length!==L.total){
       orphSay('<b style="color:var(--accent)">ตรวจไม่สำเร็จ — อ่านประวัติงานที่ถูกลบไม่ครบ</b><br>' +
               'รูปของงานที่ถูกลบต้องเก็บไว้ให้กู้คืนได้ ยังไม่ลบอะไรทั้งนั้น ลองใหม่อีกครั้ง');
@@ -3959,6 +4219,7 @@ function orphScan(){
     J.rows.forEach(function(r){ mark(r.photos_start); mark(r.photos_end); });
     F.rows.forEach(function(r){ mark(r.photos_receipt); mark(r.photos_odo); });
     S.rows.forEach(function(r){ mark(r.photos); });
+    W.rows.forEach(function(r){ mark([r.old_path, r.new_path]); });
     var keptDel=0;
     L.rows.forEach(function(r){
       var sn=r.snapshot; if(!sn) return;
@@ -4596,6 +4857,16 @@ function fuelList(host,list,showEmp){
     var amt=document.createElement("div"); amt.className="amt"; amt.textContent=baht(f.amount);
     row.appendChild(body); row.appendChild(amt); host.appendChild(row);
     if(canFixTruck(f)) body.appendChild(fixTruckBtn(f, body));
+    if(canSwapPhoto(f)){
+      var spn=document.createElement("div"); spn.className="jobedit hidden";
+      var sbt=document.createElement("button"); sbt.className="btn sm ghost"; sbt.textContent=swapBtnLabel();
+      sbt.style.cssText="margin-top:8px; margin-left:6px";
+      sbt.onclick=function(){
+        if(!spn.classList.contains("hidden")){ spn.classList.add("hidden"); spn.innerHTML=""; return; }
+        spn.classList.remove("hidden"); buildSwapPhoto("fuel", f, spn);
+      };
+      body.appendChild(sbt); row.appendChild(spn);
+    }
   });
 }
 function renderFuel(){
