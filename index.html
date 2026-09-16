@@ -873,6 +873,21 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         แก้ชื่อแล้วงานเก่าที่ใช้ชื่อเดิมจะถูกแก้ตามให้ด้วย · ลบแล้วงานเก่ายังเก็บชื่อเดิมไว้เหมือนเดิม
       </p>
 
+      <div class="sec-title">สถานที่ (ชื่อจุดรับ–ส่ง)</div>
+      <div id="placeTable" class="stack" style="gap:8px"></div>
+      <div class="card pad row" style="margin-top:10px">
+        <label class="f" style="flex:2; min-width:150px">ชื่อสถานที่<input type="text" id="plName" maxlength="60" placeholder="เช่น ท่าทราย"></label>
+        <label class="f" style="flex:2; min-width:170px">พิกัด (วางจาก Google Maps)<input type="text" id="plLL" placeholder="17.7659, 102.1627"></label>
+        <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="plAdd">เพิ่ม</button></label>
+      </div>
+      <div class="sec-title" style="font-size:14px">จุดที่ยังไม่มีชื่อ</div>
+      <div id="looseTable" class="stack" style="gap:8px"></div>
+      <p class="hint" style="margin:8px 0 0">
+        พิกัดที่อยู่ในรัศมีของสถานที่ (ปกติ 1 กม.) จะขึ้นเป็นชื่อนั้นในปุ่ม "ขอแก้พิกัด" ·
+        เลือกสถานที่ที่มีชื่อ = แก้งานเป็นพิกัดมาตรฐานของที่นั้น ระยะทางจะเท่ากันทุกใบ ·
+        ลบสถานที่ไม่กระทบพิกัดของงานที่ลงไปแล้ว
+      </p>
+
       <div id="trashBlock">
       <div class="sec-title">งานที่ถูกลบ</div>
       <div class="card pad stack">
@@ -1281,7 +1296,9 @@ function bootstrap(){
     rest("photo_rot?select=path,deg"),
     rest("job_stops?select=*&order=seq"),
     /* คำขอแก้พิกัดที่ยังรอเจ้าของอนุมัติ (v23) — ฐานข้อมูลเก่ายังไม่มีฟังก์ชันนี้ก็ไม่พัง */
-    rest("rpc/fix_req_open",{method:"POST", body:{}}).catch(function(){ return []; })
+    rest("rpc/fix_req_open",{method:"POST", body:{}}).catch(function(){ return []; }),
+    /* สมุดสถานที่ (v27) — ฐานข้อมูลเก่ายังไม่มีตารางก็ไม่พัง */
+    rest("places?select=*&order=name").catch(function(){ return []; })
   ]).then(function(a){
     DB.emp   = a[0].map(rowEmp);
     DB.truck = a[1].map(rowTruck);
@@ -1292,6 +1309,7 @@ function bootstrap(){
     DB.stop  = (a[9]||[]).map(rowStop);
     DB.fixOpen = {};
     (a[10]||[]).forEach(function(f){ DB.fixOpen[f.job_id] = f; });
+    DB.places = (a[11]||[]).map(rowPlace);
 
     DB.absent={};
     a[6].forEach(function(x){
@@ -1680,7 +1698,7 @@ function runSync(){
 
 /* ---------- โครงว่างตอนหน้าเว็บเพิ่งเปิด (ยังไม่ล็อกอิน) ---------- */
 function load(){
-  return {emp:[], truck:[], rate:[], job:[], stop:[], fuel:[], absent:{}, lastTruck:{}, rot:{}, sizes:SIZES.slice(),
+  return {emp:[], truck:[], rate:[], job:[], stop:[], fuel:[], places:[], absent:{}, lastTruck:{}, rot:{}, sizes:SIZES.slice(),
           mats:[], set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, stopRate:100, imgq:"ประหยัด", fuelPrice:31.94, tankPrice:36.30},
           tg:{token:"", chat:"", log:[]}};
 }
@@ -2735,35 +2753,126 @@ function canReqFix(j){
 }
 function fixPending(j){ return (DB.fixOpen && DB.fixOpen[j.id]) || null; }
 
-/* จุดที่เคยไป — รวมจากงานเก่าในเครื่อง ปัดพิกัดทศนิยม 2 ตำแหน่ง (~1 กม.) เป็นกลุ่มเดียวกัน
-   ชื่อจุด = ชื่องานที่ใช้บ่อยสุดในกลุ่มนั้น · พิกัดที่ส่งไป = ของใบล่าสุดในกลุ่ม (ของจริง ไม่ใช่ค่าเฉลี่ย)
-   คนขับเห็นเฉพาะงานตัวเอง (bootstrap โหลดมาแค่นั้น) ซึ่งพอสำหรับจุดที่ตัวเองเคยวิ่ง */
-function knownPins(which, skipId){
-  var m={}, out=[];
+/* =============== สมุดสถานที่ (v27 · 16 ก.ย. 2569 — เจ้าของสั่ง) ===============
+   Why: รายการ "จุดที่เคยไป" เดิมเอาชื่องานมาเป็นชื่อจุด ("ส่งทราย ระยะทาง 60 กม (จุดที่ 2)")
+        และแยกกลุ่มด้วยการปัดทศนิยม → ท่าทรายที่เดียวแตกเป็น 4 บรรทัด เจ้าของเปิดดูแล้วไม่รู้ว่าควรเลือกอะไร
+   ตาราง places = ชื่อ + พิกัดมาตรฐาน + รัศมี (ค่าเริ่มต้น 1 กม.)
+   อ่านได้ทุกคน · เพิ่ม/แก้/ลบ = เจ้าของ + แอดมิน (RLS places_staff ตรวจซ้ำ)
+   **ไม่ผ่านชั้นซิงก์ SNAP** — ยิง REST ตรงแล้วแก้ DB.places ในเครื่อง (ของน้อย เปลี่ยนนานๆ ครั้ง)
+   เลือกจุดที่มีชื่อในปุ่มขอแก้พิกัด = ส่ง "พิกัดมาตรฐาน" ของสถานที่ (กม. เท่ากันทุกใบ ราคาเดาแม่นขึ้น) */
+var PLACE_R_DEF=1000;
+function rowPlace(r){ return {id:r.id, name:r.name, lat:num(r.lat,0), lng:num(r.lng,0), r:num(r.radius_m,PLACE_R_DEF)}; }
+function canEditPlaces(){ return isStaff(me); }
+function sortPlaces(){ (DB.places||[]).sort(function(a,b){ return a.name.localeCompare(b.name,"th"); }); }
+/* สถานที่ที่จุดนี้อยู่ในรัศมี (ถ้าอยู่ในหลายวง เอาวงที่ใกล้สุด) */
+function placeOf(p){
+  if(!p || p.lat==null || p.lng==null) return null;
+  var best=null, bd=1e9;
+  (DB.places||[]).forEach(function(x){
+    var d=haversine(p,x)*1000;
+    if(d<=x.r && d<bd){ bd=d; best=x; }
+  });
+  return best;
+}
+function nearestPlace(p){
+  var best=null, bd=1e9;
+  (DB.places||[]).forEach(function(x){ var d=haversine(p,x); if(d<bd){ bd=d; best=x; } });
+  return best ? {pl:best, km:bd} : null;
+}
+function looseName(g){
+  var n=nearestPlace(g);
+  return "❓ ยังไม่มีชื่อ" + (n ? " · ห่าง"+n.pl.name+" "+n.km.toFixed(1)+" กม." : "");
+}
+/* รวมพิกัดจากงานในเครื่อง → {named:[สถานที่ทุกแห่ง + จำนวนใบ], loose:[กลุ่มที่ยังไม่มีชื่อ]}
+   which = "start" | "end" | "both" · กลุ่มไม่มีชื่อ = จุดที่ห่างกันไม่เกิน 1 กม. (ยึดจุดแรกของกลุ่มเป็นศูนย์กลาง) */
+function pinGroups(which, skipId){
+  var named={}, loose=[];
+  (DB.places||[]).forEach(function(x){ named[x.id]={name:x.name, lat:x.lat, lng:x.lng, n:0, place:x}; });
   DB.job.forEach(function(o){
-    var p = which==="end" ? o.end : o.start;
-    if(!p || p.lat==null || p.lng==null) return;
     if(o.id===skipId) return;
-    var k=p.lat.toFixed(2)+","+p.lng.toFixed(2);
-    var g=m[k]; if(!g){ g=m[k]={n:0, lat:p.lat, lng:p.lng, date:o.date||"", nm:{}}; }
-    g.n++;
-    if((o.date||"")>=g.date){ g.date=o.date||g.date; g.lat=p.lat; g.lng=p.lng; }
-    var nm=(o.label||"").trim() || (o.dest||"").trim();
-    if(nm) g.nm[nm]=(g.nm[nm]||0)+1;
+    var ends = which==="both" ? [o.start, o.end] : [which==="end" ? o.end : o.start];
+    ends.forEach(function(p){
+      if(!p || p.lat==null || p.lng==null) return;
+      var pl=placeOf(p);
+      if(pl){ named[pl.id].n++; return; }
+      var g=null;
+      for(var i=0;i<loose.length;i++){ if(haversine(loose[i].c,p)*1000<=PLACE_R_DEF){ g=loose[i]; break; } }
+      if(!g){ g={c:{lat:p.lat,lng:p.lng}, n:0, sl:0, sg:0, lat:p.lat, lng:p.lng, date:"", nm:{}, place:null}; loose.push(g); }
+      g.n++; g.sl+=p.lat; g.sg+=p.lng;
+      if((o.date||"")>=g.date){ g.date=o.date||g.date; g.lat=p.lat; g.lng=p.lng; }
+      var nm=(o.label||"").trim() || (o.dest||"").trim();
+      if(nm) g.nm[nm]=(g.nm[nm]||0)+1;
+    });
   });
-  Object.keys(m).forEach(function(k){
-    var g=m[k], best="", bn=0;
-    Object.keys(g.nm).forEach(function(s){ if(g.nm[s]>bn){ bn=g.nm[s]; best=s; } });
-    out.push({name: best || ("จุด "+g.lat.toFixed(4)+", "+g.lng.toFixed(4)), lat:g.lat, lng:g.lng, n:g.n});
+  var nl=Object.keys(named).map(function(k){ return named[k]; });
+  nl.sort(function(a,b){ return (b.n-a.n) || a.name.localeCompare(b.name,"th"); });
+  loose.forEach(function(g){
+    var best="", bn=0;
+    Object.keys(g.nm).forEach(function(k){ if(g.nm[k]>bn){ bn=g.nm[k]; best=k; } });
+    g.hint=best;
+    g.avg={lat:g.sl/g.n, lng:g.sg/g.n};
+    g.name=looseName(g.avg);
   });
-  out.sort(function(a,b){ return b.n-a.n; });
-  /* ชื่อซ้ำได้ (เช่นงานชื่อเดียวกันแต่ออกคนละท่า) — เติมเลขไว้ให้แยกออก */
-  var seen={};
-  out.forEach(function(p){
-    seen[p.name]=(seen[p.name]||0)+1;
-    if(seen[p.name]>1) p.name = p.name+" (จุดที่ "+seen[p.name]+")";
+  loose.sort(function(a,b){ return b.n-a.n; });
+  return {named:nl, loose:loose};
+}
+/* จุดให้เลือกในปุ่มขอแก้พิกัด — สถานที่ที่มีชื่อทั้งหมดก่อน แล้วตามด้วยจุดไม่มีชื่อ 8 กลุ่มที่ใช้บ่อยสุด
+   คนขับเห็นเฉพาะงานตัวเอง (bootstrap โหลดมาแค่นั้น) แต่เห็นสถานที่ที่มีชื่อครบทุกแห่ง */
+function knownPins(which, skipId){
+  var g=pinGroups(which, skipId);
+  return g.named.concat(g.loose.slice(0,8));
+}
+function pinOptText(p){
+  if(p.place) return "📍 "+p.name+" · "+(p.n ? p.n+" ใบ" : "ยังไม่มีงาน");
+  return p.name+" · "+p.n+" ใบ";
+}
+function placeErr(e){
+  var m=(e&&e.message)||String(e||"");
+  if(m.indexOf("places_name_uq")>=0 || m.indexOf("23505")>=0) return "ชื่อนี้มีอยู่แล้ว ใช้ชื่ออื่น";
+  if(m.indexOf("[401]")>=0 || m.indexOf("[403]")>=0 || m.indexOf("42501")>=0) return "ไม่มีสิทธิ์แก้สถานที่";
+  if(m.indexOf("23514")>=0) return "ข้อมูลไม่ถูกต้อง (ชื่อยาวเกิน 60 ตัว หรือพิกัดนอกประเทศ)";
+  return "บันทึกไม่สำเร็จ "+m.slice(0,80);
+}
+function placeAdd(name, lat, lng){
+  return rest("places",{method:"POST", headers:{Prefer:"return=representation"},
+                        body:{name:name, lat:+(+lat).toFixed(7), lng:+(+lng).toFixed(7)}})
+    .then(function(r){
+      if(!r || !r.length) throw new Error("[403]");
+      var x=rowPlace(r[0]); DB.places=(DB.places||[]).concat([x]); sortPlaces(); return x;
+    });
+}
+function placePatch(x, patch){
+  return rest("places?id=eq."+x.id,{method:"PATCH", headers:{Prefer:"return=representation"}, body:patch})
+    .then(function(r){
+      if(!r || !r.length) throw new Error("[403]");   /* RLS ไม่ให้แก้ = ได้แถวว่างกลับมา ไม่ใช่ error */
+      var y=rowPlace(r[0]); x.name=y.name; x.lat=y.lat; x.lng=y.lng; x.r=y.r; sortPlaces(); return x;
+    });
+}
+function placeDel(x){
+  return rest("places?id=eq."+x.id,{method:"DELETE", headers:{Prefer:"return=representation"}})
+    .then(function(r){
+      if(!r || !r.length) throw new Error("[403]");
+      DB.places=(DB.places||[]).filter(function(o){ return o.id!==x.id; });
+    });
+}
+/* "17.7659, 102.1627" · ลิงก์ Google Maps ที่มี @lat,lng หรือ q=lat,lng ก็ได้ */
+function parseLatLng(t){
+  var m=String(t||"").match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{2,3}\.\d+)/);
+  if(!m) return null;
+  var la=+m[1], lo=+m[2];
+  if(la<5 || la>25 || lo<95 || lo>110) return null;
+  return {lat:la, lng:lo};
+}
+/* ถามชื่อแล้วสร้างสถานที่จากกลุ่มจุดที่ยังไม่มีชื่อ (ใช้ค่าเฉลี่ยของกลุ่มเป็นพิกัดมาตรฐาน) */
+function nameLoose(g, done){
+  askText("ตั้งชื่อจุดนี้", "เช่น ท่าทราย · โรงงานน้ำโสม · บ้านลูกค้า… ต่อไปจุดที่อยู่ในรัศมี 1 กม. จะใช้ชื่อนี้"+
+          (g.hint ? " (งานที่เคยไป: "+g.hint+")" : ""), function(v){
+    v=(v||"").trim(); if(!v) return;
+    var pt=g.avg || g;
+    placeAdd(v, pt.lat, pt.lng)
+      .then(function(x){ toast("ตั้งชื่อ \""+x.name+"\" แล้ว"); if(done) done(x); })
+      .catch(function(e){ toast(placeErr(e)); });
   });
-  return out.slice(0,12);
 }
 
 /* รูปที่จะแนบไปกับการ์ดใน Telegram — เอารูปตอนปิดงานก่อน (ปกติเป็นบิล) ไม่มีค่อยใช้รูปตอนเริ่ม
@@ -2796,6 +2905,9 @@ function buildFixReq(j, pan){
   row.appendChild(lw); row.appendChild(lp); row.appendChild(ln);
   wrap.appendChild(row);
 
+  /* บรรทัดใต้ช่องเลือก: เปิดแผนที่ดูว่าที่ไหน + ปุ่มตั้งชื่อ (เจ้าของ/แอดมิน) — v27 */
+  var pinx=document.createElement("div"); pinx.className="row"; pinx.style.alignItems="center"; pinx.style.gap="8px";
+  wrap.appendChild(pinx);
   var info=document.createElement("div"); info.className="hint";
   var bar=document.createElement("div"); bar.className="row";
   var go=document.createElement("button"); go.className="btn sm"; go.textContent=goText;
@@ -2804,7 +2916,25 @@ function buildFixReq(j, pan){
   pan.appendChild(wrap);
 
   var pins=[];
+  function extra(){
+    var p=pins[num(pSel.value,-1)];
+    pinx.innerHTML="";
+    if(!p) return;
+    var a=document.createElement("a"); a.className="btn sm ghost"; a.target="_blank"; a.rel="noopener";
+    a.href=mapsPoint(p); a.textContent="🗺️ ดูบนแผนที่";
+    pinx.appendChild(a);
+    if(!p.place && p.hint){
+      var h=document.createElement("span"); h.className="hint"; h.textContent="งานที่เคยไป: "+p.hint;
+      pinx.appendChild(h);
+    }
+    if(!p.place && canEditPlaces()){
+      var nb=document.createElement("button"); nb.className="btn sm"; nb.textContent="✏️ ตั้งชื่อจุดนี้";
+      nb.onclick=function(){ nameLoose(p, function(x){ fill(x.id); }); };
+      pinx.appendChild(nb);
+    }
+  }
   function calc(){
+    extra();
     var p=pins[num(pSel.value,-1)];
     if(!p){ info.textContent=""; return; }
     var a = wSel.value==="end" ? j.start : p;
@@ -2813,20 +2943,28 @@ function buildFixReq(j, pan){
     info.textContent = "ระยะทางใหม่: " + (d==null ? "คำนวณไม่ได้ (อีกจุดยังไม่มีพิกัด)" : d.toFixed(1)+" กม.") +
                        "  ·  เดิม " + (j.km||0).toFixed(1) + " กม.";
   }
-  function fill(){
+  function fill(keepId){
     pins=knownPins(wSel.value, j.id);
     pSel.innerHTML="";
     if(!pins.length){
       var z=document.createElement("option"); z.value=""; z.textContent="— ยังไม่มีจุดเก่าให้เลือก —"; pSel.appendChild(z);
     }
+    var gA=null, gB=null;
     pins.forEach(function(p,i){
       var o=document.createElement("option"); o.value=String(i);
-      o.textContent=p.name+" · "+p.n+" ใบ ("+p.lat.toFixed(4)+", "+p.lng.toFixed(4)+")";
-      pSel.appendChild(o);
+      o.textContent=pinOptText(p);
+      if(p.place){
+        if(!gA){ gA=document.createElement("optgroup"); gA.label="สถานที่ที่ตั้งชื่อแล้ว"; pSel.appendChild(gA); }
+        gA.appendChild(o);
+        if(keepId && p.place.id===keepId) o.selected=true;
+      }else{
+        if(!gB){ gB=document.createElement("optgroup"); gB.label="จุดที่ยังไม่มีชื่อ (กดดูบนแผนที่ก่อนเลือก)"; pSel.appendChild(gB); }
+        gB.appendChild(o);
+      }
     });
     calc();
   }
-  wSel.onchange=fill; pSel.onchange=calc; fill();
+  wSel.onchange=function(){ fill(); }; pSel.onchange=calc; fill();
 
   go.onclick=function(){
     var p=pins[num(pSel.value,-1)];
@@ -2834,14 +2972,15 @@ function buildFixReq(j, pan){
     go.disabled=true; go.textContent="กำลังส่ง…";
     function back(){ go.disabled=false; go.textContent=goText; }
     rest("rpc/req_fix",{method:"POST", body:{ p_job:j.id, p_which:wSel.value,
-         p_lat:p.lat, p_lng:p.lng, p_place:p.name, p_note:nIn.value||null, p_photo:fixPhoto(j) }})
+         p_lat:p.lat, p_lng:p.lng, p_place:(p.place ? p.name : "จุด "+p.lat.toFixed(4)+", "+p.lng.toFixed(4)),
+         p_note:nIn.value||null, p_photo:fixPhoto(j) }})
       .then(function(r){
         if(!r || !r.ok){ toast((r&&r.msg)||"ส่งคำขอไม่สำเร็จ"); back(); return; }
         toast(r.msg||"ส่งคำขอแล้ว");
         pan.classList.add("hidden"); pan.innerHTML="";
         if(r.applied){ return bootstrap().then(function(){ render(); }); }   /* เจ้าของแก้เอง — ดึงค่าใหม่มาโชว์ */
         DB.fixOpen=DB.fixOpen||{};
-        DB.fixOpen[j.id]={job_id:j.id, which:wSel.value, place:p.name};
+        DB.fixOpen[j.id]={job_id:j.id, which:wSel.value, place:(p.place ? p.name : "จุดที่ยังไม่มีชื่อ")};
         render();
       })
       .catch(function(e){ toast("ส่งคำขอไม่สำเร็จ "+((e&&e.message)||"")); back(); });
@@ -4384,6 +4523,7 @@ function wireTruckEdit(){
     };
   });
   paintMats();
+  paintPlaces();
 }
 
 /* =============== รายการสินค้า (หน้าตั้งค่า) ===============
@@ -4459,6 +4599,95 @@ function paintMats(){
       toast("ลบ \""+name+"\" ออกจากรายการแล้ว" + (used ? " · งานเก่ายังเก็บชื่อเดิมไว้" : ""));
     });
   });
+}
+/* =============== สถานที่ (หน้าตั้งค่า · v27) =============== */
+function paintPlaces(){
+  var box=$("placeTable"), lbox=$("looseTable"); if(!box) return;
+  var G=pinGroups("both", null), cnt={};
+  G.named.forEach(function(g){ cnt[g.place.id]=g.n; });
+  /* การ์ดทีละแถว ไม่ใช้ตาราง — ปุ่ม 5 ปุ่มในตารางกว้างเกินจอมือถือ ชื่อหลุดไปทางซ้าย */
+  var cardCss='style="box-shadow:none; border:1px solid var(--line, #e5ddd0); padding:10px 12px"';
+  var btnRow='style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px"';
+  var t='';
+  (DB.places||[]).forEach(function(x,i){
+    t+='<div class="card" '+cardCss+'><div><b>📍 '+esc(x.name)+'</b></div>'+
+       '<div class="hint">'+(cnt[x.id]||0)+' จุดในงาน · รัศมี '+(x.r>=1000 ? (x.r/1000)+' กม.' : x.r+' ม.')+
+         ' · '+x.lat.toFixed(5)+', '+x.lng.toFixed(5)+'</div>'+
+       '<div '+btnRow+'><a class="btn sm ghost" target="_blank" rel="noopener" href="'+esc(mapsPoint(x))+'">🗺️ แผนที่</a>'+
+         '<button class="btn sm ghost" data-plren="'+i+'">แก้ชื่อ</button>'+
+         '<button class="btn sm ghost" data-plrad="'+i+'">รัศมี</button>'+
+         '<button class="btn sm ghost" data-plmv="'+i+'">ย้ายพิกัด</button>'+
+         '<button class="btn sm ghost" data-pldel="'+i+'">ลบ</button></div></div>';
+  });
+  if(!(DB.places||[]).length) t='<p class="hint" style="margin:0">ยังไม่มีสถานที่</p>';
+  box.innerHTML=t;
+
+  var lo=G.loose.slice(0,15);
+  var u='';
+  lo.forEach(function(g,i){
+    u+='<div class="card" '+cardCss+'><div>'+esc(g.name)+'</div>'+
+       '<div class="hint">'+g.n+' จุดในงาน'+(g.hint ? ' · งานที่เคยไป: '+esc(g.hint) : '')+'</div>'+
+       '<div '+btnRow+'><a class="btn sm ghost" target="_blank" rel="noopener" href="'+esc(mapsPoint(g.avg))+'">🗺️ แผนที่</a>'+
+         '<button class="btn sm" data-plname="'+i+'">✏️ ตั้งชื่อ</button></div></div>';
+  });
+  if(!lo.length) u='<p class="hint" style="margin:0">ทุกจุดมีชื่อแล้ว</p>';
+  lbox.innerHTML=u;
+
+  function pick(attr, b){ return (DB.places||[])[+b.getAttribute(attr)]; }
+  box.querySelectorAll("[data-plren]").forEach(function(b){
+    b.onclick=function(){
+      var x=pick("data-plren",b); if(!x) return;
+      askText("แก้ชื่อสถานที่", "งานเก่าไม่ต้องแก้ตาม ชื่อนี้ใช้แสดงผลอย่างเดียว", function(v){
+        v=(v||"").trim(); if(!v || v===x.name) return;
+        placePatch(x,{name:v}).then(function(){ render(); toast("แก้เป็น \""+v+"\" แล้ว"); })
+          .catch(function(e){ toast(placeErr(e)); });
+      }, x.name);
+    };
+  });
+  box.querySelectorAll("[data-plrad]").forEach(function(b){
+    b.onclick=function(){
+      var x=pick("data-plrad",b); if(!x) return;
+      askText("รัศมีของ \""+x.name+"\" (เมตร)", "พิกัดที่ห่างจากจุดนี้ไม่เกินเท่านี้ ถือว่าเป็นที่เดียวกัน · 100–5000", function(v){
+        var n=Math.round(num(String(v).replace(/[^\d.]/g,""),0));
+        if(n<100 || n>5000){ toast("ใส่ได้ 100 ถึง 5000 เมตร"); return; }
+        placePatch(x,{radius_m:n}).then(function(){ render(); toast("ตั้งรัศมี "+n+" ม. แล้ว"); })
+          .catch(function(e){ toast(placeErr(e)); });
+      }, String(x.r));
+    };
+  });
+  box.querySelectorAll("[data-plmv]").forEach(function(b){
+    b.onclick=function(){
+      var x=pick("data-plmv",b); if(!x) return;
+      askText("ย้ายพิกัด \""+x.name+"\"", "วางพิกัดใหม่ เช่น 17.7659, 102.1627 (กดค้างที่จุดใน Google Maps แล้วคัดลอก)", function(v){
+        var ll=parseLatLng(v);
+        if(!ll){ toast("อ่านพิกัดไม่ออก ใส่แบบ 17.7659, 102.1627"); return; }
+        placePatch(x,{lat:ll.lat, lng:ll.lng}).then(function(){ render(); toast("ย้ายพิกัดแล้ว"); })
+          .catch(function(e){ toast(placeErr(e)); });
+      }, x.lat.toFixed(6)+", "+x.lng.toFixed(6));
+    };
+  });
+  box.querySelectorAll("[data-pldel]").forEach(function(b){
+    var x=pick("data-pldel",b); if(!x) return;
+    armBtn(b, "กดอีกครั้ง = ลบ", function(){
+      placeDel(x).then(function(){ render(); toast("ลบ \""+x.name+"\" แล้ว"); })
+        .catch(function(e){ toast(placeErr(e)); });
+    });
+  });
+  lbox.querySelectorAll("[data-plname]").forEach(function(b){
+    b.onclick=function(){
+      var g=lo[+b.getAttribute("data-plname")]; if(!g) return;
+      nameLoose(g, function(){ render(); });
+    };
+  });
+  var add=$("plAdd");
+  if(add) add.onclick=function(){
+    var nm=($("plName").value||"").trim(), ll=parseLatLng($("plLL").value);
+    if(!nm){ toast("ยังไม่ได้พิมพ์ชื่อสถานที่"); $("plName").focus(); return; }
+    if(!ll){ toast("อ่านพิกัดไม่ออก ใส่แบบ 17.7659, 102.1627"); $("plLL").focus(); return; }
+    placeAdd(nm, ll.lat, ll.lng).then(function(x){
+      $("plName").value=""; $("plLL").value=""; render(); toast("เพิ่ม \""+x.name+"\" แล้ว");
+    }).catch(function(e){ toast(placeErr(e)); });
+  };
 }
 function wireMatAdd(){
   var btn=$("mAdd"); if(!btn) return;
