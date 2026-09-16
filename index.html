@@ -1090,7 +1090,7 @@ function rowJob(r){
   return {id:r.id, date:r.job_date, emp:r.emp_id, truck:r.truck_id, type:r.job_type, label:r.label||"",
     mat:r.material||"", bill:r.bill_no||"", dest:r.dest||"",
     price:num(r.price,0), priced:!!r.priced, nights:r.nights||0, nightRate:r.night_rate==null?null:num(r.night_rate,0),
-    km:num(r.km,0), note:r.note||"", status:r.status,
+    km:num(r.km,0), roadKm:(r.road_km==null?null:num(r.road_km,0)), note:r.note||"", status:r.status,
     payMode:r.pay_mode||"เที่ยว", days:r.days||1, returnOf:r.return_of||null,
     qty:(r.qty==null?null:num(r.qty,0)), src:r.src||null, srcRef:r.src_ref||null,
     incomplete:!!r.incomplete, incompleteReason:r.incomplete_reason||"", flatTrip:!!r.flat_trip,
@@ -1307,6 +1307,8 @@ function bootstrap(){
     DB.job   = a[4].map(rowJob).reverse();   /* หน้าจอคาดว่าเรียงเก่า→ใหม่ */
     DB.fuel  = a[5].map(rowFuel).reverse();
     DB.stop  = (a[9]||[]).map(rowStop);
+    /* ระยะตามถนน (v28) ใช้ได้เฉพาะตอนพิกัดทั้งสายยังเหมือนตอนที่ฐานข้อมูลคำนวณ — จำลายเซ็นไว้ */
+    DB.job.forEach(function(j){ j._roadSig = roadSig(j); });
     DB.fixOpen = {};
     (a[10]||[]).forEach(function(f){ DB.fixOpen[f.job_id] = f; });
     DB.places = (a[11]||[]).map(rowPlace);
@@ -2431,8 +2433,8 @@ function paintEndGeo(){
     fin.km=d;
     $("kmVal").textContent=fin.km.toFixed(1)+" กม.";
     $("straightTxt").textContent = ns
-      ? "รวมช่วงที่แวะรับของ "+ns+" จุดแล้ว (คิดเส้นตรงระหว่างจุด) กดปุ่มด้านล่างดูระยะถนนจริงได้"
-      : "คำนวณจากพิกัดต้นทาง–ปลายทาง (เส้นตรง) กดปุ่มด้านล่างดูระยะถนนจริงได้";
+      ? "รวมช่วงที่แวะรับของ "+ns+" จุดแล้ว (ตอนนี้เป็นเส้นตรง — ระยะตามถนนระบบคำนวณให้หลังกดงานสำเร็จ)"
+      : "ตอนนี้เป็นระยะเส้นตรง — ระยะตามถนนจริงระบบจะคำนวณให้เองหลังกดงานสำเร็จ (ประมาณ 1–2 นาที)";
     $("linkRoute").classList.remove("hidden"); $("linkRoute").href=mapsRouteVia(routePts(fin));
   } else {
     $("kmVal").textContent="–";
@@ -2533,7 +2535,20 @@ function sorted(list){
     return (b.at||0)-(a.at||0);
   });
 }
-function sum(list,k){ var s=0; list.forEach(function(x){ s+=(x[k]||0); }); return s; }
+function sum(list,k){ var s=0; list.forEach(function(x){ s+=(k==="km" ? kmOf(x) : (x[k]||0)); }); return s; }
+/* =============== ระยะทางตามถนน (v28 · 16 ก.ย. 2569 — เจ้าของสั่ง) ===============
+   Why: j.km เป็นเส้นตรงระหว่างพิกัด (งานส่งบล็อคอุดร 84.1 กม. แต่ Google Maps 112 กม.)
+   ฐานข้อมูลถามระยะถนนจริงจาก OSRM/OpenRouteService หลังปิดงาน แล้วเก็บใน jobs.road_km (cron road-sweep ทุกนาที)
+   **j.km ยังเป็นเส้นตรงเหมือนเดิม** เพราะ guessRate()/guess_rate จับคู่ราคางานเดิมด้วยระยะ ±3 กม.
+   road_km ใช้ได้เฉพาะตอนพิกัดทั้งสายยังตรงกับตอนโหลด (_roadSig) — แก้พิกัดในเครื่องแล้วกลับไปโชว์เส้นตรงจนกว่าจะโหลดใหม่
+   ไม่มีระยะถนน = โชว์เส้นตรงพร้อมป้าย "(เส้นตรง)" */
+function roadSig(j){ return JSON.stringify(routePts(j)); }
+function roadOk(j){ return !!j && j.roadKm!=null && j._roadSig!=null && j._roadSig===roadSig(j); }
+function kmOf(j){ return roadOk(j) ? j.roadKm : (j.km||0); }
+function kmText(j){
+  if(roadOk(j)) return j.roadKm.toFixed(1)+" กม.";
+  return j.km ? j.km.toFixed(1)+" กม. (เส้นตรง)" : "";
+}
 function nightRate(j){ return (j.nightRate!=null && j.nightRate!=="") ? j.nightRate : (DB.set.night||0); }
 function nightPay(j){ return (j.nights||0)*nightRate(j); }
 /* ฐานค่าเที่ยว ต้องตรงกับสูตร total_pay ใน DB (rungchai_v5_thasai.sql) เป๊ะๆ
@@ -2639,7 +2654,7 @@ function jobList(host,list,showEmp){
         plateChip(j) +
         (showEmp?'<span>'+emp(j.emp).name+'</span>':'') +
         '<span class="num">'+fmtDate(j.date)+'</span>' +
-        (j.km?'<span class="num">'+j.km.toFixed(1)+' กม.</span>':'') +
+        (kmText(j)?'<span class="num"'+(roadOk(j)?' title="ระยะตามถนน"':' title="ระยะเส้นตรงระหว่างพิกัด — ระบบกำลังคำนวณระยะตามถนน"')+'>'+kmText(j)+'</span>':'') +
         (j.nights?'<span>🌙 ค้าง '+j.nights+' คืน</span>':'') +
       (j.flatTrip&&(j.price||0)>0?'<span class="pill t3">เหมาวันงานทั่วไป</span>':'') +
         (stopsOf(j).length?'<span class="pill t3">🛑 แวะรับ '+stopsOf(j).length+' จุด +'+baht(stopsPay(j))+'</span>':'') + geo +
@@ -2947,7 +2962,7 @@ function buildSnap(pan, g){
     mp.href=mapsRoute(g.avg, pl);
     var h='';
     if(o.km>3) h+='<div class="hint" style="color:var(--warn); font-weight:600">⚠️ ห่างกัน '+o.km.toFixed(1)+' กม. — เปิดแผนที่ดูให้แน่ใจว่าเป็นที่เดียวกันจริง</div>';
-    h+='<div class="hint">งานที่จะย้ายพิกัดไป "'+esc(pl.name)+'" '+plan.rows.length+' ใบ · ค่าเที่ยวไม่เปลี่ยน'+
+    h+='<div class="hint">งานที่จะย้ายพิกัดไป "'+esc(pl.name)+'" '+plan.rows.length+' ใบ · ค่าเที่ยวไม่เปลี่ยน · กม. ข้างล่างเป็นเส้นตรง (ระยะถนนคำนวณใหม่ให้เองหลังย้าย)'+
        (plan.skip ? ' · ข้ามงานที่ยังไม่ปิด '+plan.skip+' จุด' : '')+'</div>';
     plan.rows.slice(0,8).forEach(function(r){
       var d=r.newKm-r.oldKm;
@@ -3048,7 +3063,7 @@ function buildFixReq(j, pan){
     var a = wSel.value==="end" ? j.start : p;
     var b = wSel.value==="end" ? p : j.end;
     var d = haversine(a,b);
-    info.textContent = "ระยะทางใหม่: " + (d==null ? "คำนวณไม่ได้ (อีกจุดยังไม่มีพิกัด)" : d.toFixed(1)+" กม.") +
+    info.textContent = "ระยะทางใหม่ (เส้นตรง): " + (d==null ? "คำนวณไม่ได้ (อีกจุดยังไม่มีพิกัด)" : d.toFixed(1)+" กม.") +
                        "  ·  เดิม " + (j.km||0).toFixed(1) + " กม.";
   }
   function fill(keepId){
@@ -3759,7 +3774,7 @@ function renderWait(){
       '<div class="meta"><span class="pill '+TYPE_PILL[j.type]+'">'+TYPE_LABEL[j.type]+'</span>' +
       '<span>'+emp(j.emp).name+'</span>'+plateChip(j) +
       '<span class="num">'+fmtDate(j.date)+'</span>' +
-      (j.km?'<span class="num">'+j.km.toFixed(1)+' กม.</span>':'') +
+      (kmText(j)?'<span class="num">'+kmText(j)+'</span>':'') +
       (j.nights?'<span>🌙 คนขับแจ้งค้าง '+j.nights+' คืน</span>':'') +
       (j.bill?'<span>บิล '+esc(j.bill)+'</span>':'') +
       (j.start&&j.start.lat!=null&&j.end&&j.end.lat!=null?'<a class="geo" target="_blank" rel="noopener" href="'+mapsRoute(j.start,j.end)+'">🗺️ เส้นทาง</a>':'') +
@@ -3865,7 +3880,7 @@ function renderWait(){
       sug.innerHTML='<b style="color:var(--ink)">งานเดิม: '+esc(g.rate.label)+'</b> · ' +
         baht(g.rate.price)+' บาท/'+esc(g.rate.unit||"เที่ยว")+
         ' <span class="pill t3">ระบบใส่ให้</span><br>จับคู่จากสินค้า '+esc(j.mat||"")+
-        ' + ระยะ '+j.km.toFixed(1)+' กม. ใกล้กับงานเดิม '+g.n+' ใบ' +
+        ' + ระยะเส้นตรง '+j.km.toFixed(1)+' กม. ใกล้กับงานเดิม '+g.n+' ใบ' +
         (gw && gw!==(j.mat||"") ? ' · ปกติ '+esc(gw) : '')+' — ตรวจแล้วกดยืนยันได้เลย';
       calc();
     }
@@ -5597,7 +5612,7 @@ function csvJobs(){
     .forEach(function(j){
       rows.push([fmtDate(j.date), emp(j.emp).name, truck(j.truck).plate, TYPE_LABEL[j.type],
         jobTitle(j).replace(/,/g," "), j.mat||"", j.dest||"", j.bill||"",
-        (j.km||0).toFixed(1), j.nights||0, nightRate(j), j.priced?j.price:"รอราคา", j.priced?payOf(j):"",
+        kmOf(j).toFixed(1), j.nights||0, nightRate(j), j.priced?j.price:"รอราคา", j.priced?payOf(j):"",
         j.start&&j.start.lat!=null?j.start.lat.toFixed(5)+" "+j.start.lng.toFixed(5):"",
         j.end&&j.end.lat!=null?j.end.lat.toFixed(5)+" "+j.end.lng.toFixed(5):"",
         allShots(j).length, (j.note||"").replace(/,/g," ")]);
