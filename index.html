@@ -2818,8 +2818,9 @@ function pinGroups(which, skipId){
       if(pl){ named[pl.id].n++; return; }
       var g=null;
       for(var i=0;i<loose.length;i++){ if(haversine(loose[i].c,p)*1000<=PLACE_R_DEF){ g=loose[i]; break; } }
-      if(!g){ g={c:{lat:p.lat,lng:p.lng}, n:0, sl:0, sg:0, lat:p.lat, lng:p.lng, date:"", nm:{}, place:null}; loose.push(g); }
+      if(!g){ g={c:{lat:p.lat,lng:p.lng}, n:0, sl:0, sg:0, lat:p.lat, lng:p.lng, date:"", nm:{}, place:null, items:[]}; loose.push(g); }
       g.n++; g.sl+=p.lat; g.sg+=p.lng;
+      g.items.push({job:o, which:(p===o.start ? "start" : "end")});
       if((o.date||"")>=g.date){ g.date=o.date||g.date; g.lat=p.lat; g.lng=p.lng; }
       var nm=(o.label||"").trim() || (o.dest||"").trim();
       if(nm) g.nm[nm]=(g.nm[nm]||0)+1;
@@ -2884,6 +2885,92 @@ function parseLatLng(t){
   if(la<5 || la>25 || lo<95 || lo>110) return null;
   return {lat:la, lng:lo};
 }
+/* =============== ย้ายงานในกลุ่มจุดไม่มีชื่อ → สถานที่ที่ตั้งชื่อแล้ว (16 ก.ย. 2569 — เจ้าของสั่ง) ===============
+   Why: จุดไม่มีชื่อหลายกลุ่มคือที่เดิม (ท่าทราย/โรงงาน) ที่คนขับกดคลาดไป 1–5 กม.
+        เจ้าของอยากเลือกสถานที่ที่มีอยู่ แล้วให้งานพวกนั้นย้ายพิกัดไปที่นั่นทีเดียว ไม่ต้องขอแก้ทีละใบ
+   ใครกดได้: **เจ้าของเท่านั้น** (เหมือนการอนุมัติขอแก้พิกัด — การย้ายพิกัดงานเป็นอำนาจเจ้าของ)
+   ทำอะไร: ตั้งพิกัดปลายนั้น = พิกัดมาตรฐานของสถานที่ แล้วคิด กม. ใหม่ด้วย routeKm() (รวมจุดแวะ)
+   **ไม่แตะราคา/priced** · ข้ามงานที่ยังไม่ปิด (active) เพราะเครื่องคนขับจะส่งทั้งแถวทับกลับ (กับดักข้อ 23)
+   ส่งขึ้นคลาวด์ผ่าน save() ตามปกติ → jobs_log จดประวัติให้ทุกใบ กดดู "ประวัติ" ได้ */
+function canSnapJobs(){ return isOwner(me); }
+function snapPlan(g, pl){
+  var seen={}, rows=[], skip=0;
+  (g.items||[]).forEach(function(it){
+    var j=it.job;
+    if(j.status!=="done"){ skip++; return; }
+    var r=seen[j.id];
+    if(!r){ r=seen[j.id]={job:j, ends:[], oldKm:j.km||0, newKm:null}; rows.push(r); }
+    if(r.ends.indexOf(it.which)<0) r.ends.push(it.which);
+  });
+  rows.forEach(function(r){
+    var j=r.job, c={start:j.start, end:j.end, id:j.id};
+    r.ends.forEach(function(w){ c[w]={lat:pl.lat, lng:pl.lng, at:(j[w]&&j[w].at)}; });
+    var k=routeKm(c); r.newKm = (k==null ? r.oldKm : k);
+  });
+  rows.sort(function(a,b){ return (a.job.date<b.job.date)?1:-1; });
+  return {rows:rows, skip:skip};
+}
+function snapApply(plan, pl){
+  plan.rows.forEach(function(r){
+    var j=r.job;
+    r.ends.forEach(function(w){ j[w].lat=pl.lat; j[w].lng=pl.lng; });
+    var k=routeKm(j); if(k!=null) j.km=Math.round(k*10)/10;
+  });
+  save();
+  return plan.rows.length;
+}
+function whichTxt(ends){ return ends.length>1 ? "ต้นทาง+ปลายทาง" : (ends[0]==="start" ? "ต้นทาง" : "ปลายทาง"); }
+function buildSnap(pan, g){
+  pan.innerHTML="";
+  var places=(DB.places||[]).map(function(x){ return {pl:x, km:haversine(g.avg,x)}; })
+                            .sort(function(a,b){ return a.km-b.km; });
+  if(!places.length){ pan.innerHTML='<p class="hint" style="margin:0">ยังไม่มีสถานที่ที่ตั้งชื่อ</p>'; return; }
+  var lab=document.createElement("label"); lab.className="f"; lab.textContent="ย้ายงานในจุดนี้ไปที่";
+  var sel=document.createElement("select");
+  places.forEach(function(o,i){
+    var op=document.createElement("option"); op.value=String(i);
+    op.textContent="📍 "+o.pl.name+" · ห่าง "+(o.km<10?o.km.toFixed(1):Math.round(o.km))+" กม.";
+    sel.appendChild(op);
+  });
+  lab.appendChild(sel); pan.appendChild(lab);
+  var info=document.createElement("div"); info.className="stack"; info.style.gap="6px"; info.style.marginTop="8px";
+  pan.appendChild(info);
+  var bar=document.createElement("div"); bar.style.cssText="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px";
+  var mp=document.createElement("a"); mp.className="btn sm ghost"; mp.target="_blank"; mp.rel="noopener"; mp.textContent="🗺️ เทียบบนแผนที่";
+  var go1=document.createElement("button"); go1.className="btn sm";
+  var cc=document.createElement("button"); cc.className="btn sm ghost"; cc.textContent="ยกเลิก";
+  cc.onclick=function(){ pan.classList.add("hidden"); pan.innerHTML=""; };
+  bar.appendChild(mp); bar.appendChild(go1); bar.appendChild(cc); pan.appendChild(bar);
+
+  function paint(){
+    var o=places[num(sel.value,0)], pl=o.pl, plan=snapPlan(g, pl);
+    mp.href=mapsRoute(g.avg, pl);
+    var h='';
+    if(o.km>3) h+='<div class="hint" style="color:var(--warn); font-weight:600">⚠️ ห่างกัน '+o.km.toFixed(1)+' กม. — เปิดแผนที่ดูให้แน่ใจว่าเป็นที่เดียวกันจริง</div>';
+    h+='<div class="hint">งานที่จะย้ายพิกัดไป "'+esc(pl.name)+'" '+plan.rows.length+' ใบ · ค่าเที่ยวไม่เปลี่ยน'+
+       (plan.skip ? ' · ข้ามงานที่ยังไม่ปิด '+plan.skip+' จุด' : '')+'</div>';
+    plan.rows.slice(0,8).forEach(function(r){
+      var d=r.newKm-r.oldKm;
+      h+='<div class="hint" style="padding-left:8px">• '+fmtDate(r.job.date)+' '+esc(emp(r.job.emp).name)+' · '+esc(jobTitle(r.job))+
+         ' · '+whichTxt(r.ends)+' · <span class="num">'+r.oldKm.toFixed(1)+' → '+r.newKm.toFixed(1)+' กม.</span>'+
+         (Math.abs(d)>=5 ? ' ⚠️' : '')+'</div>';
+    });
+    if(plan.rows.length>8) h+='<div class="hint" style="padding-left:8px">…และอีก '+(plan.rows.length-8)+' ใบ</div>';
+    info.innerHTML=h;
+    /* สร้างปุ่มใหม่ทุกครั้งที่เปลี่ยนสถานที่ — ตัวจับเวลาของ armBtn รอบก่อนจะได้ไม่เอาชื่อเก่ามาทับ */
+    var nb=document.createElement("button"); nb.className="btn sm";
+    bar.replaceChild(nb, go1); go1=nb;
+    go1.textContent="ย้าย "+plan.rows.length+" ใบไปที่ "+pl.name;
+    go1.disabled=!plan.rows.length;
+    armBtn(go1, "กดอีกครั้ง = ย้าย "+plan.rows.length+" ใบ", function(){
+      var n=snapApply(snapPlan(g, pl), pl);
+      render();
+      toast("ย้ายพิกัด "+n+" ใบไปที่ \""+pl.name+"\" แล้ว\nกด \"ประวัติ\" ในงานแต่ละใบดูค่าเดิมได้", 5000);
+    });
+  }
+  sel.onchange=paint; paint();
+}
+
 /* ถามชื่อแล้วสร้างสถานที่จากกลุ่มจุดที่ยังไม่มีชื่อ (ใช้ค่าเฉลี่ยของกลุ่มเป็นพิกัดมาตรฐาน) */
 function nameLoose(g, done){
   askText("ตั้งชื่อจุดนี้", "เช่น ท่าทราย · โรงงานน้ำโสม · บ้านลูกค้า… ต่อไปจุดที่อยู่ในรัศมี 1 กม. จะใช้ชื่อนี้"+
@@ -4649,7 +4736,9 @@ function paintPlaces(){
     u+='<div class="card" '+cardCss+'><div>'+esc(g.name)+'</div>'+
        '<div class="hint">'+g.n+' จุดในงาน'+(g.hint ? ' · งานที่เคยไป: '+esc(g.hint) : '')+'</div>'+
        '<div '+btnRow+'><a class="btn sm ghost" target="_blank" rel="noopener" href="'+esc(mapsPoint(g.avg))+'">🗺️ แผนที่</a>'+
-         '<button class="btn sm" data-plname="'+i+'">✏️ ตั้งชื่อ</button></div></div>';
+         '<button class="btn sm" data-plname="'+i+'">✏️ ตั้งชื่อ</button>'+
+         (canSnapJobs() && (DB.places||[]).length ? '<button class="btn sm" data-plsnap="'+i+'">📍 ใช้สถานที่ที่มีอยู่</button>' : '')+
+       '</div><div class="hidden" data-plsnappan="'+i+'" style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--line)"></div></div>';
   });
   if(!lo.length) u='<p class="hint" style="margin:0">ทุกจุดมีชื่อแล้ว</p>';
   lbox.innerHTML=u;
@@ -4693,6 +4782,14 @@ function paintPlaces(){
       placeDel(x).then(function(){ render(); toast("ลบ \""+x.name+"\" แล้ว"); })
         .catch(function(e){ toast(placeErr(e)); });
     });
+  });
+  lbox.querySelectorAll("[data-plsnap]").forEach(function(b){
+    b.onclick=function(){
+      var i=b.getAttribute("data-plsnap"), g=lo[+i], pan=lbox.querySelector('[data-plsnappan="'+i+'"]');
+      if(!g || !pan) return;
+      if(!pan.classList.contains("hidden")){ pan.classList.add("hidden"); pan.innerHTML=""; return; }
+      pan.classList.remove("hidden"); buildSnap(pan, g);
+    };
   });
   lbox.querySelectorAll("[data-plname]").forEach(function(b){
     b.onclick=function(){
