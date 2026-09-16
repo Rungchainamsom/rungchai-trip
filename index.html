@@ -237,7 +237,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
                           .lb-bar #lbZoomLv{min-width:64px; font-size:13px} }
 .toast{position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:var(--bg);
        padding:12px 20px; border-radius:999px; font-size:15px; z-index:90; opacity:0; pointer-events:none;
-       transition:opacity .2s; max-width:88vw; text-align:center}
+       transition:opacity .2s; max-width:88vw; text-align:center; white-space:pre-line}
 .toast.on{opacity:1}
 .hidden{display:none!important}
 @media (max-width:560px){ .tile .v{font-size:25px} .g2{grid-template-columns:1fr} }
@@ -1921,7 +1921,14 @@ var me=null, tab="", fin=null, mineLimit=10;
 var draft={type:"ส่งสินค้า", mat:"หิน", shots:[]};
 function $(id){ return document.getElementById(id); }
 function initials(n){ return (n||"?").trim().charAt(0); }
-function toast(m){ var t=$("toast"); t.textContent=m; t.classList.add("on"); setTimeout(function(){ t.classList.remove("on"); },2600); }
+var TOAST_T=null;
+function toast(m, ms){
+  var t=$("toast"); t.textContent=m; t.classList.add("on");
+  t.style.borderRadius = (String(m).indexOf("\n")>=0 || String(m).length>34) ? "18px" : "";
+  /* ข้อความยาวที่ขึ้นทีหลัง ต้องไม่โดนตัวจับเวลาของข้อความก่อนหน้าปิดทิ้ง */
+  clearTimeout(TOAST_T);
+  TOAST_T=setTimeout(function(){ t.classList.remove("on"); }, ms||2600);
+}
 var lbArr=[], lbIdx=0;
 /* กล่องดูรูปใหญ่ — หมุนและซูมได้ (เจ้าของขอ 1 ก.ย. 2569)
    Why: บิลที่คนขับถ่ายมามักตะแคง 90 องศา และตัวเลขเล็ก ถ้าอ่านไม่ออกก็ใส่ค่าเที่ยวไม่ได้
@@ -2401,7 +2408,8 @@ function openFinish(j){
     '<div class="meta"><span class="pill '+TYPE_PILL[j.type]+'">'+TYPE_LABEL[j.type]+'</span>' +
     (j.mat&&j.label?'<span>'+j.mat+'</span>':'') +
     plateChip(j)+'<span class="num">'+fmtDate(j.date)+'</span><span>เริ่ม '+clock(j.start&&j.start.at)+' น.</span>' +
-    (j.start&&j.start.lat!=null?'<a class="geo" target="_blank" rel="noopener" href="'+mapsPoint(j.start)+'">📍 จุดเริ่มต้น</a>':'<span style="color:var(--ink3)">ไม่มีพิกัดต้นทาง</span>') +
+    (j.start&&j.start.lat!=null?'<a class="geo" target="_blank" rel="noopener" href="'+mapsPoint(j.start)+'">'+
+        (placeOf(j.start) ? esc("📍 เริ่มที่ "+placeOf(j.start).name) : "📍 จุดเริ่มต้น")+'</a>':'<span style="color:var(--ink3)">ไม่มีพิกัดต้นทาง</span>') +
     (j.shots.length?'<button class="btn sm ghost" id="seeBill" style="padding:2px 9px">🧾 ดูรูปบิล '+j.shots.length+' รูป</button>':'') +
     '</div>';
   if($("seeBill")) $("seeBill").onclick=function(){ zoom(fin.shots,0); };
@@ -2416,7 +2424,8 @@ function paintDest(){
 }
 function paintEndGeo(){
   var e=fin.end, s=fin.start;
-  $("endGeoText").textContent=(e&&e.lat!=null)?(e.lat.toFixed(5)+", "+e.lng.toFixed(5)):"ยังไม่ได้ปัก";
+  $("endGeoText").textContent=(e&&e.lat!=null)?(placeLabel(e) || (e.lat.toFixed(5)+", "+e.lng.toFixed(5))):"ยังไม่ได้ปัก";
+  $("endGeoText").title=(e&&e.lat!=null)?(e.lat.toFixed(5)+", "+e.lng.toFixed(5)):"";
   var d=routeKm(fin), ns=stopsOf(fin).length;
   if(d!=null){
     fin.km=d;
@@ -2479,7 +2488,8 @@ function finishJobNow(j, gotGeo){
           : isCompanyJob(j) ? "งานสำเร็จ — รถบริษัท ไม่มีค่าเที่ยว"
           : (j.priced ? "งานสำเร็จ "+baht(payOf(j))+" บาท"
                       : "งานสำเร็จ — แจ้งเจ้าของให้ใส่ค่าเที่ยวแล้ว");
-  toast(gotGeo ? msg : msg+" (ปักพิกัดปลายทางไม่ได้)");
+  var where = gotGeo ? placeLabel(j.end) : "";
+  toast(gotGeo ? (where ? msg+"\nปลายทาง: "+where : msg) : msg+" (ปักพิกัดปลายทางไม่ได้)", where ? 5000 : 0);
   go("home");
 }
 /* ---------- ส่งลิงก์รูปบิลให้บอทเอาไปแนบการ์ด "รอใส่ราคา" (v25 · 14 ก.ย. 2569) ----------
@@ -2773,6 +2783,17 @@ function placeOf(p){
     if(d<=x.r && d<bd){ bd=d; best=x; }
   });
   return best;
+}
+/* ป้ายชื่อของพิกัดหนึ่งจุด (หน้าปิดงาน · ข้อความตอนกดงานสำเร็จ — 16 ก.ย. เจ้าของสั่ง)
+   อยู่ในรัศมีสถานที่ = "📍 ชื่อ" · ไม่อยู่ = "❓ ไม่ตรงสถานที่ไหน · ห่าง<ที่ใกล้สุด> x.x กม."
+   **แสดงผลอย่างเดียว ไม่ปรับพิกัดของงาน** (เจ้าของเลือก — เก็บพิกัดจริงที่คนขับกดไว้เป็นหลักฐาน)
+   ยังไม่มีสถานที่ในระบบเลย = คืน "" ให้คนเรียกโชว์พิกัดตัวเลขตามเดิม */
+function placeLabel(p){
+  if(!p || p.lat==null || p.lng==null || !(DB.places||[]).length) return "";
+  var pl=placeOf(p);
+  if(pl) return "📍 "+pl.name;
+  var n=nearestPlace(p);
+  return "❓ ไม่ตรงสถานที่ไหน · ห่าง"+n.pl.name+" "+(n.km<10 ? n.km.toFixed(1) : Math.round(n.km))+" กม.";
 }
 function nearestPlace(p){
   var best=null, bd=1e9;
@@ -5509,7 +5530,8 @@ $("btnEndGeo").onclick=function(){
     if(!p){ $("endGeoText").textContent="ปักไม่ได้"; toast("เปิดสิทธิ์ตำแหน่งในเบราว์เซอร์ก่อน แล้วลองใหม่"); return; }
     fin.end={lat:p.lat, lng:p.lng, at:Date.now()};
     save(); paintEndGeo();
-    toast("ปักพิกัดปลายทางแล้ว — อย่าลืมกดปุ่ม \"งานสำเร็จ\" ด้านล่างด้วย");
+    var where=placeLabel(fin.end);
+    toast((where ? "ปักพิกัดแล้ว: "+where+"\n" : "ปักพิกัดปลายทางแล้ว — ")+"อย่าลืมกดปุ่ม \"งานสำเร็จ\" ด้านล่างด้วย", where ? 4500 : 0);
   });
 };
 $("cam1").onchange=function(){ addShots(this.files, draft.shots, refreshCar1); this.value=""; };
