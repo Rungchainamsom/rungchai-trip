@@ -2312,7 +2312,7 @@ function fillTruckSel(reset){
 }
 function openNew(){
   if(busyGuard()) return;
-  draft.shots=[]; draft.other="";
+  draft.shots=[]; draft.other=""; draft._asNew=false;
   $("fOther").value=""; $("night1Val").textContent="0";
   buildMatChips();
   $("fDate").value=today();
@@ -2347,6 +2347,12 @@ function startJob(){
   }
   var tv=$("fTruck").value;
   if(draft.type!=="ทั่วไป" && !tv){ toast("เลือกรถที่ใช้ก่อน"); $("fTruck").focus(); return; }
+  /* รับของต่อจากงานส่งที่เพิ่งปิด → ถามก่อนว่าเป็นจุดแวะของงานเดิมไหม (17 ก.ย. 2569) */
+  if(draft.type==="รับสินค้า" && !draft._asNew){
+    var prevJob=stopCandidate(tv, $("fDate").value);
+    if(prevJob){ askStopOrNew(prevJob); return; }
+  }
+  draft._asNew=false;
   var lbl = draft.type==="อื่นๆ" ? draft.other : (two ? "" : TYPE_LABEL[draft.type]);
   var r=findRate(draft.type,lbl);
   var j={
@@ -2388,6 +2394,72 @@ function startJob(){
     DB.job.push(j); save();
     $("btnStart").disabled=false;
     toast(pos ? "เริ่มงานแล้ว ปักจุดเริ่มต้นเรียบร้อย" : "เริ่มงานแล้ว (ปักพิกัดไม่ได้ ค่อยปักตอนปิดงาน)");
+    go("home");
+  });
+}
+
+/* =============== รับของต่อจากงานส่ง = จุดแวะ (17 ก.ย. 2569 — เจ้าของสั่ง) ===============
+   Why (ของจริง 16–17 ก.ย.): สัญจรส่งบล็อคเสร็จ กด "งานสำเร็จ" แล้วไปรับของต่อด้วยการ "เริ่มงานใหม่ → รับสินค้า"
+        แทนที่จะกด "แวะรับสินค้า" ในงานเดิม · เจ้าของบอกแล้วคนขับไม่เข้าใจ → ให้แอปถามแทนตรงจังหวะที่พลาด
+   เงื่อนไขที่จะถาม: กำลังเปิดงาน "รับสินค้า" · วันนี้ · มีงานส่ง/รับของตัวเองที่ปิดแล้วภายใน 8 ชม. · รถคันเดียวกัน
+   กด "ใช่" = บันทึกเป็นจุดแวะของงานเดิม (ใช้รูป+สินค้าที่เพิ่งกรอก ปักพิกัดตอนนี้) ไม่สร้างงานใหม่ · สายจบที่จุดแวะ
+   กด "ไม่ใช่" = เปิดงานรับสินค้าใหม่ตามปกติ
+   RLS job_stops ยอมให้คนขับเพิ่มจุดแวะในงานตัวเองของวันนี้อยู่แล้ว (v17d) · ค่าจุดแวะ stops_guard ใส่ให้เอง */
+var STOP_LINK_HRS=8;
+function stopCandidate(tv, date){
+  if(!me || date!==today()) return null;
+  var best=null;
+  DB.job.forEach(function(o){
+    if(o.emp!==me.id || o.status!=="done" || !TWO_STEP[o.type] || o.date!==date) return;
+    if(tv && o.truck && o.truck!==tv) return;
+    var at=(o.end && o.end.at) || 0;
+    if(!at || Date.now()-at > STOP_LINK_HRS*3600e3) return;
+    if(!best || at > best.end.at) best=o;
+  });
+  return best;
+}
+function askChoice(o){
+  var box=document.createElement("div"); box.className="ask on"; box.id="askChoice";
+  box.innerHTML='<div class="ask-box"><h3></h3><div data-b style="font-size:15px; color:var(--ink2); line-height:1.55"></div>'+
+    '<div class="stack" style="gap:10px; margin-top:16px">'+
+      '<button class="btn primary big block" data-y></button>'+
+      '<button class="btn big block" data-n></button>'+
+      '<button class="btn ghost block" data-c>ยกเลิก</button></div></div>';
+  box.querySelector("h3").textContent=o.title;
+  box.querySelector("[data-b]").innerHTML=o.body;
+  box.querySelector("[data-y]").textContent=o.yes;
+  box.querySelector("[data-n]").textContent=o.no;
+  document.body.appendChild(box); document.body.style.overflow="hidden";
+  function close(){ if(box.parentNode) box.parentNode.removeChild(box); document.body.style.overflow=""; }
+  box.querySelector("[data-y]").onclick=function(){ close(); o.onYes(); };
+  box.querySelector("[data-n]").onclick=function(){ close(); o.onNo(); };
+  box.querySelector("[data-c]").onclick=close;
+}
+function askStopOrNew(prev){
+  askChoice({
+    title:"รับของต่อจากงานที่เพิ่งส่งใช่ไหม?",
+    body:'งานที่เพิ่งปิด: <b>'+esc(jobTitle(prev))+'</b><br>'+
+         'ปิดงานเมื่อ '+clock(prev.end.at)+' น. · '+plateChip(prev).replace(/<[^>]+>/g,"")+'<br><br>'+
+         'ถ้าใช่ ระบบจะบันทึกเป็น <b>จุดแวะรับสินค้า</b> ของงานนั้น <b>+'+baht(stopRate())+' บาท</b> ไม่ต้องเปิดงานใหม่',
+    yes:"✅ ใช่ — เป็นจุดแวะของงานเดิม",
+    no:"ไม่ใช่ — เปิดงานรับสินค้าใหม่",
+    onYes:function(){ saveStopFromDraft(prev); },
+    onNo:function(){ draft._asNew=true; startJob(); }
+  });
+}
+function saveStopFromDraft(prev){
+  var b=$("btnStart"); b.disabled=true; b.textContent="กำลังหาพิกัด…";
+  getGeo(function(p){
+    b.disabled=false; paintNew();
+    var t={ id:uid("s"), job:prev.id, seq:stopsOf(prev).length+1,
+            lat:p?p.lat:null, lng:p?p.lng:null, mat:draft.mat||"", note:"บันทึกจากหน้าเริ่มงานรับสินค้า",
+            pay:0, shots:draft.shots.slice(), _p:[], at:Date.now() };
+    DB.stop.push(t);
+    var rk=routeKm(prev); if(rk!=null) prev.km=rk;
+    draft.shots=[];
+    save();
+    toast("บันทึกเป็นจุดแวะที่ "+t.seq+" ของงาน \""+jobTitle(prev)+"\" แล้ว +"+baht(stopRate())+" บาท"+
+          (p?"":" (ปักพิกัดไม่ได้)"), 5000);
     go("home");
   });
 }
@@ -2573,6 +2645,55 @@ function stopRate(){ return (DB.set.stopRate==null?100:DB.set.stopRate); }
 function stopPay(t){ return (t.pay||0)>0 ? t.pay : stopRate(); }
 function stopsPay(j){ var n=0; stopsOf(j).forEach(function(t){ n+=stopPay(t); }); return n; }
 /* จุดแวะสุดท้าย = จุดจบงาน (เจ้าของยืนยัน) → ระยะทางต้องคิดสะสมทั้งสาย ไม่ใช่ต้นทาง–ปลายทางอย่างเดียว */
+/* ดูรายละเอียดทั้งสาย: เริ่ม → ส่ง → จุดแวะแต่ละจุด (ชื่อสถานที่ · สินค้า · เวลา · ค่าจุดแวะ · รูปบิล · แผนที่) */
+function ptLabel(p){
+  if(!p || p.lat==null) return "ไม่มีพิกัด";
+  return placeLabel(p) || ("📍 "+p.lat.toFixed(5)+", "+p.lng.toFixed(5));
+}
+function buildStopsView(j, pan){
+  pan.innerHTML="";
+  var wrap=document.createElement("div"); wrap.className="stack"; wrap.style.gap="8px";
+  var steps=[];
+  if(j.start) steps.push({k:"เริ่มงาน", p:j.start, at:j.start.at, shots:j.shots||[]});
+  if(j.end && j.end.lat!=null) steps.push({k:(j.type==="ส่งสินค้า"?"ส่งของ":"ปลายทาง"), p:j.end, at:j.end.at, shots:j.shotsEnd||[]});
+  stopsOf(j).forEach(function(t,i){
+    steps.push({k:"จุดแวะที่ "+(i+1), p:t, at:t.at, shots:t.shots||[], stop:t});
+  });
+  var head=document.createElement("div"); head.className="hint"; head.style.fontWeight="600";
+  head.textContent="เส้นทางงานนี้ "+steps.length+" จุด · "+kmText(j)+(stopsOf(j).length?" · ค่าจุดแวะรวม +"+baht(stopsPay(j))+" บาท":"");
+  wrap.appendChild(head);
+  steps.forEach(function(st, n){
+    var c=document.createElement("div"); c.className="card pad";
+    c.style.cssText="box-shadow:none; margin:0; background:"+(st.stop?"var(--ok-soft)":"var(--surface2)");
+    var t=st.stop;
+    c.innerHTML=
+      '<div class="row" style="justify-content:space-between; align-items:flex-start; gap:8px">' +
+        '<div><b>'+(n+1)+'. '+esc(st.k)+'</b> <span class="hint">'+(st.at?clock(st.at)+' น.':'')+'</span>' +
+          '<div style="margin-top:2px">'+esc(ptLabel(st.p))+'</div>' +
+          (t ? '<div class="hint">สินค้า: '+esc(t.mat||"–")+(t.note?' · '+esc(t.note):'')+'</div>' : '') +
+        '</div>' +
+        (t ? '<div class="num" style="font-weight:700; white-space:nowrap">+'+baht(stopPay(t))+'</div>' : '') +
+      '</div>';
+    var bar=document.createElement("div");
+    bar.style.cssText="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center";
+    (st.shots||[]).forEach(function(u,i){
+      var im=document.createElement("img"); im.className="thumb"; im.src=u; im.alt="รูปบิล";
+      paintRot(im,u); im.onclick=function(){ zoom(st.shots,i); };
+      bar.appendChild(im);
+    });
+    if(!(st.shots||[]).length){
+      var nr=document.createElement("span"); nr.className="hint"; nr.textContent="ไม่มีรูป"; bar.appendChild(nr);
+    }
+    if(st.p && st.p.lat!=null){
+      var a=document.createElement("a"); a.className="btn sm ghost"; a.target="_blank"; a.rel="noopener";
+      a.href=mapsPoint({lat:st.p.lat, lng:st.p.lng}); a.textContent="📍 ดูบนแผนที่";
+      bar.appendChild(a);
+    }
+    c.appendChild(bar);
+    wrap.appendChild(c);
+  });
+  pan.appendChild(wrap);
+}
 function routePts(j){
   var pts=[];
   if(j.start && j.start.lat!=null) pts.push({lat:j.start.lat, lng:j.start.lng});
@@ -2657,7 +2778,7 @@ function jobList(host,list,showEmp){
         (kmText(j)?'<span class="num"'+(roadOk(j)?' title="ระยะตามถนน"':' title="ระยะเส้นตรงระหว่างพิกัด — ระบบกำลังคำนวณระยะตามถนน"')+'>'+kmText(j)+'</span>':'') +
         (j.nights?'<span>🌙 ค้าง '+j.nights+' คืน</span>':'') +
       (j.flatTrip&&(j.price||0)>0?'<span class="pill t3">เหมาวันงานทั่วไป</span>':'') +
-        (stopsOf(j).length?'<span class="pill t3">🛑 แวะรับ '+stopsOf(j).length+' จุด +'+baht(stopsPay(j))+'</span>':'') + geo +
+        (stopsOf(j).length?'<button type="button" class="pill t3" data-stopsbtn="1" style="border:0; cursor:pointer; font-family:inherit" title="กดดูรายละเอียดจุดแวะ">🛑 แวะรับ '+stopsOf(j).length+' จุด +'+baht(stopsPay(j))+' ▾</button>':'') + geo +
         (j.status==="active"?'<span class="pill live"><i class="dot"></i> กำลังทำงาน</span>':'') +
       '</div>' +
       (j.note?'<div class="hint">'+esc(j.note)+'</div>':'');
@@ -2671,6 +2792,13 @@ function jobList(host,list,showEmp){
     var pan=document.createElement("div"); pan.className="jobedit hidden";
     row.appendChild(body); row.appendChild(side); row.appendChild(pan);
     function panShut(){ pan.classList.add("hidden"); pan.innerHTML=""; }
+    /* ป้าย "แวะรับ n จุด" กดดูได้ (เจ้าของขอ 17 ก.ย. 2569 — เดิมกดอะไรไม่ได้ ไม่รู้ว่าเพิ่มอะไรเข้าไป) */
+    var stb=body.querySelector("[data-stopsbtn]");
+    if(stb) stb.onclick=function(){
+      if(!pan.classList.contains("hidden") && pan.dataset.k==="stops"){ panShut(); return; }
+      pan.classList.remove("hidden"); pan.dataset.k="stops";
+      buildStopsView(j, pan);
+    };
 
     if(canEditJob(j)){
       var eb=document.createElement("button");
@@ -3529,7 +3657,11 @@ function buildJobEdit(j, pan){
      คนขับลบจุดแวะได้แค่ตอนยังไม่จบงาน ของเจ้าของแก้ได้ตลอด (policy ฝั่ง DB เปิดให้ staff อยู่แล้ว) */
   function paintStopsEdit(){
     var host=g("stops"), list=stopsOf(j);
-    if(!list.length){ host.innerHTML=""; return; }
+    if(!list.length){
+      host.innerHTML = TWO_STEP[j.type] ? '<div data-k="saddwrap"></div>' : "";
+      if(TWO_STEP[j.type]) addStopUI();
+      return;
+    }
     var h='<div class="hint" style="font-weight:600; color:var(--ink2); margin-bottom:6px">' +
           '🛑 จุดแวะรับสินค้า '+list.length+' จุด</div>';
     list.forEach(function(t,i){
@@ -3549,7 +3681,8 @@ function buildJobEdit(j, pan){
          '<div class="row" style="margin-top:8px; gap:8px" data-k="sbar'+i+'"></div>' +
          '</div>';
     });
-    host.innerHTML=h;
+    host.innerHTML=h+'<div data-k="saddwrap"></div>';
+    addStopUI();
     list.forEach(function(t,i){
       matSelect(pan.querySelector('[data-k="smat'+i+'"]'), t.mat);
       pan.querySelector('[data-k="spay'+i+'"]').oninput=calc;
@@ -3575,6 +3708,88 @@ function buildJobEdit(j, pan){
         toast("ลบจุดแวะแล้ว — ระยะทางกับยอดจ่ายคิดใหม่ให้แล้ว");
       });
       bar.appendChild(xb);
+    });
+  }
+  /* ＋ เพิ่มจุดแวะ (เจ้าของขอ 17 ก.ย. 2569) — ย้ายจากงานรับสินค้าที่คนขับเปิดผิด หรือเลือกจากสถานที่
+     ย้ายจากงาน = เอาพิกัดต้นทาง + รูปทั้งหมด + สินค้า ของใบนั้นมาเป็นจุดแวะ แล้วลบใบนั้นทิ้ง (กู้คืนได้)
+     จุดแวะใหม่ต่อท้ายสายเสมอ = จุดจบงาน · ค่าจุดแวะฐานข้อมูลใส่ให้ (stops_guard) · ระยะถนนคำนวณใหม่เอง */
+  function addStopUI(){
+    var wrap=g("saddwrap"); if(!wrap || !isStaff(me)) return;
+    wrap.innerHTML='<button class="btn sm" data-k="saddbtn">＋ เพิ่มจุดแวะ</button><div data-k="saddpan" class="hidden"></div>';
+    g("saddbtn").onclick=function(){
+      var pn=g("saddpan");
+      if(!pn.classList.contains("hidden")){ pn.classList.add("hidden"); pn.innerHTML=""; return; }
+      pn.classList.remove("hidden"); buildAddStop(pn);
+    };
+  }
+  function moveCands(){
+    return DB.job.filter(function(o){
+      return o.id!==j.id && o.emp===j.emp && o.type==="รับสินค้า" && o.start && o.start.lat!=null &&
+             Math.abs(new Date(o.date)-new Date(j.date)) <= 864e5;
+    }).sort(function(a,b){ return (b.start.at||0)-(a.start.at||0); });
+  }
+  function buildAddStop(pn){
+    var cands=moveCands(), places=(DB.places||[]);
+    pn.style.cssText="margin-top:8px; padding:10px; border:1px dashed var(--line); border-radius:12px";
+    var o='';
+    if(cands.length){
+      o+='<optgroup label="ย้ายจากงานรับสินค้าของคนขับคนนี้ (ใบนั้นจะถูกลบ)">';
+      cands.forEach(function(c,i){
+        o+='<option value="j'+i+'">📦 '+esc(jobTitle(c))+' · '+fmtDate(c.date)+' '+clock(c.start.at)+' น.'+
+           (c.status==="active"?' · กำลังทำงาน':'')+(placeOf(c.start)?' · '+esc(placeOf(c.start).name):'')+'</option>';
+      });
+      o+='</optgroup>';
+    }
+    if(places.length){
+      o+='<optgroup label="เลือกจากสถานที่ (ไม่มีรูป)">';
+      places.forEach(function(x,i){ o+='<option value="p'+i+'">📍 '+esc(x.name)+'</option>'; });
+      o+='</optgroup>';
+    }
+    if(!o){ pn.innerHTML='<p class="hint" style="margin:0">ไม่มีงานรับสินค้าให้ย้าย และยังไม่มีสถานที่ในสมุด</p>'; return; }
+    pn.innerHTML=
+      '<div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap">' +
+        '<label class="f" style="flex:2; min-width:230px">จุดแวะ<select data-k="asrc">'+o+'</select></label>' +
+        '<label class="f" style="width:150px">สินค้า<select data-k="amat"></select></label>' +
+      '</div>' +
+      '<div class="hint" data-k="ainfo" style="margin-top:8px"></div>' +
+      '<div class="row" style="gap:8px; margin-top:8px"><button class="btn sm primary" data-k="ago">เพิ่มจุดแวะ</button></div>';
+    function pick(){
+      var v=g("asrc").value, k=+v.slice(1);
+      return v.charAt(0)==="j" ? {job:cands[k]} : {place:places[k]};
+    }
+    function info(){
+      var s=pick(), pt = s.job ? s.job.start : s.place;
+      if(s.job) matSelect(g("amat"), s.job.mat||"");
+      else if(!g("amat").value) matSelect(g("amat"), "");
+      var c={id:j.id, start:j.start, end:j.end};
+      var pts=routePts(j).concat([{lat:pt.lat, lng:pt.lng}]);
+      var km=0; for(var i=1;i<pts.length;i++) km+=haversine(pts[i-1],pts[i])||0;
+      g("ainfo").innerHTML = (s.job
+        ? 'ย้ายพิกัด + รูป '+allShots(s.job).length+' รูป มาเป็นจุดแวะที่ '+(stopsOf(j).length+1)+' แล้ว<b>ลบใบรับสินค้านั้น</b> (กู้คืนได้)' +
+          (s.job.status==="active" ? '<br><b style="color:var(--accent)">⚠️ ใบนี้คนขับยังเปิดอยู่ — กดแล้วให้คนขับปิดแอปเปิดใหม่ทันที ไม่งั้นใบนั้นจะกลับมา</b>' : '')
+        : 'จุดแวะที่ '+(stopsOf(j).length+1)+' ที่ '+esc(s.place.name)+' (ไม่มีรูปบิล)') +
+        '<br>ค่าจุดแวะ +'+baht(stopRate())+' บาท · สายนี้จะจบที่จุดแวะนี้ · ระยะเส้นตรงใหม่ ≈ '+km.toFixed(1)+' กม. (ระยะถนนคำนวณให้หลังบันทึก)';
+    }
+    matSelect(g("amat"), "");
+    g("asrc").onchange=info; info();
+    armBtn(g("ago"), "กดอีกครั้ง = เพิ่มจุดแวะ", function(){
+      var s=pick(), t;
+      if(s.job){
+        var src=s.job;
+        t={ id:uid("s"), job:j.id, seq:stopsOf(j).length+1, lat:src.start.lat, lng:src.start.lng,
+            mat:g("amat").value||src.mat||"", note:"ย้ายมาจากงานรับสินค้า "+fmtDate(src.date)+" "+clock(src.start.at)+" น.",
+            pay:0, shots:(src.shots||[]).concat(src.shotsEnd||[]), _p:(src._ps||[]).concat(src._pe||[]),
+            at:src.start.at||Date.now() };
+        for(var i=0;i<DB.job.length;i++) if(DB.job[i].id===src.id){ DB.job.splice(i,1); break; }
+      }else{
+        t={ id:uid("s"), job:j.id, seq:stopsOf(j).length+1, lat:s.place.lat, lng:s.place.lng,
+            mat:g("amat").value||"", note:"เพิ่มโดยเจ้าของ · "+s.place.name, pay:0, shots:[], _p:[], at:Date.now() };
+      }
+      DB.stop.push(t);
+      var rk=routeKm(j); if(rk!=null) j.km=rk;
+      save(); paintStopsEdit(); calc();
+      toast("เพิ่มจุดแวะที่ "+t.seq+" แล้ว +"+baht(stopRate())+" บาท"+
+            (s.job && s.job.status==="active" ? "\nบอกคนขับให้ปิดแอปแล้วเปิดใหม่ตอนนี้" : ""), s.job ? 6000 : 0);
     });
   }
   function stopsPayNow(){
@@ -5309,34 +5524,59 @@ function openFixTruck(f, body, btn){
   /* เจ้าของ/แอดมินแก้แหล่งเติม ลิตร/เงิน และราคาได้ด้วย (11 ก.ย. 2569 — ใช้ตอนระบบเทียบถังท่าทรายเตือนว่าไม่ตรง)
      ถัง = แก้เป็นลิตร · ปั๊ม = แก้เป็นยอดเงินตามใบเสร็จ · ฐานข้อมูลคิดลิตรจาก เงิน÷ราคา เอง
      คนขับยังแก้ได้แค่ทะเบียนเหมือนเดิม (fuel_guard_edit กันอีกชั้น) */
-  var staff=isStaff(me), srcSel=null, qty=null, prc=null;
+  /* 17 ก.ย. 2569 (เจ้าของขอ): แก้จำนวนลิตรได้ด้วย ไม่ว่าเติมจากปั๊มหรือถัง
+     โชว์ 3 ช่อง เงิน · ลิตร · ราคา/ลิตร ผูกกัน — ฐานข้อมูลเก็บแค่เงินกับราคา (liters = round(เงิน÷ราคา,2) คิดเอง)
+     แก้ลิตร: ปั๊ม = คงยอดเงินตามใบเสร็จ แล้วคิดราคา/ลิตรใหม่ · ถัง = คงราคาถัง แล้วคิดยอดเงินใหม่
+     แก้เงินหรือราคา = คิดลิตรใหม่ · บรรทัดใต้ช่องบอกลิตรที่จะบันทึกจริง (ราคาปัด 2 ตำแหน่ง ลิตรอาจคลาด 0.01) */
+  var staff=isStaff(me), srcSel=null, amtIn=null, litIn=null, prc=null, prev=null;
   if(staff){
     ok.textContent="บันทึก";
     var g=document.createElement("div"); g.className="grid";
-    g.style.cssText="grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin-top:8px";
+    g.style.cssText="grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:8px; margin-top:8px";
     srcSel=document.createElement("select");
     [["pump","⛽ ปั๊ม"],["tank","🛢️ ถังท่าทราย"]].forEach(function(p){
       var o=document.createElement("option"); o.value=p[0]; o.textContent=p[1];
       if((f.src||"pump")===p[0]) o.selected=true;
       srcSel.appendChild(o);
     });
-    qty=document.createElement("input"); qty.type="number"; qty.step="0.01"; qty.min="0"; qty.inputMode="decimal";
-    prc=document.createElement("input"); prc.type="number"; prc.step="0.01"; prc.min="0"; prc.inputMode="decimal";
-    prc.value=f.price||"";
-    var ls=document.createElement("label"); ls.className="f"; ls.appendChild(document.createTextNode("แหล่งเติม")); ls.appendChild(srcSel);
-    var lq=document.createElement("label"); lq.className="f"; var lqt=document.createElement("span"); lq.appendChild(lqt); lq.appendChild(qty);
-    var lp=document.createElement("label"); lp.className="f"; lp.appendChild(document.createTextNode("ราคา/ลิตร")); lp.appendChild(prc);
-    var shown="";
-    var paintQty=function(){
-      var t=(srcSel.value==="tank"), p=parseFloat(prc.value)||0, v=parseFloat(qty.value)||0;
-      if(!shown) qty.value = t ? (f.liters||"") : (f.amount||"");
-      else if(shown!==srcSel.value && v>0 && p>0) qty.value = t ? Math.round(v/p*100)/100 : Math.round(v*p*100)/100;
-      lqt.textContent = t ? "ลิตร (ตามมิเตอร์)" : "จำนวนเงิน (บาท)";
-      shown=srcSel.value;
-    };
-    srcSel.onchange=paintQty; paintQty();
-    g.appendChild(ls); g.appendChild(lq); g.appendChild(lp);
+    function numIn(v){ var i=document.createElement("input"); i.type="number"; i.step="0.01"; i.min="0"; i.inputMode="decimal"; i.value=v||""; return i; }
+    amtIn=numIn(f.amount); litIn=numIn(f.liters); prc=numIn(f.price);
+    function lab(t, el){ var l=document.createElement("label"); l.className="f"; l.appendChild(document.createTextNode(t)); l.appendChild(el); return l; }
+    g.appendChild(lab("แหล่งเติม", srcSel));
+    g.appendChild(lab("จำนวนเงิน (บาท)", amtIn));
+    g.appendChild(lab("ลิตร", litIn));
+    g.appendChild(lab("ราคา/ลิตร", prc));
     box.appendChild(g);
+    prev=document.createElement("div"); prev.className="hint"; prev.style.marginTop="6px";
+    box.appendChild(prev);
+    var r2=function(x){ return Math.round(x*100)/100; };
+    var paintPrev=function(){
+      var a=parseFloat(amtIn.value)||0, p=parseFloat(prc.value)||0;
+      if(!(a>0 && p>0)){ prev.textContent="ใส่จำนวนเงินกับราคา/ลิตรให้ครบ"; return; }
+      var L=r2(a/p), run=fuelRun(f);
+      prev.textContent="จะบันทึกเป็น "+L.toFixed(2)+" ลิตร · "+baht(a)+" บาท · "+p.toFixed(2)+" บาท/ลิตร"+
+        (run ? " · "+(run/L).toFixed(2)+" กม./ลิตร" : "")+
+        (L<5 ? "  ⚠️ ลิตรน้อยผิดปกติ — ช่องเงินใส่ถูกไหม" : "")+
+        (L>600 ? "  ⚠️ ลิตรเยอะผิดปกติ" : "");
+    };
+    amtIn.oninput=function(){ var a=parseFloat(amtIn.value)||0, p=parseFloat(prc.value)||0; if(a>0&&p>0) litIn.value=r2(a/p); paintPrev(); };
+    prc.oninput=function(){
+      var a=parseFloat(amtIn.value)||0, p=parseFloat(prc.value)||0, L=parseFloat(litIn.value)||0;
+      if(srcSel.value==="tank" && L>0 && p>0) amtIn.value=r2(L*p);
+      else if(a>0&&p>0) litIn.value=r2(a/p);
+      paintPrev();
+    };
+    litIn.oninput=function(){
+      var a=parseFloat(amtIn.value)||0, p=parseFloat(prc.value)||0, L=parseFloat(litIn.value)||0;
+      if(L>0){
+        if(srcSel.value==="tank"){ if(p>0) amtIn.value=r2(L*p); }
+        else if(a>0) prc.value=r2(a/L);
+        else if(p>0) amtIn.value=r2(L*p);
+      }
+      paintPrev();
+    };
+    srcSel.onchange=paintPrev;
+    paintPrev();
   }
   box.appendChild(bar);
   body.appendChild(box);
@@ -5344,11 +5584,10 @@ function openFixTruck(f, body, btn){
   ok.onclick=function(){
     var nw=sel.value, old=f.truck, changed=false, src=null, amt=0, p=0;
     if(staff){
-      src=srcSel.value; p=parseFloat(prc.value); var v=parseFloat(qty.value);
+      src=srcSel.value; p=Math.round((parseFloat(prc.value)||0)*100)/100; amt=Math.round((parseFloat(amtIn.value)||0)*100)/100;
       if(!p||p<=0){ toast("ใส่ราคาต่อลิตรก่อน"); prc.focus(); return; }
-      if(!v||v<=0){ toast(src==="tank" ? "ใส่จำนวนลิตรก่อน" : "ใส่จำนวนเงินก่อน"); qty.focus(); return; }
-      if(src==="tank" && v>600){ toast("ลิตรเยอะผิดปกติ ("+v+") ช่องนี้เป็นลิตร ไม่ใช่ยอดเงิน"); qty.focus(); return; }
-      amt = (src==="tank") ? Math.round(v*p*100)/100 : Math.round(v*100)/100;
+      if(!amt||amt<=0){ toast("ใส่จำนวนเงินก่อน"); amtIn.focus(); return; }
+      if(amt/p>600){ toast("ลิตรเยอะผิดปกติ ("+(amt/p).toFixed(0)+" ลิตร) ตรวจช่องเงินกับราคาอีกครั้ง"); litIn.focus(); return; }
     }
     if(nw && nw!==old){ f.truck=nw; changed=true; }
     if(staff && (src!==(f.src||"pump") || amt!==f.amount || p!==f.price)){
