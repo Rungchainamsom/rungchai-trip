@@ -501,16 +501,6 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
           <a class="btn sm block hidden" id="linkRoute" target="_blank" rel="noopener" style="margin-top:10px">🗺️ เช็คระยะทางจริงใน Google Maps</a>
         </div>
 
-        <div id="stopBox" class="hidden">
-          <div class="row" style="justify-content:space-between">
-            <span class="hint" style="font-weight:600; color:var(--ink2)">จุดแวะรับสินค้า</span>
-            <span class="hint" id="stopSum">ยังไม่มี</span>
-          </div>
-          <div id="stopList" style="margin-top:8px"></div>
-          <button class="btn block" id="btnAddStop" style="margin-top:8px">＋ แวะรับสินค้า</button>
-          <p class="hint" style="margin:6px 0 0">ส่งของปลายทางแล้วยังแวะรับของต่อได้ เพิ่มได้ไม่จำกัดจุด · แวะครบแล้วค่อยกดจบงานด้านล่าง</p>
-        </div>
-
         <div>
           <div class="hint" style="font-weight:600; color:var(--ink2); margin-bottom:8px">ค้างคืน (คืน)</div>
           <div class="step">
@@ -525,6 +515,19 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <div id="moreBox" class="hidden grid g2">
           <label class="f">เลขที่บิล / ใบชั่ง<input type="text" id="fBill" placeholder="เช่น 96100"></label>
           <label class="f">หมายเหตุ<input type="text" id="finNote" placeholder="เช่น รับของกลับจากคูณ"></label>
+        </div>
+
+        <!-- ย้ายมาชิดปุ่มจบงาน (18 ก.ย. 2569 — เจ้าของสั่ง) · คนขับอ่านจากบนลงล่าง
+             คำถาม "ยังต้องแวะไหม" ต้องอยู่ติดกับปุ่มที่เขากำลังจะกด ไม่ใช่ลอยอยู่กลางหน้า -->
+        <div id="stopBox" class="hidden card pad" style="box-shadow:none; background:var(--surface2)">
+          <div class="row" style="justify-content:space-between">
+            <span class="hint" style="font-weight:600; color:var(--ink2)">จุดแวะรับสินค้า</span>
+            <span class="hint" id="stopSum">ยังไม่มี</span>
+          </div>
+          <div id="stopList" style="margin-top:8px"></div>
+          <button class="btn block" id="btnAddStop" style="margin-top:8px">＋ แวะรับสินค้า</button>
+          <p class="hint" style="margin:6px 0 0">ส่งของปลายทางแล้วยังแวะรับของต่อได้ เพิ่มได้ไม่จำกัดจุด ·
+            <b>กดจบงานไปก่อนก็ได้ ระบบจะถามให้ตอนกดจบงาน</b></p>
         </div>
 
         <button class="btn dark big block" id="btnDone">✓ งานสำเร็จ — ส่งให้เจ้าของ</button>
@@ -1109,7 +1112,12 @@ function rest(path,opt){
 }
 
 /* ---------- แปลงแถวจากฐานข้อมูล → รูปแบบที่หน้าจอใช้ ---------- */
-function rowEmp(r){   return {id:r.id, name:r.name, nickname:r.nickname, role:r.role, line:r.line_user_id, active:r.active, phone:r.phone}; }
+/* leftAt เก็บเป็น "สตริงดิบจากฐานข้อมูล" ไม่แปลงเป็น ms (v31 · 18 ก.ย. 2569)
+   Why: TOROW.emp ส่งทุกช่องขึ้นทุกครั้งที่ upsert ถ้าแปลงไปกลับแล้วค่าไม่เหมือนเดิมเป๊ะ
+        (ไมโครวินาทีหาย) ชั้นซิงก์จะเห็นว่า "เปลี่ยน" แล้วดันแถว employees ขึ้นทุกรอบ
+        เครื่องคนขับไม่มีสิทธิ์แก้ employees → RLS ตีกลับ → **ซิงก์หยุดทั้งสาย** (กับดักข้อ 26)
+   เก็บสตริงเดิมไว้ ค่าไปกลับเท่ากันเป๊ะ จึงไม่มีแถวผีถูกส่ง */
+function rowEmp(r){   return {id:r.id, name:r.name, nickname:r.nickname, role:r.role, line:r.line_user_id, active:r.active, phone:r.phone, leftAt:r.left_at||null}; }
 function rowTruck(r){ return {id:r.id, plate:r.plate, size:r.size, active:r.active, driver:r.driver_id||"", company:!!r.company}; }
 function rowRate(r){  return {id:r.id, type:r.job_type, label:r.label, price:num(r.price,0), unit:r.unit||"เที่ยว", mat:r.material||"", dest:r.dest||"", at:r.updated_at}; }
 function rowJob(r){
@@ -1142,7 +1150,8 @@ function rowFuel(r){
 /* ไม่ส่งช่องที่ฐานข้อมูลคำนวณเอง (liters, dist, prev_odo, total_pay) */
 var TOROW = {
   emp: function(o){ return {name:o.name, nickname:o.nickname||null, role:o.role,
-                            line_user_id:o.line||null, phone:o.phone||null, active:o.active!==false}; },
+                            line_user_id:o.line||null, phone:o.phone||null, active:o.active!==false,
+                            left_at:o.leftAt||null}; },
   truck: function(o){ return {plate:o.plate, size:o.size, active:o.active!==false, driver_id:o.driver||null, company:!!o.company}; },
   rate: function(o){ return {job_type:o.type, label:o.label, price:o.price, unit:o.unit||"เที่ยว", material:o.mat||null, dest:o.dest||null}; },
   job: function(o){ return {
@@ -2621,6 +2630,25 @@ function doneJob(){
   if(TWO_STEP[fin.type] && !fin.shotsEnd.length){
     toast("ต้องแนบรูปบิลที่ลูกค้าเซ็นรับ อย่างน้อย 1 รูป ถึงจะปิดงานได้");
     $("car2").scrollIntoView({behavior:"smooth", block:"center"});
+    return;
+  }
+  /* ถามเรื่องจุดแวะตรงจังหวะที่คนขับตัดสินใจ (18 ก.ย. 2569 — เจ้าของสั่ง)
+     Why: คนขับไม่รู้ว่าควรกด "แวะรับ" ก่อน หรือ "จบงาน" ก่อน — ความจริงกดอันไหนก่อนก็ได้
+          แต่ถ้าจบงานแล้ว **ไม่เปิดงานใหม่เลย** จะไม่มีอะไรมาถาม จุดแวะหายเงียบพร้อมค่าจุดแวะของเขาเอง
+          askStopOrNew() ช่วยได้เฉพาะตอนเปิดงาน "รับสินค้า" ใบถัดไป ซึ่งบางวันเขาไม่เปิด
+     ถามเฉพาะงานส่ง/รับที่ยังไม่มีจุดแวะ และถามครั้งเดียวต่องาน (`_askedStop` อยู่ในเครื่องเท่านั้น
+     TOROW.job ไม่มีช่องนี้ จึงไม่ถูกส่งขึ้นคลาวด์) */
+  if(TWO_STEP[fin.type] && !stopsOf(fin).length && !fin._askedStop){
+    var j0=fin;
+    askChoice({
+      title:"วันนี้แวะรับของต่อไหม?",
+      body:'จุดแวะรับสินค้าได้ <b>+'+baht(stopRate())+' บาท/จุด</b> ถ้าแวะแล้วไม่บันทึก เงินส่วนนี้จะหายไปเลย<br><br>'+
+           'ไม่ได้แวะก็กด "จบงานเลย" ได้ตามปกติ',
+      yes:"✓ จบงานเลย ไม่ได้แวะรับของ",
+      no:"🛑 ยังต้องแวะรับของ — บันทึกจุดแวะก่อน",
+      onYes:function(){ j0._askedStop=true; doneJob(); },
+      onNo:function(){ j0._askedStop=true; openStop(); }
+    });
     return;
   }
   var job=fin;
@@ -4718,7 +4746,14 @@ function renderMonth(){
 }
 /* =============== สิทธิ์พนักงาน — เจ้าของเป็นคนกดเปิดให้คนขับใหม่ =============== */
 function activeOwners(){ return DB.emp.filter(function(e){ return e.role==="owner" && e.active!==false; }); }
-function pendingEmps(){ return DB.emp.filter(function(e){ return e.active===false; }); }
+/* 🔴 active=false มีสองความหมาย แยกด้วย leftAt (v31 · 18 ก.ย. 2569 — เจ้าของสั่ง)
+   `leftAt` ว่าง = คนใหม่ล็อกอิน LINE เข้ามาแล้วรอเจ้าของกดเปิด → ต้องเด้งกล่องเหลืองเตือน
+   `leftAt` มีค่า = เจ้าของกดปิดเอง (ลาออก/พักงาน) → **ห้ามเด้งเตือน ห้ามไฮไลท์**
+   [stated] เจ้าของ: "ไม่ชอบที่ชื่อนายบอยโชว์หราเป็นไฮไลท์" (บอยลาออกแต่ไปโผล่ในกล่อง "รอเปิดใช้งาน") */
+function isPendingEmp(e){ return e.active===false && !e.leftAt; }
+function isGoneEmp(e){    return e.active===false && !!e.leftAt; }
+function goneDate(e){ var d=String(e.leftAt||"").slice(0,10); return d ? fmtDate(d) : ""; }
+function pendingEmps(){ return DB.emp.filter(isPendingEmp); }
 /* กดสองครั้งถึงทำจริง — ไม่ใช้ confirm() เพราะ Safari มีปุ่ม "ระงับกล่องโต้ตอบ" ที่ทำให้ปุ่มตายเงียบ */
 function armBtn(btn, label, run){
   var t=null, orig=btn.innerHTML;
@@ -4750,17 +4785,22 @@ function roleBtns(e){
   return h;
 }
 function empCard(e){
-  var isMe = !!(me && e.id===me.id), off = e.active===false;
-  return '<div class="card pad" style="margin-bottom:10px'+(off?'; border-color:var(--warn); background:var(--warn-soft)':'')+'">' +
+  var isMe = !!(me && e.id===me.id), pend = isPendingEmp(e), gone = isGoneEmp(e);
+  /* ไฮไลท์เหลืองเก็บไว้ให้ "คนรอเปิดใช้งาน" เท่านั้น — คนที่ออกแล้วต้องเงียบๆ */
+  return '<div class="card pad" style="margin-bottom:10px'+
+      (pend?'; border-color:var(--warn); background:var(--warn-soft)':'')+
+      (gone?'; opacity:.72':'')+'">' +
     '<div class="row" style="gap:8px; flex-wrap:wrap; align-items:center">' +
-      '<b style="font-size:17px">'+esc(e.name||"(ยังไม่มีชื่อ)")+'</b>' +
+      '<b style="font-size:17px'+(gone?'; color:var(--ink3); font-weight:600':'')+'">'+esc(e.name||"(ยังไม่มีชื่อ)")+'</b>' +
       '<span class="pill '+rolePill(e.role)+'">'+roleLabel(e.role)+'</span>' +
-      (off?'<span class="pill t4">รอเปิดใช้งาน</span>':'') +
+      (pend?'<span class="pill t4">รอเปิดใช้งาน</span>':'') +
+      (gone?'<span class="pill t1">ไม่ได้ใช้งานแล้ว'+(goneDate(e)?' · '+goneDate(e):'')+'</span>':'') +
       (isMe?'<span class="pill t3">คุณ</span>':'') +
     '</div>' +
     '<div class="hint num" style="margin-top:4px; word-break:break-all">'+esc(e.line||"–")+'</div>' +
     '<div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap">' +
-      '<button class="btn sm '+(off?"primary":"ghost")+'" data-emp-act="'+e.id+'">'+(off?"✓ เปิดใช้งาน":"ปิดใช้งาน")+'</button>' +
+      '<button class="btn sm '+(pend?"primary":"ghost")+'" data-emp-act="'+e.id+'">'+
+        (gone?"เปิดใช้งานอีกครั้ง":(pend?"✓ เปิดใช้งาน":"ปิดใช้งาน"))+'</button>' +
       roleBtns(e) +
       '<button class="btn sm" data-emp-ren="'+e.id+'">แก้ชื่อ</button>' +
       '<button class="btn sm ghost" data-emp-del="'+e.id+'">ลบ</button>' +
@@ -4772,8 +4812,12 @@ function wireEmpCards(){
     var turnOn = e.active===false;
     var run=function(){
       if(!turnOn && !guardOwner(e,{role:e.role, active:false})) return;
-      e.active=turnOn; save(); render();
-      toast(turnOn ? (e.name+" เปิดใช้งานแล้ว เข้าใช้ได้เลย") : (e.name+" ถูกปิดใช้งาน"));
+      e.active=turnOn;
+      /* ปิดเอง = ลงเวลาไว้ว่าออกแล้ว · เปิดกลับ = ล้างทิ้ง กลับมาเป็นคนทำงานปกติ */
+      e.leftAt = turnOn ? null : new Date().toISOString();
+      save(); render();
+      toast(turnOn ? (e.name+" เปิดใช้งานแล้ว เข้าใช้ได้เลย")
+                   : ("ปิดใช้งาน "+e.name+" แล้ว — เข้าแอปไม่ได้ แต่ประวัติกับยอดเงินยังอยู่ครบ"), 5000);
     };
     if(turnOn) b.onclick=run; else armBtn(b,"แน่ใจ? กดอีกครั้ง",run);
   });
@@ -4799,22 +4843,58 @@ function wireEmpCards(){
     var e=find(DB.emp, b.getAttribute("data-emp-del")); if(!e) return;
     armBtn(b,"ลบจริงไหม? กดอีกครั้ง",function(){
       if(!guardOwner(e,{role:"driver", active:false})) return;
-      for(var i=0;i<DB.emp.length;i++) if(DB.emp[i].id===e.id){ DB.emp.splice(i,1); break; }
-      save(); render();
+      var lab=b.textContent;
+      b.disabled=true; b.textContent="กำลังเช็ก…";
+      countEmpRefs(e.id).then(function(n){
+        b.disabled=false; b.textContent=lab;
+        if(n.job || n.fuel){
+          toast("ลบ "+e.name+" ไม่ได้ — มีงาน "+n.job+" ใบ · เติมน้ำมัน "+n.fuel+" รายการ ผูกอยู่\n"+
+                "ใช้ \"ปิดใช้งาน\" แทน: เข้าแอปไม่ได้ ชื่อหายจากช่องเลือก แต่ประวัติกับยอดเงินยังอยู่ครบ", 7000);
+          return;
+        }
+        for(var i=0;i<DB.emp.length;i++) if(DB.emp[i].id===e.id){ DB.emp.splice(i,1); break; }
+        save(); render();
+        toast("ลบ "+e.name+" แล้ว (ไม่มีงานหรือน้ำมันผูกอยู่)");
+      }).catch(function(){
+        b.disabled=false; b.textContent=lab;
+        toast("เช็กข้อมูลจากคลาวด์ไม่ได้ ยังไม่ลบอะไร ลองใหม่อีกครั้ง");
+      });
     });
   });
+}
+/* 🔴 มีงาน/น้ำมันอ้างอยู่ = ลบพนักงานไม่ได้ (18 ก.ย. 2569 — เจ้าของถามตอนนายบอยลาออก)
+   `jobs_emp_id_fkey` กับ `fuel_emp_id_fkey` ไม่มี ON DELETE → ฐานข้อมูลตีกลับคำสั่งลบ
+   แต่หน้าจอ splice ชื่อออกไปแล้วและ save() ไปแล้ว → **ชั้นซิงก์หยุดทั้งสาย** (กับดักข้อ 26)
+   **ทางที่ถูกคือ "ปิดใช้งาน"** — เข้าแอปไม่ได้ · หายจากช่องเลือก · ประวัติกับยอดเงินยังอยู่ครบ
+   ลบได้เฉพาะคนที่ไม่เคยมีงานเลย (เช่นล็อกอินผิดคน แล้วสมัครซ้ำ)
+   **ต้องนับจากเซิร์ฟเวอร์ ไม่ใช่จาก DB.job/DB.fuel** เพราะ bootstrap() ดึงมาแค่ 800/400 แถวล่าสุด
+   คนที่เลิกไปนานแล้วงานเก่าอาจไม่ได้โหลดมา (เหตุผลเดียวกับปุ่มเก็บกวาดรูป) */
+function countEmpRefs(id){
+  function one(tb){
+    return fetch(CFG.url+"/rest/v1/"+tb+"?select=id&emp_id=eq."+encodeURIComponent(id)+"&limit=1",{
+      headers: sbHead({ Prefer:"count=exact" })
+    }).then(function(r){
+      var n=parseInt(((r.headers.get("content-range")||"").split("/")[1]||""),10);
+      if(!r.ok || isNaN(n)) throw new Error("นับไม่ได้");
+      return n;
+    });
+  }
+  return Promise.all([one("jobs"), one("fuel")]).then(function(a){ return {job:a[0], fuel:a[1]}; });
 }
 /* จัดกลุ่มพนักงาน เจ้าของ / คนขับ แล้วเรียงตามชื่อ
    Why: เจ้าของบอกว่ารายชื่อเรียงมั่วตามลำดับที่ล็อกอินเข้ามา หาชื่อยากมาก */
 function empGroups(){
   function byName(a,b){ return (a.name||"").localeCompare(b.name||"","th"); }
   return [
-    ["รอเปิดใช้งาน", "t4", DB.emp.filter(function(e){ return e.active===false; }).sort(byName)],
+    ["รอเปิดใช้งาน", "t4", DB.emp.filter(isPendingEmp).sort(byName)],
     ["เจ้าของ",      "t2", DB.emp.filter(function(e){ return e.active!==false && isOwner(e); }).sort(byName)],
     ["แอดมิน",       "t3", DB.emp.filter(function(e){ return e.active!==false && isAdmin(e); }).sort(byName)],
-    ["คนขับ",        "t1", DB.emp.filter(function(e){ return e.active!==false && isDriver(e); }).sort(byName)]
+    ["คนขับ",        "t1", DB.emp.filter(function(e){ return e.active!==false && isDriver(e); }).sort(byName)],
+    /* คนที่ออกแล้วไปอยู่ท้ายสุด สีธรรมดา และพับเก็บไว้ (ดู paintEmpList) */
+    ["ไม่ได้ใช้งานแล้ว","t1", DB.emp.filter(isGoneEmp).sort(byName)]
   ];
 }
+var EMP_GONE_OPEN=false;
 function paintEmpList(){
   var box=$("empSearch"), q=(box&&box.value||"").trim().toLowerCase();
   var pend=pendingEmps();
@@ -4828,12 +4908,24 @@ function paintEmpList(){
     });
     if(!list.length) return;
     shown+=list.length;
+    /* กลุ่มคนที่ออกแล้วพับไว้ก่อน — เจ้าของไม่ต้องเห็นชื่อคนลาออกทุกครั้งที่เปิดหน้านี้
+       ค้นหาชื่ออยู่ = กางให้เลย (พิมพ์ค้นหาแปลว่ากำลังตามหาคนนั้น) */
+    if(g[0]==="ไม่ได้ใช้งานแล้ว" && !EMP_GONE_OPEN && !q){
+      h+='<div class="row" style="margin:16px 0 0"><button class="btn sm ghost" id="empGoneShow">'+
+         'ดูคนที่ไม่ได้ใช้งานแล้ว ('+list.length+')</button></div>';
+      return;
+    }
     h+='<div class="row" style="gap:8px; align-items:center; margin:16px 0 8px">' +
        '<b style="font-size:16px">'+g[0]+'</b><span class="pill '+g[1]+'">'+list.length+' คน</span></div>';
     list.forEach(function(e){ h+=empCard(e); });
+    if(g[0]==="ไม่ได้ใช้งานแล้ว" && !q){
+      h+='<div class="row"><button class="btn sm ghost" id="empGoneHide">ซ่อนคนที่ไม่ได้ใช้งานแล้ว</button></div>';
+    }
   });
   if(!shown) h+='<div class="card pad hint">ไม่เจอชื่อที่ค้นหา</div>';
   $("empTable").innerHTML=h;
+  if($("empGoneShow")) $("empGoneShow").onclick=function(){ EMP_GONE_OPEN=true;  paintEmpList(); };
+  if($("empGoneHide")) $("empGoneHide").onclick=function(){ EMP_GONE_OPEN=false; paintEmpList(); };
   wireEmpCards();
 }
 function renderPendBanner(){
@@ -5953,6 +6045,8 @@ function paintStops(){
   box.innerHTML="";
   var list=stopsOf(fin);
   $("stopSum").textContent = list.length ? (list.length+" จุด · +"+baht(stopsPay(fin))+" บาท") : "ยังไม่มี";
+  /* ใส่เงินไว้บนปุ่มเลย — คนขับจะได้เห็นว่าบันทึกแล้วได้อะไร ไม่ใช่ปุ่มที่ไม่รู้ว่ากดไปทำไม */
+  $("btnAddStop").textContent = "＋ แวะรับสินค้า  +"+baht(stopRate())+" บาท";
   list.forEach(function(t,i){
     var d=document.createElement("div");
     d.className="card pad";
