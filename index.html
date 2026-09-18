@@ -362,6 +362,10 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       </div>
     </div>
     <div class="topbar-in" style="padding-top:0; padding-bottom:0"><div class="tabs" id="tabs"></div></div>
+    <div id="prvBar" class="hidden" style="background:var(--warn-soft); color:var(--warn); border-top:2px solid var(--warn); font-size:12.5px; font-weight:700; padding:5px 10px; display:flex; align-items:center; justify-content:center; gap:8px">
+      <span id="prvWho" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">กำลังดูหน้าจอ…</span>
+      <button class="btn sm" id="prvOut" style="flex:none; padding:3px 9px; font-size:12.5px">กลับหน้าเจ้าของ</button>
+    </div>
     <div id="busyBar" class="hidden" style="background:var(--warn-soft); color:var(--warn); font-size:14px; font-weight:600; text-align:center; padding:6px 12px">
       กำลังโหลดข้อมูล… ใช้ได้ในอีกสักครู่
     </div>
@@ -901,6 +905,21 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       </div>
       </div>
 
+      <div id="prvBlock">
+      <div class="sec-title">ลองดูหน้าจอของพนักงาน</div>
+      <div class="card pad stack">
+        <p class="hint" style="margin:0">
+          เปิดดูว่าหน้าจอของคนขับ (หรือแอดมิน) หน้าตาเป็นอย่างไร พร้อมงานจริงของคนนั้น ·
+          <b>กดปุ่มลองได้ทุกปุ่ม แต่ไม่มีอะไรบันทึกขึ้นคลาวด์</b> ·
+          ออกจากโหมดแล้วระบบดึงข้อมูลจริงมาใหม่ให้เอง
+        </p>
+        <div class="row">
+          <label class="f" style="flex:2; min-width:180px">ดูหน้าจอของ<select id="prvWhoSel"></select></label>
+          <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="prvGo">เปิดดูหน้าจอ</button></label>
+        </div>
+      </div>
+      </div>
+
       <div class="sec-title">ข้อมูล</div>
       <div class="card pad row">
         <button class="btn" id="reloadCloud">ดึงข้อมูลล่าสุดจากคลาวด์</button>
@@ -1070,6 +1089,13 @@ function sbHead(extra){
 }
 function rest(path,opt){
   opt=opt||{};
+  /* ตาข่ายชั้นสุดท้ายของโหมดลองดูหน้าจอ — ปุ่มที่ยิงคลาวด์ตรงๆ (ขอแก้พิกัด · เปลี่ยนรูป ·
+     กู้คืนงาน · แนบรูปให้การ์ด · สถานที่) ไม่ต้องไล่ปิดทีละปุ่ม ดักที่ทางออกทางเดียวนี้จบ
+     rpc/fix_req_open เป็นแค่การอ่าน (bootstrap ใช้) ปล่อยผ่าน */
+  if(PRV&&PRV.on && (opt.method||"GET").toUpperCase()!=="GET" && path!=="rpc/fix_req_open"){
+    prvWarn();
+    return Promise.reject(new Error("โหมดลองดูหน้าจอ — ไม่บันทึกขึ้นคลาวด์"));
+  }
   return fetch(CFG.url+"/rest/v1/"+path,{
     method: opt.method||"GET",
     headers: sbHead(opt.headers),
@@ -1420,6 +1446,7 @@ function dataUrlToBlob(d){
   return new Blob([u],{type:mime});
 }
 function uploadShot(dataUrl){
+  if(PRV&&PRV.on){ prvWarn(); return Promise.reject(new Error("โหมดลองดูหน้าจอ")); }
   var blob=dataUrlToBlob(dataUrl);
   var ext=blob.type==="image/webp"?"webp":(blob.type==="image/png"?"png":"jpg");
   var d=new Date();
@@ -1472,6 +1499,7 @@ function takeSnapshot(){
 
 function save(){
   if(!AUTH.token) return;
+  if(PRV&&PRV.on){ prvWarn(); return; }   /* โหมดลองดูหน้าจอ: ไม่ส่งแถวใดขึ้นคลาวด์ */
   if(SYNC_TIMER) clearTimeout(SYNC_TIMER);
   SYNC_TIMER=setTimeout(runSync, 400);
 }
@@ -2061,6 +2089,75 @@ function allShots(j){
 }
 function esc(s){ return String(s).replace(/[&<>"]/g,function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
 
+/* =============== โหมดลองดูหน้าจอพนักงาน (เจ้าของเท่านั้น) ===============
+   เจ้าของอยากเห็นหน้าจอฝั่งคนขับจริงๆ เพื่อเอาไปปรับหน้าจอต่อ ไม่ใช่เดาจากคำบอกเล่า
+   How: สลับตัวแปร me เป็นพนักงานคนนั้นชั่วคราว → หน้าจอทุกหน้าวาดตามบทบาทใหม่เองหมด
+        ไม่ต้องแก้โค้ดหน้าจอแม้แต่จุดเดียว เพราะทุกที่ตัดสินจาก isDriver/isStaff/isOwner(me)
+   Why ต้องกันการบันทึก: เจ้าของกด "เริ่มงาน" ในหน้าคนขับ = งานจริงของคนขับคนนั้น
+        จึงตัดทางขึ้นคลาวด์ที่คอขวด 3 จุด: save() · rest() ที่ไม่ใช่ GET · uploadShot(To)
+        ของที่กดไปค้างอยู่แค่ในหน่วยความจำ ออกจากโหมดแล้วเรียก bootstrap() ดึงของจริงมาทับทิ้ง
+   **ห้ามพึ่งวิธีซ่อนปุ่มทีละปุ่ม** ปุ่มใหม่ที่ทำเพิ่มวันหลังจะหลุดตาข่ายทันที */
+var PRV={on:false, real:null, warnAt:0};
+function prvWarn(){
+  var t=Date.now();
+  if(t-PRV.warnAt<1500) return;          /* กดรัวๆ ไม่ต้องเด้งซ้ำ */
+  PRV.warnAt=t;
+  toast("โหมดลองดูหน้าจอ — ของจริงไม่ถูกบันทึก", 2400);
+}
+/* เคลียร์ฟอร์มที่ค้างก่อนสลับตัวคน ไม่งั้นรูป/ข้อความของอีกคนตกค้างข้ามมา */
+function prvClearDrafts(){
+  draft={type:"ส่งสินค้า", mat:"หิน", shots:[]};
+  uDraft={shots:[], odoShots:[]};
+  sDraft=null;
+}
+function prvHeadPaint(){
+  $("meName").textContent=me.name;
+  $("meAvatar").textContent=initials(me.name);
+  var bar=$("prvBar");
+  if(bar){
+    bar.classList.toggle("hidden", !PRV.on);
+    if(PRV.on) $("prvWho").textContent=me.name+" ("+roleLabel(me.role)+") · โหมดลอง ไม่บันทึกจริง";
+  }
+}
+function prvEnter(empId){
+  var boss = PRV.on ? PRV.real : me;
+  if(!isOwner(boss)){ toast("เฉพาะเจ้าของเท่านั้น"); return; }
+  var who=find(DB.emp, empId);
+  if(!who){ toast("เลือกคนที่จะดูก่อน"); return; }
+  if(who.id===boss.id){ toast("นี่คือหน้าจอของตัวเองอยู่แล้ว"); return; }
+  /* ของจริงที่ยังรอ debounce อยู่ ต้องส่งให้จบก่อนตัดทาง ไม่งั้นงานที่เพิ่งกดจะหายไปเลย */
+  if(SYNC_TIMER){ clearTimeout(SYNC_TIMER); SYNC_TIMER=null; runSync(); }
+  if(!PRV.on) PRV.real=me;
+  PRV.on=true; me=who;
+  prvClearDrafts(); prvHeadPaint();
+  go(isStaff(me) ? "today" : "home");
+  toast("กำลังดูหน้าจอของ "+me.name+" · กดลองได้ ไม่บันทึกจริง", 3200);
+}
+function prvExit(){
+  if(!PRV.on) return;
+  me=PRV.real; PRV.real=null; PRV.on=false;
+  prvClearDrafts(); prvHeadPaint();
+  /* ของที่กดเล่นไว้ยังอยู่ในหน่วยความจำ — ดึงของจริงมาทับให้หมดทุกตาราง */
+  setBusy(true);
+  bootstrap().then(function(){
+    go("set"); toast("กลับหน้าจอเจ้าของแล้ว · ดึงข้อมูลจริงมาใหม่เรียบร้อย");
+  }).catch(function(){
+    go("set"); toast("กลับมาแล้ว แต่ดึงข้อมูลใหม่ไม่สำเร็จ — กด \"ดึงข้อมูลล่าสุดจากคลาวด์\" อีกครั้ง");
+  }).then(function(){ setBusy(false); });
+}
+/* ช่องเลือกคน — ไม่เอาเจ้าของคนอื่น เพราะหน้าจอเหมือนของตัวเองอยู่แล้ว */
+function prvPaintSel(){
+  var sel=$("prvWhoSel"); if(!sel) return;
+  var cur=sel.value;
+  var list=DB.emp.filter(function(e){ return e.active!==false && !isOwner(e); })
+                 .sort(function(a,b){ return (a.name||"").localeCompare(b.name||"","th"); });
+  var h="";
+  list.forEach(function(e){
+    h+='<option value="'+e.id+'">'+esc(e.name||"(ยังไม่มีชื่อ)")+' · '+roleLabel(e.role)+'</option>';
+  });
+  sel.innerHTML=h || '<option value="">— ยังไม่มีพนักงาน —</option>';
+  if(cur) sel.value=cur;
+}
 function tabsFor(){
   if(!isStaff(me)) return [["home","หน้าหลัก"],["fuel","เติมน้ำมัน"],["mine","ยอดของฉัน"]];
   /* แอดมินไม่มีแท็บ "รอใส่ราคา" กับ "สมุดราคางาน" เพราะสองหน้านั้นคือการใส่ราคาล้วนๆ
@@ -3271,6 +3368,7 @@ function signOne(path){
 /* อัปรูปเข้าโฟลเดอร์ของ "คนขับเจ้าของรายการ" (ไม่ใช่ของคนกด)
    Why: คนขับเปิดดูรูปได้เฉพาะโฟลเดอร์ตัวเอง (policy photos_read) ถ้าเจ้าของอัปเข้าโฟลเดอร์เจ้าของ คนขับจะเห็นรูปแตก */
 function uploadShotTo(dataUrl, folder){
+  if(PRV&&PRV.on){ prvWarn(); return Promise.reject(new Error("โหมดลองดูหน้าจอ")); }
   var blob=dataUrlToBlob(dataUrl);
   var ext=blob.type==="image/webp"?"webp":(blob.type==="image/png"?"png":"jpg");
   var d=new Date();
@@ -4773,6 +4871,9 @@ function renderSettings(){
   $("empBlock").classList.toggle("hidden", adm);
   /* กู้คืนได้เฉพาะเจ้าของ (ฟังก์ชัน restore_deleted ในฐานข้อมูลก็เช็กซ้ำ) */
   $("trashBlock").classList.toggle("hidden", !isOwner(me));
+  /* ลองดูหน้าจอพนักงาน — เจ้าของเท่านั้น (แอดมินเห็นหน้าตั้งค่าด้วย) */
+  $("prvBlock").classList.toggle("hidden", !isOwner(me));
+  prvPaintSel();
   paintEmpList();
   $("empSearch").oninput=paintEmpList;
   wireMatAdd();
@@ -6025,6 +6126,9 @@ $("tAdd").onclick=function(){
   DB.truck.push({id:uid("t"), plate:n, size:$("tSize").value});
   save(); $("tPlate").value=""; render();
 };
+$("prvGo").onclick=function(){ prvEnter($("prvWhoSel").value); };
+$("prvOut").onclick=prvExit;
+
 $("reloadCloud").onclick=function(){
   toast("กำลังดึงข้อมูล…");
   bootstrap().then(function(){ render(); buildTabs(); toast("ข้อมูลล่าสุดแล้ว"); })
