@@ -3117,13 +3117,33 @@ function placeDel(x){
       DB.places=(DB.places||[]).filter(function(o){ return o.id!==x.id; });
     });
 }
-/* "17.7659, 102.1627" · ลิงก์ Google Maps ที่มี @lat,lng หรือ q=lat,lng ก็ได้ */
+/* "17.7659, 102.1627" · ลิงก์ Google Maps ที่มี @lat,lng หรือ q=lat,lng ก็ได้
+   🔴 **ลิงก์หน้าสถานที่มีพิกัด 2 ชุด** (18 ก.ย. 2569 — เจอกับลิงก์ร้านสีที่เจ้าของส่งมา)
+   `@lat,lng` = จุดที่กล้องเล็ง เพี้ยนจากหมุดจริงได้เป็นร้อยเมตร ·
+   `!3d<lat>!4d<lng>` = หมุดจริงของสถานที่ → **ต้องเอาชุดหลังก่อนเสมอ** ไม่งั้นได้จุดที่คลาดไปเฉยๆ
+   ลิงก์ย่อ (maps.app.goo.gl) ไม่มีพิกัดอยู่ในตัวลิงก์เลย — คืน null แล้วให้คนเรียกบอกทางแก้ */
 function parseLatLng(t){
-  var m=String(t||"").match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{2,3}\.\d+)/);
-  if(!m) return null;
-  var la=+m[1], lo=+m[2];
-  if(la<5 || la>25 || lo<95 || lo>110) return null;
-  return {lat:la, lng:lo};
+  var s=String(t||""), m;
+  function ok(la,lo){ return !(la<5 || la>25 || lo<95 || lo>110); }
+  m=s.match(/!3d(-?\d{1,2}\.\d+)!4d(-?\d{2,3}\.\d+)/);
+  if(m && ok(+m[1],+m[2])) return {lat:+m[1], lng:+m[2]};
+  m=s.match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{2,3}\.\d+)/);
+  if(m && ok(+m[1],+m[2])) return {lat:+m[1], lng:+m[2]};
+  return null;
+}
+/* ลิงก์ย่อจากปุ่ม "แชร์" ของแอป Google Maps — ไม่มีพิกัดอยู่ในตัวลิงก์ ต้องตามลิงก์ไปก่อน
+   หน้าเว็บตามเองไม่ได้ (CORS ของ Google) → Edge Function `maps-link` ตามให้ แล้วส่งพิกัดกลับมา
+   (deploy 18 ก.ย. 2569 · Verify JWT เปิด · รับเฉพาะโดเมน Google เพื่อกัน SSRF) */
+function isShortMapLink(t){ return /(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs)/i.test(String(t||"")); }
+var MAPLINK={};
+function resolveMapLink(url){
+  if(MAPLINK[url]) return Promise.resolve(MAPLINK[url]);
+  return fetch(CFG.url+"/functions/v1/maps-link",{
+    method:"POST", headers:sbHead(), body:JSON.stringify({url:url})
+  }).then(function(r){ return r.json(); }).then(function(j){
+    if(j && j.ok) MAPLINK[url]=j;      /* จำไว้ ไม่ต้องยิงซ้ำถ้าวางลิงก์เดิมอีก */
+    return j;
+  });
 }
 /* =============== ย้ายงานในกลุ่มจุดไม่มีชื่อ → สถานที่ที่ตั้งชื่อแล้ว (16 ก.ย. 2569 — เจ้าของสั่ง) ===============
    Why: จุดไม่มีชื่อหลายกลุ่มคือที่เดิม (ท่าทราย/โรงงาน) ที่คนขับกดคลาดไป 1–5 กม.
@@ -3316,8 +3336,8 @@ function buildFixReq(j, pan){
      ฝั่งฐานข้อมูลไม่ต้องแก้อะไร req_fix() รับ lat/lng อิสระอยู่แล้ว (กรอบ lat 5–25 · lng 95–110) */
   var llRow=document.createElement("div"); llRow.className="row hidden"; llRow.style.alignItems="flex-end";
   var lq=document.createElement("label"); lq.className="f"; lq.style.flex="2"; lq.style.minWidth="240px";
-  lq.innerHTML='วางพิกัดที่ถูกต้อง (กดค้างที่จุดใน Google Maps แล้วคัดลอก)'+
-               '<input type="text" placeholder="17.7659, 102.1627" autocomplete="off">';
+  lq.innerHTML='วางพิกัดที่ถูกต้อง — ใส่ตัวเลข หรือวางลิงก์ Google Maps (ลิงก์ย่อก็ได้)'+
+               '<input type="text" placeholder="17.7659, 102.1627 หรือ https://maps.app.goo.gl/…" autocomplete="off">';
   var llIn=lq.querySelector("input");
   llRow.appendChild(lq); wrap.appendChild(llRow);
 
@@ -3373,9 +3393,13 @@ function buildFixReq(j, pan){
     var p=chosen();
     go.disabled=!p;
     if(!p){
-      info.innerHTML = (pSel.value==="ll")
-        ? 'วางพิกัดให้ครบก่อน เช่น <b>17.7659, 102.1627</b> (วางลิงก์ Google Maps ก็ได้)'
-        : 'เลือกจุดที่ถูกต้องก่อน แล้วจะขึ้นระยะทางใหม่ให้เทียบ';
+      if(pSel.value!=="ll"){
+        info.innerHTML='เลือกจุดที่ถูกต้องก่อน แล้วจะขึ้นระยะทางใหม่ให้เทียบ';
+      }else if(isShortMapLink(llIn.value)){
+        llTry(llIn.value);
+      }else{
+        info.innerHTML='วางพิกัดให้ครบก่อน เช่น <b>17.7659, 102.1627</b> (วางลิงก์ Google Maps จะย่อหรือยาวก็ได้)';
+      }
       return;
     }
     var nk=routeKmIf(j, wSel.value, p), ok=routeKmIf(j, null, null), ns=stopsOf(j).length;
@@ -3384,6 +3408,28 @@ function buildFixReq(j, pan){
           (nk==null ? "คำนวณไม่ได้ (อีกจุดยังไม่มีพิกัด)" : nk.toFixed(1)+" กม.")+'</b>';
     if(roadOk(j)) h+='<br>เลขบนหัวงาน '+j.roadKm.toFixed(1)+' กม. เป็นระยะตามถนน ระบบจะคิดให้ใหม่เองในไม่กี่นาทีหลังแก้';
     info.innerHTML=h;
+  }
+  /* วางลิงก์ย่อ → ให้คลาวด์ตามลิงก์ให้ แล้วเติมพิกัดลงช่องเลย (พี่ไม่ต้องไปเปิดลิงก์เอง)
+     ยิงครั้งเดียวต่อหนึ่งลิงก์ · ถ้าพี่พิมพ์อย่างอื่นทับระหว่างรอ ผลที่กลับมาต้องถูกทิ้ง */
+  var LLHELP='ทำเองได้เหมือนกัน: <b>มือถือ</b> เปิดลิงก์ → กดค้างที่หมุด → คัดลอกพิกัด · '+
+             '<b>คอม</b> เปิดลิงก์ → คัดลอกที่อยู่เว็บตัวยาว → วางที่นี่';
+  var llAsk="";
+  function llTry(u){
+    /* เคยตามลิงก์นี้แล้ว ใช้ของที่จำไว้ทันที — ห้ามติด llAsk ค้าง ไม่งั้นวางลิงก์เดิมซ้ำแล้วเงียบไปเลย */
+    if(MAPLINK[u]){ llIn.value=MAPLINK[u].lat+", "+MAPLINK[u].lng; calc(); return; }
+    if(llAsk===u) return;                        /* กำลังยิงอยู่ ไม่ยิงซ้ำ */
+    llAsk=u;
+    info.innerHTML='กำลังตามลิงก์ไปหาพิกัด…';
+    resolveMapLink(u).then(function(r){
+      if(llIn.value!==u) return;
+      if(r && r.ok){ llAsk=""; llIn.value=r.lat+", "+r.lng; calc(); toast("ได้พิกัดจากลิงก์แล้ว"); return; }
+      llAsk="";                                  /* ให้ลองใหม่ได้ ถ้าพี่วางลิงก์เดิมซ้ำ */
+      info.innerHTML='<b>ตามลิงก์ไม่สำเร็จ</b> — '+esc((r&&r.msg)||"ไม่ทราบสาเหตุ")+'<br>'+LLHELP;
+    }).catch(function(){
+      if(llIn.value!==u) return;
+      llAsk="";
+      info.innerHTML='<b>ตามลิงก์ไม่สำเร็จ</b> — ต่อคลาวด์ไม่ได้<br>'+LLHELP;
+    });
   }
   function fill(keepId){
     pins=knownPins(fixSide(wSel.value), j.id);
