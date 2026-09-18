@@ -3230,6 +3230,44 @@ function fixPhoto(j){
   var a=(j.shotsEnd&&j.shotsEnd[0]) || (j.shots&&j.shots[0]) || null;
   return a || null;
 }
+/* =============== แก้พิกัดได้ทุกจุดของงาน รวมจุดแวะ (v30 · 18 ก.ย. 2569 — เจ้าของสั่ง) ===============
+   เดิมขอแก้ได้แค่ต้นทาง/ปลายทาง · พิกัดจุดแวะต้องรันคำสั่ง SQL ให้ ซึ่งผิดหลักว่าเจ้าของต้องทำเองได้
+   รหัสจุด: "start" · "end" · "stop:<id ของจุดแวะ>" — ฝั่งฐานข้อมูลรับเป็น p_which + p_stop แยกกัน
+   เจ้าของเลือก: ทีละจุด กดทีละครั้ง (งานหนึ่งใบมีคำขอค้างได้ใบเดียว เหมือนเดิม) */
+function fixStopId(w){ return (w||"").indexOf("stop:")===0 ? w.slice(5) : ""; }
+function fixWhich(w){ return fixStopId(w) ? "stop" : w; }
+/* ฝั่งไหนของรายการ "จุดที่เคยไป" — จุดแวะเป็นจุดรับของระหว่างทาง เอาทั้งต้นทางและปลายทางมาให้เลือก */
+function fixSide(w){ return (w==="start"||w==="end") ? w : "both"; }
+function fixPin(j, w){
+  if(w==="start") return j.start;
+  if(w==="end") return j.end;
+  var id=fixStopId(w), hit=null;
+  stopsOf(j).forEach(function(t){ if(t.id===id) hit=t; });
+  return hit;
+}
+/* ชื่อจุดต้องตรงกับ private.fix_which_label() ฝั่งฐานข้อมูล ไม่งั้นการ์ดในกลุ่มกับหน้าจอเรียกไม่เหมือนกัน */
+function fixTargets(j){
+  var out=[["end","ปลายทาง"],["start","ต้นทาง"]];
+  stopsOf(j).forEach(function(t,i){
+    out.push(["stop:"+t.id, "จุดแวะที่ "+(i+1)+((t.mat||"").trim() ? " ("+t.mat.trim()+")" : "")]);
+  });
+  return out;
+}
+/* ระยะทางเส้นตรงทั้งสาย ถ้าย้ายจุด w ไปที่ p — ลำดับจุดต้องตรงกับ routeKm() · road_pts() · route_km_sub() เป๊ะ
+   (w เป็น null = ค่าปัจจุบัน) */
+function routeKmIf(j, w, p){
+  function pick(cur, key){ return (w===key && p) ? {lat:p.lat, lng:p.lng} : cur; }
+  var pts=[], a=pick(j.start,"start"), b=pick(j.end,"end");
+  if(a && a.lat!=null) pts.push(a);
+  if(b && b.lat!=null) pts.push(b);
+  stopsOf(j).forEach(function(t){
+    var q=pick(t,"stop:"+t.id);
+    if(q && q.lat!=null) pts.push(q);
+  });
+  if(pts.length<2) return null;
+  var d=0; for(var i=1;i<pts.length;i++) d+=haversine(pts[i-1], pts[i]);
+  return Math.round(d*10)/10;
+}
 function buildFixReq(j, pan){
   var owner=isOwner(me), goText = owner ? "แก้พิกัดเลย" : "ส่งคำขอให้เจ้าของ";
   pan.innerHTML="";
@@ -3240,18 +3278,48 @@ function buildFixReq(j, pan){
                   (fixPhoto(j) ? " · แนบรูปงานไปให้ 1 รูป" : " · งานนี้ไม่มีรูปให้แนบ");
   wrap.appendChild(t);
 
+  /* บอกให้ชัดว่า "ตอนนี้" งานใบนี้เก็บพิกัดอะไรไว้ (18 ก.ย. 2569 — เจ้าของเปิดแผงนี้แล้วนึกว่าข้อมูลไม่เป็นปัจจุบัน)
+     Why: แผงนี้ไม่เคยบอกจุดของงานใบนี้เลย แล้วช่องเลือกยังเด้ง "สถานที่ที่ใช้บ่อยสุดของทุกงาน" ขึ้นมาให้เอง
+          เจ้าของจึงอ่านว่าโปรแกรมคิดว่าต้นทางเป็นที่นั้น ทั้งที่งานใบนี้เก็บอีกที่ไว้ถูกอยู่แล้ว */
+  var nowb=document.createElement("div"); nowb.className="hint";
+  nowb.style.cssText="margin:0; padding:8px 10px; border:1px solid var(--line); border-radius:10px; line-height:1.9";
+  function pinLine(lab, p){
+    if(!p || p.lat==null) return lab+': <b>ยังไม่มีพิกัด</b><br>';
+    var nm=placeLabel(p) || (p.lat.toFixed(4)+", "+p.lng.toFixed(4));
+    return lab+': <b>'+esc(nm)+'</b> <a href="'+mapsPoint(p)+'" target="_blank" rel="noopener">🗺️ ดูแผนที่</a><br>';
+  }
+  var hNow='ตอนนี้งานใบนี้เก็บไว้ว่า<br>'+pinLine("ต้นทาง", j.start)+pinLine("ปลายทาง", j.end);
+  /* ลงจุดแวะทีละจุด ไม่ใช่บอกแค่จำนวน — เจ้าของต้องเห็นว่าจุดไหนกดผิดที่ก่อนจะเลือกแก้ */
+  stopsOf(j).forEach(function(t,i){ hNow+=pinLine("จุดแวะที่ "+(i+1)+((t.mat||"").trim()?" ("+t.mat.trim()+")":""), t); });
+  nowb.innerHTML=hNow+'ระยะทางที่โชว์อยู่: <b>'+(kmText(j)||"–")+'</b>';
+  wrap.appendChild(nowb);
+
   var row=document.createElement("div"); row.className="row"; row.style.alignItems="flex-end";
-  var lw=document.createElement("label"); lw.className="f"; lw.style.width="140px";
-  lw.innerHTML='แก้จุดไหน<select><option value="end">ปลายทาง</option><option value="start">ต้นทาง</option></select>';
+  var lw=document.createElement("label"); lw.className="f"; lw.style.minWidth="170px";
+  lw.innerHTML='แก้จุดไหน<select></select>';
   var wSel=lw.querySelector("select");
+  fixTargets(j).forEach(function(t){
+    var o=document.createElement("option"); o.value=t[0]; o.textContent=t[1]; wSel.appendChild(o);
+  });
   var lp=document.createElement("label"); lp.className="f"; lp.style.flex="2"; lp.style.minWidth="220px";
-  lp.innerHTML='จุดที่ถูกต้อง (เลือกจากที่เคยไป)<select></select>';
+  lp.innerHTML='จุดที่ถูกต้อง<select></select>';
   var pSel=lp.querySelector("select");
   var ln=document.createElement("label"); ln.className="f"; ln.style.flex="1"; ln.style.minWidth="180px";
   ln.innerHTML='หมายเหตุ (ไม่ใส่ก็ได้)<input type="text" maxlength="120" placeholder="เช่น ลืมกดปิดงานที่ปลายทาง">';
   var nIn=ln.querySelector("input");
   row.appendChild(lw); row.appendChild(lp); row.appendChild(ln);
   wrap.appendChild(row);
+
+  /* วางพิกัดเองแทนที่ทับไปเลย (18 ก.ย. 2569 — เจ้าของสั่ง)
+     Why: จุดที่ถูกต้องบางทีไม่เคยมีใครไป (ลูกค้ารายใหม่ / คนขับกดผิดที่ทุกใบ) รายการ "ที่เคยไป" จึงไม่มีให้เลือก
+     ใช้ parseLatLng() ตัวเดียวกับหน้าสมุดสถานที่ — รับทั้ง "17.7659, 102.1627" และลิงก์ Google Maps
+     ฝั่งฐานข้อมูลไม่ต้องแก้อะไร req_fix() รับ lat/lng อิสระอยู่แล้ว (กรอบ lat 5–25 · lng 95–110) */
+  var llRow=document.createElement("div"); llRow.className="row hidden"; llRow.style.alignItems="flex-end";
+  var lq=document.createElement("label"); lq.className="f"; lq.style.flex="2"; lq.style.minWidth="240px";
+  lq.innerHTML='วางพิกัดที่ถูกต้อง (กดค้างที่จุดใน Google Maps แล้วคัดลอก)'+
+               '<input type="text" placeholder="17.7659, 102.1627" autocomplete="off">';
+  var llIn=lq.querySelector("input");
+  llRow.appendChild(lq); wrap.appendChild(llRow);
 
   /* บรรทัดใต้ช่องเลือก: เปิดแผนที่ดูว่าที่ไหน + ปุ่มตั้งชื่อ (เจ้าของ/แอดมิน) — v27 */
   var pinx=document.createElement("div"); pinx.className="row"; pinx.style.alignItems="center"; pinx.style.gap="8px";
@@ -3264,8 +3332,16 @@ function buildFixReq(j, pan){
   pan.appendChild(wrap);
 
   var pins=[];
+  /* จุดที่เลือกอยู่จริง — มาจากรายการที่เคยไป หรือจากพิกัดที่วางเอง (ค่า "ll") */
+  function chosen(){
+    if(pSel.value==="ll"){
+      var ll=parseLatLng(llIn.value);
+      return ll ? {lat:ll.lat, lng:ll.lng, place:placeOf(ll), name:"", typed:true} : null;
+    }
+    return pins[num(pSel.value,-1)] || null;
+  }
   function extra(){
-    var p=pins[num(pSel.value,-1)];
+    var p=chosen();
     pinx.innerHTML="";
     if(!p) return;
     var a=document.createElement("a"); a.className="btn sm ghost"; a.target="_blank"; a.rel="noopener";
@@ -3275,32 +3351,56 @@ function buildFixReq(j, pan){
       var h=document.createElement("span"); h.className="hint"; h.textContent="งานที่เคยไป: "+p.hint;
       pinx.appendChild(h);
     }
+    /* พิกัดที่วางเองอ่านจากตัวเลขไม่ออกว่าที่ไหน — บอกให้ด้วยว่าตกในรัศมีสถานที่ไหนหรือห่างที่ใกล้สุดเท่าไร */
+    if(p.typed){
+      var lb=placeLabel(p);
+      if(lb){ var t2=document.createElement("span"); t2.className="hint"; t2.textContent=lb; pinx.appendChild(t2); }
+    }
     if(!p.place && canEditPlaces()){
       var nb=document.createElement("button"); nb.className="btn sm"; nb.textContent="✏️ ตั้งชื่อจุดนี้";
       nb.onclick=function(){ nameLoose(p, function(x){ fill(x.id); }); };
       pinx.appendChild(nb);
     }
   }
+  /* 🔴 เทียบกันได้ต้องคิดฐานเดียวกัน (18 ก.ย. 2569)
+     เดิมคิด "ขาเดียว" haversine(ต้นทาง,ปลายทาง) แล้วเอาไปเทียบกับ j.km ที่เป็น routeKm() = ทั้งสายรวมจุดแวะ
+     งานส่งอิฐบล็อก 18 ก.ย. (แวะ 2 จุด) จึงขึ้น "ใหม่ 122.8 · เดิม 155.6" ทั้งที่ของจริงต้องเป็น 162.1
+     → ใช้ routeKm() กับสำเนางานที่ย้ายปลายด้านนั้นแล้ว (วิธีเดียวกับ snapPlan) · ฝั่ง DB แก้ด้วย v29 route_km_sub()
+     และบอกด้วยว่าเลขบนการ์ดเป็นระยะตามถนน ไม่ใช่เส้นตรง ไม่งั้นดูเหมือนข้อมูลไม่ตรงกัน */
   function calc(){
+    llRow.classList.toggle("hidden", pSel.value!=="ll");
     extra();
-    var p=pins[num(pSel.value,-1)];
-    if(!p){ info.textContent=""; return; }
-    var a = wSel.value==="end" ? j.start : p;
-    var b = wSel.value==="end" ? p : j.end;
-    var d = haversine(a,b);
-    info.textContent = "ระยะทางใหม่ (เส้นตรง): " + (d==null ? "คำนวณไม่ได้ (อีกจุดยังไม่มีพิกัด)" : d.toFixed(1)+" กม.") +
-                       "  ·  เดิม " + (j.km||0).toFixed(1) + " กม.";
+    var p=chosen();
+    go.disabled=!p;
+    if(!p){
+      info.innerHTML = (pSel.value==="ll")
+        ? 'วางพิกัดให้ครบก่อน เช่น <b>17.7659, 102.1627</b> (วางลิงก์ Google Maps ก็ได้)'
+        : 'เลือกจุดที่ถูกต้องก่อน แล้วจะขึ้นระยะทางใหม่ให้เทียบ';
+      return;
+    }
+    var nk=routeKmIf(j, wSel.value, p), ok=routeKmIf(j, null, null), ns=stopsOf(j).length;
+    if(ok==null) ok=j.km||0;
+    var h='<b>ระยะทางเส้นตรง'+(ns ? "ทั้งสาย (รวมจุดแวะ "+ns+" จุด)" : "")+": "+ok.toFixed(1)+" → "+
+          (nk==null ? "คำนวณไม่ได้ (อีกจุดยังไม่มีพิกัด)" : nk.toFixed(1)+" กม.")+'</b>';
+    if(roadOk(j)) h+='<br>เลขบนหัวงาน '+j.roadKm.toFixed(1)+' กม. เป็นระยะตามถนน ระบบจะคิดให้ใหม่เองในไม่กี่นาทีหลังแก้';
+    info.innerHTML=h;
   }
   function fill(keepId){
-    pins=knownPins(wSel.value, j.id);
+    pins=knownPins(fixSide(wSel.value), j.id);
     pSel.innerHTML="";
-    if(!pins.length){
-      var z=document.createElement("option"); z.value=""; z.textContent="— ยังไม่มีจุดเก่าให้เลือก —"; pSel.appendChild(z);
-    }
+    /* **ห้ามให้ตัวเลือกแรกถูกเลือกให้เอง** — เดิมเบราว์เซอร์เลือกสถานที่ที่ใช้บ่อยสุดให้ทันที
+       เจ้าของกด "แก้พิกัดเลย" ทีเดียวงานย้ายไปที่นั้นจริงๆ ทั้งที่ยังไม่ได้ตั้งใจเลือกอะไร */
+    var z=document.createElement("option"); z.value="";
+    z.textContent = pins.length ? "— เลือกจุดที่ถูกต้อง —" : "— ยังไม่มีจุดเก่าให้เลือก —";
+    pSel.appendChild(z);
+    var zl=document.createElement("option"); zl.value="ll";
+    zl.textContent="✍️ วางพิกัดเอง (จาก Google Maps)";
+    pSel.appendChild(zl);
+    var cur=placeOf(fixPin(j, wSel.value));   /* สถานที่ของจุดที่ใช้อยู่ตอนนี้ — ติดป้ายกันเลือกผิดตัว */
     var gA=null, gB=null;
     pins.forEach(function(p,i){
       var o=document.createElement("option"); o.value=String(i);
-      o.textContent=pinOptText(p);
+      o.textContent=pinOptText(p) + ((cur && p.place && p.place.id===cur.id) ? " · ใช้อยู่ตอนนี้" : "");
       if(p.place){
         if(!gA){ gA=document.createElement("optgroup"); gA.label="สถานที่ที่ตั้งชื่อแล้ว"; pSel.appendChild(gA); }
         gA.appendChild(o);
@@ -3312,15 +3412,18 @@ function buildFixReq(j, pan){
     });
     calc();
   }
-  wSel.onchange=function(){ fill(); }; pSel.onchange=calc; fill();
+  wSel.onchange=function(){ fill(); }; pSel.onchange=calc; llIn.oninput=calc; fill();
 
   go.onclick=function(){
-    var p=pins[num(pSel.value,-1)];
-    if(!p){ toast("ยังไม่ได้เลือกจุด"); return; }
+    var p=chosen();
+    if(!p){ toast(pSel.value==="ll" ? "อ่านพิกัดไม่ออก ใส่แบบ 17.7659, 102.1627" : "ยังไม่ได้เลือกจุด"); return; }
     go.disabled=true; go.textContent="กำลังส่ง…";
     function back(){ go.disabled=false; go.textContent=goText; }
-    rest("rpc/req_fix",{method:"POST", body:{ p_job:j.id, p_which:wSel.value,
-         p_lat:p.lat, p_lng:p.lng, p_place:(p.place ? p.name : "จุด "+p.lat.toFixed(4)+", "+p.lng.toFixed(4)),
+    rest("rpc/req_fix",{method:"POST", body:{ p_job:j.id, p_which:fixWhich(wSel.value),
+         p_stop:(fixStopId(wSel.value)||null),
+         p_lat:p.lat, p_lng:p.lng,
+         /* พิกัดที่วางเองแล้วตกในรัศมีสถานที่ไหน ให้การ์ดในกลุ่มเรียกชื่อที่นั้น ไม่ใช่ตัวเลขดิบ */
+         p_place:(p.place ? p.place.name : "จุด "+p.lat.toFixed(4)+", "+p.lng.toFixed(4)),
          p_note:nIn.value||null, p_photo:fixPhoto(j) }})
       .then(function(r){
         if(!r || !r.ok){ toast((r&&r.msg)||"ส่งคำขอไม่สำเร็จ"); back(); return; }
