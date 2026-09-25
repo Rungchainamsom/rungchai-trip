@@ -1930,11 +1930,21 @@ function jobNameField(type, initial, caption){
 }
 function activeJob(id){ for(var i=DB.job.length-1;i>=0;i--) if(DB.job[i].emp===id && DB.job[i].status==="active") return DB.job[i]; return null; }
 function waiting(){ return DB.job.filter(function(j){ return j.status==="done" && !j.priced && !isCompanyJob(j); }); }
+/* ปลายทางที่โชว์บนหัวงาน (25 ก.ย. 2569 — เจ้าของสั่ง)
+   Why: งานรับสินค้าถูกตั้ง dest="โรงงาน" ให้เองตอนเปิดหน้าปิดงาน ถ้าคนขับไม่กดเลือก
+   งานย้ายรถบดไปวัด อ.นายูง เลยขึ้น "→ โรงงาน" ทั้งที่ไม่ได้ไปโรงงาน
+   หมุดปลายทางอยู่ในรัศมีสถานที่ที่ตั้งชื่อไว้ = ใช้ชื่อสถานที่ · ไม่ตรงที่ไหน = คำเดิม (โรงงาน/ส่งลูกค้า)
+   แสดงผลอย่างเดียว ไม่แตะ j.dest ในฐานข้อมูล (guessRate/job_rates ยังจับคู่ด้วย dest เดิม) */
+function destText(j){
+  var pl=(j && j.end && j.end.lat!=null) ? placeOf(j.end) : null;
+  return pl ? pl.name : (j.dest||"");
+}
 function jobTitle(j){
   if(j.label) return j.label;
   var t=TYPE_LABEL[j.type];
   if(j.mat) t+=" "+j.mat;
-  if(j.dest) t+=" → "+j.dest;
+  var d=destText(j);
+  if(d) t+=" → "+d;
   return t;
 }
 function haversine(a,b){
@@ -2744,7 +2754,45 @@ function roadOk(j){ return !!j && j.roadKm!=null && j._roadSig!=null && j._roadS
 function kmOf(j){ return roadOk(j) ? j.roadKm : (j.km||0); }
 function kmText(j){
   if(roadOk(j)) return j.roadKm.toFixed(1)+" กม.";
-  return j.km ? j.km.toFixed(1)+" กม. (เส้นตรง)" : "";
+  if(!j.km) return "";
+  if(roadPending(j)){ roadPollSoon(); return j.km.toFixed(1)+" กม. (เส้นตรง · กำลังคิดระยะถนน…)"; }
+  return j.km.toFixed(1)+" กม. (เส้นตรง)";
+}
+/* ระยะถนนที่ "กำลังจะมา" (25 ก.ย. 2569)
+   Why: เจ้าของแก้พิกัดแล้วเห็น "104.8 กม. (เส้นตรง)" เทียบกับ Google 134 กม. นึกว่าระบบผิด
+   ที่จริงคลาวด์คิดระยะถนนให้ใน 1–2 นาที (cron road-sweep) แต่หน้าจอไม่ดึงมาจนกว่าจะรีเฟรช
+   รอ = งานปิดแล้ว และ (พิกัดในเครื่องเพิ่งเปลี่ยน หรือเพิ่งปิดงานไม่เกิน 3 ชม.) · ดึงซ้ำทุก 60 วิ ไม่เกิน 6 รอบ/งาน */
+function roadPending(j){
+  if(!j || j.status!=="done" || roadOk(j) || (j._roadTry||0)>=6) return false;
+  if(routePts(j).length<2) return false;
+  if(j._roadSig!==roadSig(j)) return true;
+  return j.roadKm==null && j.end && j.end.at && (Date.now()-j.end.at) < 3*3600e3;
+}
+var ROADPOLL=null;
+function roadPollSoon(){
+  if(ROADPOLL || !AUTH.token || (PRV&&PRV.on)) return;
+  ROADPOLL=setTimeout(roadPoll, 60000);
+}
+function roadPoll(){
+  ROADPOLL=null;
+  var list=(DB.job||[]).filter(function(j){ return isUuid(j.id) && roadPending(j); }).slice(0,30);
+  if(!list.length) return;
+  list.forEach(function(j){ j._roadTry=(j._roadTry||0)+1; });
+  rest("jobs?select=id,road_km,start_lat,start_lng,end_lat,end_lng&id=in.("+list.map(function(j){return j.id;}).join(",")+")")
+  .then(function(rows){
+    var got=0;
+    (rows||[]).forEach(function(r){
+      var j=DB.job.find(function(x){ return x.id===r.id; });
+      if(!j || r.road_km==null) return;
+      /* road_km บนคลาวด์ต้องเป็นของพิกัดชุดเดียวกับในเครื่อง — ถ้า save() ยังไม่ขึ้น คลาวด์ยังถือพิกัดเก่า */
+      var same=function(a,b){ return a!=null && b!=null && Math.abs(a-b)<1e-6; };
+      if(!(j.start && j.end && same(r.start_lat,j.start.lat) && same(r.start_lng,j.start.lng) &&
+           same(r.end_lat,j.end.lat) && same(r.end_lng,j.end.lng))) return;
+      j.roadKm=num(r.road_km,0); j._roadSig=roadSig(j); got++;
+    });
+    if(got) render();
+    if((DB.job||[]).some(roadPending)) roadPollSoon();
+  }).catch(function(){ roadPollSoon(); });
 }
 function nightRate(j){ return (j.nightRate!=null && j.nightRate!=="") ? j.nightRate : (DB.set.night||0); }
 function nightPay(j){ return (j.nights||0)*nightRate(j); }
@@ -2895,7 +2943,7 @@ function jobList(host,list,showEmp){
       '<div class="meta">' +
         '<span class="pill '+TYPE_PILL[j.type]+'">'+TYPE_LABEL[j.type]+'</span>' +
         (j.mat&&j.label?'<span>'+j.mat+'</span>':'') +
-        (j.dest&&j.label?'<span>→ '+esc(j.dest)+'</span>':'') +
+        (j.dest&&j.label?'<span>→ '+esc(destText(j))+'</span>':'') +
         (j.bill?'<span>บิล '+esc(j.bill)+'</span>':'') +
         plateChip(j) +
         (showEmp?'<span>'+emp(j.emp).name+'</span>':'') +
@@ -3880,6 +3928,8 @@ function buildJobEdit(j, pan){
   pan.innerHTML=
     '<div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap">' +
       '<span data-k="namebox"></span>' +
+      '<label class="f" style="width:172px">ทะเบียนรถ' +
+        '<select data-k="truck"></select></label>' +
       '<label class="f" data-k="mlab" style="width:150px">สินค้า' +
         '<select data-k="mat"></select></label>' +
       '<label class="f" data-k="dlab" style="width:140px">ปลายทาง' +
@@ -3902,6 +3952,7 @@ function buildJobEdit(j, pan){
       '<input type="checkbox" data-k="sync" style="width:20px; height:20px; flex:none">' +
       'อัปเดตราคามาตรฐานในสมุดราคางานด้วย</label>' +
     '<div data-k="stops" style="margin-top:12px"></div>' +
+    '<div class="hint" data-k="twarn" style="margin-top:9px"></div>' +
     '<div class="hint" data-k="tot" style="margin-top:9px"></div>' +
     '<div class="row" style="margin-top:11px; gap:9px">' +
       '<button class="btn primary" data-k="save">บันทึกการแก้ไข</button>' +
@@ -3911,6 +3962,26 @@ function buildJobEdit(j, pan){
   /* สินค้า/ปลายทาง — เดิมคนขับเลือกผิดแล้วเจ้าของแก้ในแอปไม่ได้เลย ต้องไปแก้ที่ฐานข้อมูล
      โชว์เฉพาะประเภทที่มีสินค้าจริง · ปลายทางมีเฉพาะงานรับสินค้าเหมือนหน้าคนขับ
      ค่าเดิมของงานถูกใส่เป็นตัวเลือกด้วยเสมอ เผื่อสินค้านั้นถูกเอาออกจากรายการไปแล้ว */
+  /* ทะเบียนรถ (19 ก.ย. 2569 — เจ้าของสั่ง หลังนายบอยลาออกแล้วคนขับเริ่มสลับรถกัน)
+     เดิมแก้ทะเบียนย้อนหลังไม่ได้เลย ต้องให้คนทำระบบรัน SQL ให้ทุกครั้ง
+     คันที่เลิกใช้แล้วยังต้องโชว์ถ้างานใบนั้นผูกอยู่ ไม่งั้นช่องจะว่างแล้วบันทึกทับเป็น "ไม่มีรถ" เงียบๆ
+     (รูปแบบเดียวกับ drvOptions ในหน้าตั้งค่า) */
+  function truckOptions(cur){
+    var list=(DB.truck||[]).filter(function(t){ return t.active!==false; })
+              .sort(function(a,b){ return (a.plate||"").localeCompare(b.plate||"","th"); });
+    var h='<option value="">— ไม่ระบุรถ —</option>', seen=false;
+    list.forEach(function(t){
+      if(t.id===cur) seen=true;
+      h+='<option value="'+t.id+'">'+esc(t.plate||"(ไม่มีทะเบียน)")+(t.company?" · รถบริษัท":"")+'</option>';
+    });
+    if(cur && !seen){
+      var o=find(DB.truck,cur);
+      h+='<option value="'+cur+'">'+esc((o&&o.plate)||"(ไม่พบทะเบียน)")+' — เลิกใช้แล้ว</option>';
+    }
+    return h;
+  }
+  g("truck").innerHTML=truckOptions(j.truck||"");
+  g("truck").value=j.truck||"";
   var hasMat = (j.type==="ส่งสินค้า" || j.type==="รับสินค้า");
   g("mlab").style.display = hasMat ? "" : "none";
   g("dlab").style.display = (j.type==="รับสินค้า") ? "" : "none";
@@ -4077,6 +4148,11 @@ function buildJobEdit(j, pan){
   }
   g("mode").value = j.payMode||"เที่ยว";
   function unitWord(){ return g("mode").value==="วัน" ? "วัน" : (g("mode").value==="คิว" ? "คิว" : "เที่ยว"); }
+  /* 🔴 ย้ายงานไปรถบริษัท = งานนั้นไม่มีค่าเที่ยว (กติกาเดียวกับ finishJobNow/jobs_guard_money)
+     เจ้าของเป็น app_is_owner() ฝั่ง DB จึงไม่มีใครล้างราคาให้ ต้องเตือนและล้างให้เห็นกับตา
+     **ห้ามล้างเงียบๆ ตอนกดบันทึก** — ล้างตอนเลือกเลย เจ้าของจะได้เห็นเลข 0 ก่อนตัดสินใจ */
+  function truckPicked(){ return find(DB.truck, g("truck").value) || null; }
+  function companyPicked(){ var t=truckPicked(); return !!(t && t.company) && j.type!=="ทั่วไป"; }
   function calc(){
     var per = g("mode").value!=="เที่ยว";
     g("qlab").style.display = per ? "" : "none";
@@ -4094,9 +4170,25 @@ function buildJobEdit(j, pan){
       (n>0 ? ' + ค้างคืน '+n+' × '+baht(rr) : '') +
       (ns ? ' + จุดแวะ '+ns+' จุด '+baht(sp)+' บาท' : '') +
       '<br>ยอดเดิม '+baht(was)+' บาท';
+    var tk=truckPicked(), moved=(g("truck").value||"")!==(j.truck||"");
+    g("twarn").innerHTML =
+      companyPicked()
+        ? '<b style="color:var(--accent)">🔴 '+esc(tk.plate)+' เป็นรถบริษัท — งานนี้จะไม่มีค่าเที่ยว</b>'+
+          '<br>คนขับรถบริษัทกินเงินเดือน ไม่ได้กินค่าเที่ยว · ถ้าไม่ใช่แบบนั้นให้เลือกคันอื่น'
+        : (moved ? 'เปลี่ยนทะเบียนเป็น <b>'+esc((tk&&tk.plate)||"ไม่ระบุรถ")+'</b> '+
+                   '(เดิม '+esc((find(DB.truck,j.truck)||{}).plate||"ไม่ระบุรถ")+') · ระยะทางไม่เปลี่ยน'
+                 : '');
   }
   ["price","nights","rate","qty"].forEach(function(k){ g(k).oninput=calc; });
   g("mode").onchange=calc;
+  g("truck").onchange=function(){
+    /* เลือกรถบริษัท = ล้างค่าเที่ยวให้เห็นทันที ไม่ต้องรอไปเจอตอนบันทึก */
+    if(companyPicked() && (parseFloat(g("price").value)||0)>0){
+      g("price").value=0;
+      toast("รถบริษัทไม่มีค่าเที่ยว — ตั้งค่าเที่ยวเป็น 0 ให้แล้ว", 4000);
+    }
+    calc();
+  };
   paintStopsEdit();
   calc();
   g("cancel").onclick=function(){
@@ -4118,6 +4210,12 @@ function buildJobEdit(j, pan){
     else { j.days=1; j.qty=null; }
     j.nights=Math.max(0, parseInt(g("nights").value,10)||0);
     j.nightRate=Math.max(0, parseFloat(g("rate").value)||0);
+    /* กันพลาดชั้นสุดท้าย: ย้ายไปรถบริษัทแล้วยังมีค่าเที่ยวค้างอยู่ = ตัวเลขขัดกับกติกา */
+    if(companyPicked() && v>0){
+      toast("รถบริษัทไม่มีค่าเที่ยว — ตั้งค่าเที่ยวเป็น 0 ก่อน หรือเลือกรถคันอื่น", 5000);
+      g("price").focus(); return;
+    }
+    j.truck = g("truck").value || null;
     if(hasMat){
       j.mat=g("mat").value;
       if(j.type==="รับสินค้า") j.dest=g("dest").value;
