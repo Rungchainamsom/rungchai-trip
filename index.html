@@ -93,6 +93,7 @@ textarea{min-height:58px; resize:vertical}
      display:inline-flex; align-items:center; justify-content:center; gap:7px}
 .btn:hover{border-color:var(--ink3)}
 .btn:disabled{opacity:.5; cursor:not-allowed}
+.btn.saving,.btn.saving:disabled{background:#9ca3af; border-color:#9ca3af; color:#fff; opacity:1; cursor:wait}
 .btn.primary{background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600}
 .btn.dark{background:var(--ink); border-color:var(--ink); color:var(--bg); font-weight:600}
 .btn.ghost{background:none}
@@ -1620,7 +1621,30 @@ function runSync(){
           headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
       });
     }
-    if(news.length){
+    if(news.length && t==="fuel"){
+      /* น้ำมัน: รถคันเดียวกัน + เลขไมล์เดียวกัน + ยอดเงินเท่ากัน = รายการซ้ำ (unique fuel_no_dup)
+         ส่งแบบ "ซ้ำก็ข้าม" คลาวด์จะคืนเฉพาะแถวที่รับจริง จึงจับคู่ด้วยกุญแจ ไม่ใช่ลำดับ
+         แถวในเครื่องที่ไม่ได้คู่ = ซ้ำกับของที่มีบนคลาวด์แล้ว → เอาออกจากจอ ไม่ส่งซ้ำวนไป */
+      chain=chain.then(function(){
+        return rest(TABLE[t]+"?on_conflict=truck_id,odo,amount", {method:"POST", body:news.map(function(n){return n.row;}),
+                               headers:{Prefer:"resolution=ignore-duplicates,return=representation"}})
+          .then(function(back){
+            var key=function(tr,od,am){ return tr+"|"+od+"|"+Number(am).toFixed(2); };
+            var got={}; (back||[]).forEach(function(r){ got[key(r.truck_id,r.odo,r.amount)]=r; });
+            var drop=[];
+            news.forEach(function(n){
+              var k=key(n.row.truck_id,n.row.odo,n.row.amount), r=got[k];
+              if(r){ idMap[n.obj.id]=r.id; n.obj.id=r.id; delete got[k]; }
+              else drop.push(n.obj);
+            });
+            if(drop.length){
+              DB.fuel=DB.fuel.filter(function(o){ return drop.indexOf(o)<0; });
+              toast("มีรายการเติมน้ำมันซ้ำ "+drop.length+" รายการ — ไม่ได้บันทึกซ้ำ");
+              try{ renderFuel(); }catch(e){}
+            }
+          });
+      });
+    }else if(news.length){
       chain=chain.then(function(){
         return rest(TABLE[t], {method:"POST", body:news.map(function(n){return n.row;}),
                                headers:{Prefer:"return=representation"}})
@@ -5791,6 +5815,7 @@ function refreshCar4(){
     : '<span style="color:var(--accent); font-weight:600">* ต้องมีรูปเลขไมล์อย่างน้อย 1 รูป</span>';
 }
 function saveFuel(){
+  if(FUEL_SAVING) return;
   if(busyGuard()) return;
   if(uSrc!=="pump" && uSrc!=="tank"){
     toast("เลือกก่อนว่าเติมที่ปั๊ม หรือถังท่าทราย");
@@ -5831,7 +5856,14 @@ function saveFuel(){
     shots:uDraft.shots.slice(), odoShots:uDraft.odoShots.slice(),
     lat:null, lng:null, at:Date.now() };
   DB.lastTruck[me.id]=f.truck;
-  getGeo(function(pos){
+  /* ล็อกปุ่มทันทีที่กด (2 ต.ค. 2569)
+     Why: รอ GPS ได้นานถึง 10 วิ ระหว่างนั้นจอเงียบ คนขับกดซ้ำ → ได้รายการซ้ำ 2 ใบ
+     (เกิดจริง 13 ก.ย. บอย · 2 ต.ค. แม็ก) · ฐานข้อมูลกันอีกชั้นด้วย fuel_no_dup */
+  fuelLock(true);
+  var done=false, safety=setTimeout(function(){ fin(null); }, 15000);
+  function fin(pos){
+    if(done) return; done=true; clearTimeout(safety);
+    fuelLock(false);
     if(pos){ f.lat=pos.lat; f.lng=pos.lng; }
     DB.fuel.push(f); save();
     uDraft={shots:[], odoShots:[]};
@@ -5841,7 +5873,15 @@ function saveFuel(){
     refreshCar4(); paintFuelSrc();
     toast("บันทึกแล้ว "+(f.src==="tank" ? f.liters+" ลิตร จากถังท่าทราย" : baht(amt)+" บาท · "+f.liters.toFixed(2)+" ลิตร"));
     renderFuel();
-  });
+  }
+  getGeo(fin);
+}
+var FUEL_SAVING=false;
+function fuelLock(on){
+  FUEL_SAVING=on;
+  var b=$("uSave"); if(!b) return;
+  if(on){ if(!b.dataset.t) b.dataset.t=b.textContent; b.disabled=true; b.classList.add("saving"); b.textContent="⏳ กำลังบันทึก…"; }
+  else { b.disabled=false; b.classList.remove("saving"); if(b.dataset.t) b.textContent=b.dataset.t; }
 }
 function fuelList(host,list,showEmp){
   host.innerHTML="";
