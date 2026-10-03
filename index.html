@@ -777,6 +777,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <label class="f">ประเภท<select id="rType"></select></label>
         <label class="f" style="grid-column:span 2">ชื่องาน / เส้นทาง<input type="text" id="rLabel" placeholder="เช่น ส่งบล็อค กุดลิน"></label>
         <label class="f">ราคา/เที่ยว<input type="number" id="rPrice" step="50" min="0"></label>
+        <label class="f" style="grid-column:1/-1">รายละเอียด (ไม่บังคับ)<input type="text" id="rDetail" maxlength="500" placeholder="เช่น ระยะประมาณ 60 กม. · ลูกค้าโครงการ ส.บุรินทร์"></label>
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="rAdd">เพิ่ม</button></label>
       </div>
     </section>
@@ -1142,7 +1143,7 @@ function rest(path,opt){
    เก็บสตริงเดิมไว้ ค่าไปกลับเท่ากันเป๊ะ จึงไม่มีแถวผีถูกส่ง */
 function rowEmp(r){   return {id:r.id, name:r.name, nickname:r.nickname, role:r.role, line:r.line_user_id, active:r.active, phone:r.phone, leftAt:r.left_at||null, payVia:r.pay_via||"rc"}; }
 function rowTruck(r){ return {id:r.id, plate:r.plate, size:r.size, active:r.active, driver:r.driver_id||"", company:!!r.company}; }
-function rowRate(r){  return {id:r.id, type:r.job_type, label:r.label, price:num(r.price,0), unit:r.unit||"เที่ยว", mat:r.material||"", dest:r.dest||"", at:r.updated_at}; }
+function rowRate(r){  return {id:r.id, type:r.job_type, label:r.label, price:num(r.price,0), unit:r.unit||"เที่ยว", mat:r.material||"", dest:r.dest||"", at:r.updated_at, detail:r.detail||""}; }
 function rowJob(r){
   return {id:r.id, date:r.job_date, emp:r.emp_id, truck:r.truck_id, type:r.job_type, label:r.label||"",
     mat:r.material||"", bill:r.bill_no||"", dest:r.dest||"",
@@ -1177,7 +1178,7 @@ var TOROW = {
                             line_user_id:o.line||null, phone:o.phone||null, active:o.active!==false,
                             left_at:o.leftAt||null, pay_via:o.payVia||"rc"}; },
   truck: function(o){ return {plate:o.plate, size:o.size, active:o.active!==false, driver_id:o.driver||null, company:!!o.company}; },
-  rate: function(o){ return {job_type:o.type, label:o.label, price:o.price, unit:o.unit||"เที่ยว", material:o.mat||null, dest:o.dest||null}; },
+  rate: function(o){ return {job_type:o.type, label:o.label, price:o.price, unit:o.unit||"เที่ยว", material:o.mat||null, dest:o.dest||null, detail:o.detail||null}; },
   job: function(o){ return {
       job_date:o.date, emp_id:o.emp, truck_id:o.truck||null, job_type:o.type, label:o.label||"",
       material:o.mat||null, bill_no:o.bill||null, dest:o.dest||null,
@@ -1948,7 +1949,10 @@ function jobNameField(type, initial, caption){
   var inp=document.createElement("input");
   inp.type="text"; inp.placeholder="เช่น ส่งบล็อค กุดลิน"; inp.style.marginTop="7px";
   box.appendChild(inp);
+  var dtl=document.createElement("span"); dtl.className="hint"; dtl.style.cssText="margin-top:5px; white-space:pre-wrap"; box.appendChild(dtl);
   var list=rateChoices(type), cb=null, cur=(initial||"").trim();
+  /* รายละเอียดจากสมุดราคา โชว์ใต้ช่องเมื่อเลือกชื่องานที่มีรายละเอียด */
+  function paintDtl(){ var r=null; list.forEach(function(y){ if(y.r.label===sel.value) r=y.r; }); dtl.textContent=(r&&r.detail)?("ℹ️ "+r.detail):""; }
   var known=list.some(function(x){ return (x.r.label||"").trim()===cur; });
   var h='<option value="">— ยังไม่เลือก —</option>';
   list.forEach(function(x){
@@ -1962,7 +1966,9 @@ function jobNameField(type, initial, caption){
   if(cur && known){ sel.value=cur; showInput(false); }
   else if(cur){ sel.value="__new"; inp.value=cur; showInput(true); }
   else { sel.value=""; showInput(false); }
+  paintDtl();
   sel.onchange=function(){
+    paintDtl();
     if(sel.value==="__new"){ showInput(true); inp.focus(); if(cb) cb(null); return; }
     showInput(false); inp.value="";
     var hit=null;
@@ -1980,7 +1986,7 @@ function jobNameField(type, initial, caption){
       var ok=false;
       for(var i=0;i<sel.options.length;i++) if(sel.options[i].value===L) ok=true;
       if(!ok) return false;
-      sel.value=L; showInput(false); inp.value=""; return true;
+      sel.value=L; showInput(false); inp.value=""; paintDtl(); return true;
     },
     onPick: function(fn){ cb=fn; }
   };
@@ -4811,13 +4817,52 @@ function renderRates(){
   DB.rate.forEach(function(r){
     var used=DB.job.filter(function(j){ return j.status==="done"&&j.type===r.type&&(j.label||"").trim()===r.label.trim(); }).length;
     h+='<tr><td><span class="pill '+TYPE_PILL[r.type]+'">'+TYPE_LABEL[r.type]+'</span></td>' +
-       '<td>'+esc(r.label)+'</td>' +
+       '<td>'+esc(r.label)+(r.detail?'<div class="hint" style="margin-top:3px; white-space:pre-wrap">'+esc(r.detail)+'</div>':'')+'</td>' +
        '<td style="color:var(--ink2)">'+esc(rateWhat(r)||"–")+'</td>' +
        '<td class="r"><input type="number" step="50" value="'+r.price+'" data-rate="'+r.id+'" style="width:104px; text-align:right"></td>' +
        '<td class="r num">'+used+'</td><td class="num" style="color:var(--ink2)">'+fmtDate(r.at)+'</td>' +
-       '<td class="r"><button class="btn sm" data-save="'+r.id+'">บันทึก</button></td></tr>';
+       '<td class="r" style="white-space:nowrap"><button class="btn sm" data-save="'+r.id+'">บันทึก</button> ' +
+         (isOwner(me)?'<button class="btn sm ghost" data-redit="'+r.id+'">✏️ แก้ชื่อ/รายละเอียด</button>':'')+'</td></tr>' +
+       '<tr class="hidden" data-rpan="'+r.id+'"><td colspan="7"></td></tr>';
   });
   var tbl=$("rateTable"); tbl.innerHTML=h+'</tbody>';
+  /* แก้ชื่องาน + รายละเอียด (3 ต.ค. 2569 — เจ้าของขอ)
+     ชื่องานคือกุญแจจับคู่ราคา (ประเภท + ชื่องาน) และนับ "ใช้ไปแล้ว" → เปลี่ยนชื่อแล้วต้องเลือกได้ว่าจะเปลี่ยนในงานเดิมด้วยไหม
+     ไม่งั้นงานเก่าจะหลุดจากชื่อนี้ ระบบเดาราคาไม่เจอ · ห้ามชื่อซ้ำกับงานอื่นประเภทเดียวกัน (unique job_type,label ฝั่ง DB) */
+  tbl.querySelectorAll("[data-redit]").forEach(function(b){
+    b.onclick=function(){
+      var r=find(DB.rate,b.dataset.redit), tr=tbl.querySelector('[data-rpan="'+r.id+'"]'), td=tr.firstChild;
+      if(!tr.classList.contains("hidden")){ tr.classList.add("hidden"); td.innerHTML=""; return; }
+      var old=r.label.trim();
+      var used=DB.job.filter(function(j){ return j.type===r.type && (j.label||"").trim()===old; });
+      tr.classList.remove("hidden");
+      td.innerHTML='<div class="card pad stack" style="box-shadow:none; background:var(--surface2)">' +
+        '<label class="f">ชื่องาน / เส้นทาง<input type="text" data-k="nm" maxlength="120"></label>' +
+        '<label class="f">รายละเอียด <span class="hint">(ไม่บังคับ — เช่น เงื่อนไข ระยะทาง ลูกค้า สิ่งที่ต้องรู้)</span>' +
+          '<textarea data-k="dt" rows="3" maxlength="500" style="font:inherit; padding:10px; border:1px solid var(--line); border-radius:10px; resize:vertical"></textarea></label>' +
+        (used.length ? '<label class="row" style="gap:9px; align-items:center; font-size:15px"><input type="checkbox" data-k="mv" checked style="width:20px; height:20px">' +
+          'ถ้าเปลี่ยนชื่อ ให้เปลี่ยนในงานเดิม '+used.length+' ใบด้วย (แนะนำ — ไม่งั้นงานเก่าจะหลุดจากชื่อนี้)</label>' : '') +
+        '<div class="row" style="gap:8px"><button class="btn primary" data-k="ok">บันทึก</button><button class="btn ghost" data-k="no">ยกเลิก</button></div></div>';
+      var q=function(k){ return td.querySelector('[data-k="'+k+'"]'); };
+      q("nm").value=r.label; q("dt").value=r.detail||"";
+      q("no").onclick=function(){ tr.classList.add("hidden"); td.innerHTML=""; };
+      q("ok").onclick=function(){
+        if(busyGuard()) return;
+        var nm=q("nm").value.trim().replace(/\s+/g," "), dt=q("dt").value.trim();
+        if(!nm){ toast("ใส่ชื่องานก่อน"); q("nm").focus(); return; }
+        if(nm!==old && DB.rate.some(function(x){ return x!==r && x.type===r.type && x.label.trim()===nm; })){
+          toast("มีชื่องานนี้ในประเภท"+TYPE_LABEL[r.type]+"อยู่แล้ว ใช้ชื่ออื่น", 5000); q("nm").focus(); return;
+        }
+        var mv=q("mv"), moved=0;
+        if(nm!==old && mv && mv.checked){
+          used.forEach(function(j){ j.label=nm; moved++; });
+        }
+        r.label=nm; r.detail=dt;
+        save(); render();
+        toast("บันทึกแล้ว"+(moved?" — เปลี่ยนชื่อในงานเดิม "+moved+" ใบด้วย":""), 4000);
+      };
+    };
+  });
   tbl.querySelectorAll("[data-save]").forEach(function(b){
     b.onclick=function(){
       var r=find(DB.rate,b.dataset.save);
@@ -5010,20 +5055,16 @@ function slipFit(sheet){
   var c1=c.querySelector(".sh-t1"), c2=c.querySelector(".sh-t2");
   var s1=sheet.querySelector(".sh-t1"), s2=sheet.querySelector(".sh-t2");
 
-  /* 1) คอลัมน์เดียวก่อน อ่านง่ายที่สุด ถ้าล้นแผ่นค่อยลองสองคอลัมน์ */
+  /* 1) คอลัมน์เดียวเสมอ (3 ต.ค. 2569 — เจ้าของติ "ทำไมของสัญจรกับแม็กหน้าตาไม่เหมือนกัน เอาแบบเดียว")
+     เดิมงานเยอะจนล้นแผ่นจะสลับเป็นสองคอลัมน์ + ย่อตัวอักษร → ใบแต่ละคนหน้าตาต่างกัน และวันที่ขาดเป็น "01/0 9"
+     ตอนนี้ทุกใบคอลัมน์เดียว ตัวอักษรขนาดเดียวกัน ยาวกว่า 1 แผ่นก็ต่อหน้า 2 (หัวตารางพิมพ์ซ้ำให้เอง) */
   var two=false;
-  if(c1 && c2 && c.scrollHeight > BUDGET){
-    var h1=c.scrollHeight;
-    show(c1,false); show(c2,true);
-    if(c.scrollHeight < h1) two=true;
-    else { show(c1,true); show(c2,false); }
-  }
-  show(s1,!two); show(s2,two);
+  show(s1,true); show(s2,false);
 
-  /* 2) ยังล้นอยู่ค่อยย่อตัวอักษร แต่ไม่ต่ำกว่า 8pt เพราะคนขับต้องอ่านออก */
+  /* 2) ไม่ย่อตัวอักษรแล้ว — ทุกใบขนาดเท่ากัน */
   var tc = c.querySelectorAll("table"), tr = sheet.querySelectorAll("table");
   var f = 10.5, p = 3.2, i;
-  for(i=0; i<14; i++){
+  for(i=0; i<0; i++){
     if(c.scrollHeight <= BUDGET) break;
     if(f <= 8.0) break;
     f = Math.max(8.0, f - 0.3);
@@ -5070,8 +5111,14 @@ function slipOpen(){
   $("slipCloseBtn").onclick=slipClose;
   $("slipPrintBtn").onclick=function(){
     if(typeof window.print!=="function"){ toast("เครื่องนี้สั่งพิมพ์ไม่ได้ ให้เปิดในเบราว์เซอร์ Chrome หรือ Safari"); return; }
+    /* ชื่อไฟล์ PDF ตอนบันทึก = ชื่อหน้าเว็บขณะพิมพ์ (3 ต.ค. 2569 — เจ้าของขอ)
+       "ค่าเที่ยว รุ่งชัย - นายแม็ก กันยายน 69" · เลือกทุกคน = "… - ทุกคน กันยายน 69" */
+    var fm=fmtMonth(m).split(" "), oldTitle=document.title;
+    document.title="ค่าเที่ยว รุ่งชัย - "+(who_list.length===1 ? (who_list[0].name||"").trim() : "ทุกคน")+" "+fm[0]+" "+String(fm[1]||"").slice(-2);
+    var back=function(){ document.title=oldTitle; window.removeEventListener("afterprint", back); };
+    window.addEventListener("afterprint", back);
     try{ window.print(); }
-    catch(err){ toast("สั่งพิมพ์ไม่สำเร็จ ให้เปิดในเบราว์เซอร์ Chrome หรือ Safari"); }
+    catch(err){ back(); toast("สั่งพิมพ์ไม่สำเร็จ ให้เปิดในเบราว์เซอร์ Chrome หรือ Safari"); }
   };
 }
 function slipClose(){
@@ -6846,8 +6893,8 @@ $("rAdd").onclick=function(){
   if(!l){ toast("ใส่ชื่องานก่อน"); return; }
   if(!p||p<=0){ toast("กรอกราคาก่อน"); return; }
   if(findRate($("rType").value,l)){ toast("งานนี้มีราคาอยู่แล้ว แก้ในตารางด้านบนได้"); return; }
-  DB.rate.push({id:uid("r"), type:$("rType").value, label:l, price:p, at:today()});
-  save(); $("rLabel").value=""; $("rPrice").value=""; toast("เพิ่มราคางานแล้ว"); render();
+  DB.rate.push({id:uid("r"), type:$("rType").value, label:l, price:p, at:today(), detail:$("rDetail").value.trim()});
+  save(); $("rLabel").value=""; $("rPrice").value=""; $("rDetail").value=""; toast("เพิ่มราคางานแล้ว"); render();
 };
 $("orphScan").onclick=orphScan;
 $("sSave").onclick=function(){
