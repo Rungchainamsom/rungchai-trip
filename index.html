@@ -105,6 +105,18 @@ textarea{min-height:58px; resize:vertical}
 .pill.t2{background:var(--accent-soft); color:var(--accent)}
 .pill.t3{background:var(--ok-soft); color:var(--ok)}
 .pill.t4{background:var(--warn-soft); color:var(--warn)}
+.pill.co-rc{background:#e3ecf7; color:#1f4f86}
+.offcal{display:grid; grid-template-columns:repeat(7,1fr); gap:5px; margin:8px 0 4px}
+.offcal .h{font-size:12px; color:var(--ink3); text-align:center}
+.offcal button{border:1px solid var(--line); background:var(--surface); border-radius:10px; padding:8px 0; font:inherit; font-size:14px; cursor:pointer; color:var(--ink)}
+.offcal button.hol{background:var(--warn-soft); border-color:var(--warn); color:var(--warn); font-weight:700}
+.offcal button:disabled{opacity:.35; cursor:default}
+.offchip{border:1px solid var(--line); border-radius:999px; padding:3px 10px; font:inherit; font-size:13px; cursor:pointer; background:var(--surface)}
+.offchip.lv{background:var(--accent-soft); color:var(--accent); border-color:transparent}
+.offchip.wk{background:var(--ok-soft); color:var(--ok); border-color:transparent; text-decoration:line-through}
+.offchip:disabled{cursor:default}
+.pill.co-ts{background:#f6ead2; color:#8a5a12}
+button.pill.co-rc, button.pill.co-ts{border:0; cursor:pointer; font-family:inherit}
 .pill.live{background:var(--live-soft); color:var(--live)}
 .hint{font-size:13.5px; color:var(--ink3); line-height:1.5}
 .tiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:10px}
@@ -775,6 +787,13 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="sec-title">ค่าจ้างรายคน</div>
       <p class="hint" id="monHint" style="margin:-4px 0 10px">เบี้ยเลี้ยงจ่ายเต็มเดือน หักเฉพาะวันที่ขาดงาน — กรอกวันขาดในตารางได้เลย</p>
       <div class="tablewrap"><table id="monTable"></table></div>
+      <div class="sec-title">วันหยุด / วันลา</div>
+      <div class="card pad" id="monOff"></div>
+      <div class="sec-title">แยกต้นทุนตามบริษัท</div>
+      <p class="hint" style="margin:-4px 0 10px">แตะป้าย 🏭 รุ่งชัย / ⛱️ ท่าทราย ที่งานแต่ละใบเพื่อเปลี่ยน · ค่าเริ่มต้น: ไปโรงงานรุ่งชัย = รุ่งชัย · ทราย = ท่าทราย · วัสดุอื่น = รุ่งชัย</p>
+      <div class="tablewrap"><table id="monCo"></table></div>
+      <div class="sec-title">สัดส่วนการใช้รถ (ไว้แบ่งค่างวด/ค่าน้ำมัน)</div>
+      <div class="tablewrap"><table id="monCoTruck"></table></div>
       <div class="sec-title">แยกตามประเภทงาน</div>
       <div class="tablewrap"><table id="monType"></table></div>
       <div class="sec-title">ใบสรุปรายคน (พิมพ์ / บันทึกเป็น PDF)</div>
@@ -1118,7 +1137,7 @@ function rest(path,opt){
         (ไมโครวินาทีหาย) ชั้นซิงก์จะเห็นว่า "เปลี่ยน" แล้วดันแถว employees ขึ้นทุกรอบ
         เครื่องคนขับไม่มีสิทธิ์แก้ employees → RLS ตีกลับ → **ซิงก์หยุดทั้งสาย** (กับดักข้อ 26)
    เก็บสตริงเดิมไว้ ค่าไปกลับเท่ากันเป๊ะ จึงไม่มีแถวผีถูกส่ง */
-function rowEmp(r){   return {id:r.id, name:r.name, nickname:r.nickname, role:r.role, line:r.line_user_id, active:r.active, phone:r.phone, leftAt:r.left_at||null}; }
+function rowEmp(r){   return {id:r.id, name:r.name, nickname:r.nickname, role:r.role, line:r.line_user_id, active:r.active, phone:r.phone, leftAt:r.left_at||null, payVia:r.pay_via||"rc"}; }
 function rowTruck(r){ return {id:r.id, plate:r.plate, size:r.size, active:r.active, driver:r.driver_id||"", company:!!r.company}; }
 function rowRate(r){  return {id:r.id, type:r.job_type, label:r.label, price:num(r.price,0), unit:r.unit||"เที่ยว", mat:r.material||"", dest:r.dest||"", at:r.updated_at}; }
 function rowJob(r){
@@ -1129,6 +1148,7 @@ function rowJob(r){
     payMode:r.pay_mode||"เที่ยว", days:r.days||1, returnOf:r.return_of||null,
     qty:(r.qty==null?null:num(r.qty,0)), src:r.src||null, srcRef:r.src_ref||null,
     incomplete:!!r.incomplete, incompleteReason:r.incomplete_reason||"", flatTrip:!!r.flat_trip,
+    costOwner:(r.cost_owner==="rc"||r.cost_owner==="ts")?r.cost_owner:null,
     start: r.start_at? {lat:r.start_lat, lng:r.start_lng, at:ms(r.start_at)} : null,
     end:   r.end_at?   {lat:r.end_lat,   lng:r.end_lng,   at:ms(r.end_at)}   : null,
     at: ms(r.created_at),
@@ -1152,7 +1172,7 @@ function rowFuel(r){
 var TOROW = {
   emp: function(o){ return {name:o.name, nickname:o.nickname||null, role:o.role,
                             line_user_id:o.line||null, phone:o.phone||null, active:o.active!==false,
-                            left_at:o.leftAt||null}; },
+                            left_at:o.leftAt||null, pay_via:o.payVia||"rc"}; },
   truck: function(o){ return {plate:o.plate, size:o.size, active:o.active!==false, driver_id:o.driver||null, company:!!o.company}; },
   rate: function(o){ return {job_type:o.type, label:o.label, price:o.price, unit:o.unit||"เที่ยว", material:o.mat||null, dest:o.dest||null}; },
   job: function(o){ return {
@@ -1164,6 +1184,7 @@ var TOROW = {
       pay_mode:o.payMode||"เที่ยว", days:o.days||1, return_of:o.returnOf||null,
       qty:((o.qty==null||o.qty==="")?null:Number(o.qty)), src:o.src||null, src_ref:o.srcRef||null,
       incomplete:!!o.incomplete, incomplete_reason:o.incompleteReason||null, flat_trip:!!o.flatTrip,
+      cost_owner:o.costOwner||null,
       start_lat:o.start?o.start.lat:null, start_lng:o.start?o.start.lng:null, start_at:o.start?iso(o.start.at):null,
       end_lat:o.end?o.end.lat:null, end_lng:o.end?o.end.lng:null, end_at:o.end?iso(o.end.at):null,
       photos_start:o._ps||[], photos_end:o._pe||[] }; },
@@ -1334,7 +1355,10 @@ function bootstrap(){
     /* คำขอแก้พิกัดที่ยังรอเจ้าของอนุมัติ (v23) — ฐานข้อมูลเก่ายังไม่มีฟังก์ชันนี้ก็ไม่พัง */
     rest("rpc/fix_req_open",{method:"POST", body:{}}).catch(function(){ return []; }),
     /* สมุดสถานที่ (v27) — ฐานข้อมูลเก่ายังไม่มีตารางก็ไม่พัง */
-    rest("places?select=*&order=name").catch(function(){ return []; })
+    rest("places?select=*&order=name").catch(function(){ return []; }),
+    /* วันหยุดบริษัท / ยกเว้นรายคน / ยืนยันเดือน (v34) */
+    rest("day_marks?select=id,d,emp_id,kind").catch(function(){ return []; }),
+    rest("month_confirm?select=*").catch(function(){ return []; })
   ]).then(function(a){
     DB.emp   = a[0].map(rowEmp);
     DB.truck = a[1].map(rowTruck);
@@ -1348,6 +1372,8 @@ function bootstrap(){
     DB.fixOpen = {};
     (a[10]||[]).forEach(function(f){ DB.fixOpen[f.job_id] = f; });
     DB.places = (a[11]||[]).map(rowPlace);
+    DB.marks = (a[12]||[]).map(function(r){ return {id:r.id, d:r.d, emp:r.emp_id||null, kind:r.kind}; });
+    DB.mconf = {}; (a[13]||[]).forEach(function(r){ DB.mconf[r.ym]={at:r.confirmed_at, by:r.by_emp}; });
 
     DB.absent={};
     a[6].forEach(function(x){
@@ -1761,7 +1787,7 @@ function runSync(){
 
 /* ---------- โครงว่างตอนหน้าเว็บเพิ่งเปิด (ยังไม่ล็อกอิน) ---------- */
 function load(){
-  return {emp:[], truck:[], rate:[], job:[], stop:[], fuel:[], places:[], absent:{}, lastTruck:{}, rot:{}, sizes:SIZES.slice(),
+  return {emp:[], truck:[], rate:[], job:[], stop:[], fuel:[], places:[], absent:{}, marks:[], mconf:{}, lastTruck:{}, rot:{}, sizes:SIZES.slice(),
           mats:[], set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, stopRate:100, imgq:"ประหยัด", fuelPrice:31.94, tankPrice:36.30},
           tg:{token:"", chat:"", log:[]}};
 }
@@ -2969,7 +2995,7 @@ function jobList(host,list,showEmp){
         (j.mat&&j.label?'<span>'+j.mat+'</span>':'') +
         (j.dest&&j.label?'<span>→ '+esc(destText(j))+'</span>':'') +
         (j.bill?'<span>บิล '+esc(j.bill)+'</span>':'') +
-        plateChip(j) +
+        plateChip(j) + coPill(j) +
         (showEmp?'<span>'+emp(j.emp).name+'</span>':'') +
         '<span class="num">'+fmtDate(j.date)+'</span>' +
         (kmText(j)?'<span class="num"'+(roadOk(j)?' title="ระยะตามถนน"':' title="ระยะเส้นตรงระหว่างพิกัด — ระบบกำลังคำนวณระยะตามถนน"')+'>'+kmText(j)+'</span>':'') +
@@ -2990,6 +3016,8 @@ function jobList(host,list,showEmp){
     row.appendChild(body); row.appendChild(side); row.appendChild(pan);
     function panShut(){ pan.classList.add("hidden"); pan.innerHTML=""; }
     /* ป้าย "แวะรับ n จุด" กดดูได้ (เจ้าของขอ 17 ก.ย. 2569 — เดิมกดอะไรไม่ได้ ไม่รู้ว่าเพิ่มอะไรเข้าไป) */
+    var cob=body.querySelector("[data-cobtn]");
+    if(cob) cob.onclick=function(){ coToggle(j); };
     var stb=body.querySelector("[data-stopsbtn]");
     if(stb) stb.onclick=function(){
       if(!pan.classList.contains("hidden") && pan.dataset.k==="stops"){ panShut(); return; }
@@ -3060,6 +3088,45 @@ function jobList(host,list,showEmp){
    ฝั่งฐานข้อมูลรองรับอยู่แล้ว: policy jobs_owner_all เป็น for all
    และ trigger jobs_guard_money() ปล่อยผ่านทันทีถ้า app_is_owner() */
 function canEditJob(j){ return !!(isOwner(me) && j.status==="done"); }
+/* =============== ต้นทุนของบริษัทไหน — รุ่งชัย / ท่าทราย (v33 · 3 ต.ค. 2569 เจ้าของสั่ง) ===============
+   สองบริษัทใช้รถกับคนขับร่วมกัน ไม่ได้ขายของให้กัน → แบ่งต้นทุนตามงาน
+   กติกาค่าเริ่มต้น (ต้องตรงกับ public.job_cost_owner() ฝั่งฐานข้อมูลเป๊ะ):
+     1) เจ้าของแตะเลือกเองรายใบ (jobs.cost_owner)
+     2) ปลายทางคือโรงงานรุ่งชัย → รุ่งชัย  (ไม่มีพิกัดปลายทาง ดูช่อง dest = "โรงงาน")
+     3) งานทั่วไป → ตามที่พนักงานคนนั้นรับเงิน (employees.pay_via)
+     4) สินค้าเป็นทราย → ท่าทราย   5) นอกนั้น → รุ่งชัย
+   ใครแตะเปลี่ยนได้: เจ้าของเท่านั้น (trigger jobs_cost_guard คืนค่าเดิมเงียบๆ ถ้าคนอื่นส่งมา)
+   แตะกลับไปตรงกับค่าอัตโนมัติ = เก็บเป็น null (กลับไปใช้กติกา) */
+var CO_LABEL={rc:"รุ่งชัย", ts:"ท่าทราย"}, CO_ICON={rc:"🏭", ts:"⛱️"};
+function rcFactory(){
+  var L=(DB.places||[]).filter(function(p){ return (p.name||"").indexOf("โรงงานรุ่งชัย")===0; });
+  return L[0]||null;
+}
+function costAuto(j){
+  if(j.end && j.end.lat!=null){
+    var f=rcFactory();
+    if(f && Math.abs(f.lat-j.end.lat)<0.005 && Math.abs(f.lng-j.end.lng)<0.005) return "rc";
+  } else if(j.dest==="โรงงาน") return "rc";
+  if(j.type==="ทั่วไป") return ((find(DB.emp,j.emp)||{}).payVia)==="ts" ? "ts" : "rc";
+  if(/^ทราย/.test(j.mat||"")) return "ts";
+  return "rc";
+}
+function costOwner(j){ return (j.costOwner==="rc"||j.costOwner==="ts") ? j.costOwner : costAuto(j); }
+function coPill(j){
+  if(!isStaff(me) || j.status!=="done") return "";
+  var o=costOwner(j), manual=!!j.costOwner;
+  var txt=CO_ICON[o]+" "+CO_LABEL[o]+(manual?" · ตั้งเอง":"");
+  return isOwner(me)
+    ? '<button type="button" class="pill co-'+o+'" data-cobtn="1" title="ต้นทุนของ'+CO_LABEL[o]+' — แตะเพื่อเปลี่ยน">'+txt+' ⇄</button>'
+    : '<span class="pill co-'+o+'" title="ต้นทุนของ'+CO_LABEL[o]+'">'+txt+'</span>';
+}
+function coToggle(j){
+  if(busyGuard()) return;
+  var to = costOwner(j)==="rc" ? "ts" : "rc";
+  j.costOwner = (to===costAuto(j)) ? null : to;
+  save(); render();
+  toast("งานนี้เป็นต้นทุนของ"+CO_LABEL[to]+"แล้ว"+(j.costOwner?"":" (ตรงกับค่าอัตโนมัติ)"));
+}
 /* ใครลบงานได้ (เจ้าของตัดสิน 1 ก.ย. 2569)
    เจ้าของ = ทุกงาน · แอดมิน = เฉพาะงานที่ยังไม่ใส่ค่าเที่ยว (แตะเรื่องเงินไม่ได้)
    คนขับ = ของตัวเอง เฉพาะงานวันนี้ และต้องยังไม่ใส่ราคา
@@ -3952,6 +4019,9 @@ function buildJobEdit(j, pan){
   pan.innerHTML=
     '<div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap">' +
       '<span data-k="namebox"></span>' +
+      (j.type!=="ทั่วไป" ? '<label class="f" style="width:140px">ประเภทงาน' +
+        '<select data-k="jtype"><option value="ส่งสินค้า">ส่งสินค้า</option>' +
+        '<option value="รับสินค้า">รับสินค้า</option><option value="อื่นๆ">อื่นๆ</option></select></label>' : '') +
       '<label class="f" style="width:172px">ทะเบียนรถ' +
         '<select data-k="truck"></select></label>' +
       '<label class="f" data-k="mlab" style="width:150px">สินค้า' +
@@ -4006,13 +4076,31 @@ function buildJobEdit(j, pan){
   }
   g("truck").innerHTML=truckOptions(j.truck||"");
   g("truck").value=j.truck||"";
-  var hasMat = (j.type==="ส่งสินค้า" || j.type==="รับสินค้า");
-  g("mlab").style.display = hasMat ? "" : "none";
-  g("dlab").style.display = (j.type==="รับสินค้า") ? "" : "none";
-  if(hasMat){
-    matSelect(g("mat"), j.mat);
-    g("dest").value=j.dest||"";
+  /* ประเภทงาน (3 ต.ค. 2569 — เจ้าของขอ: เดิมต้องให้คนทำระบบแก้ด้วย SQL)
+     สลับได้ระหว่าง ส่งสินค้า / รับสินค้า / อื่นๆ · งานทั่วไปไม่ให้สลับ (ค่าแรงรายวันคนละกติกา)
+     ⚠️ trigger jobs_auto_recv เปลี่ยน "ส่งสินค้า" ที่ไปจบที่โรงงานกลับเป็น "รับสินค้า" ทุกครั้งที่บันทึก → เตือนให้รู้ก่อน */
+  function curType(){ var t=g("jtype"); return t ? t.value : j.type; }
+  if(g("jtype")) g("jtype").value=j.type;
+  matSelect(g("mat"), j.mat);
+  g("dest").value=j.dest||"";
+  var hasMat=false;
+  function paintType(){
+    var t=curType();
+    hasMat = (t==="ส่งสินค้า" || t==="รับสินค้า");
+    g("mlab").style.display = hasMat ? "" : "none";
+    g("dlab").style.display = (t==="รับสินค้า") ? "" : "none";
+    if(t==="รับสินค้า" && !g("dest").value) g("dest").value="โรงงาน";
   }
+  function autoRecvWarn(){
+    if(curType()!=="ส่งสินค้า" || stopsOf(j).length || !j.start || !j.end || j.start.lat==null || j.end.lat==null) return "";
+    var f=rcFactory(); if(!f) return "";
+    var r=(f.r||1000)/1000;
+    if(haversine(j.end,f)<=r && haversine(j.start,f)>r)
+      return '<br><b style="color:var(--accent)">⚠️ งานนี้ไปจบที่โรงงานรุ่งชัย ระบบจะเปลี่ยนกลับเป็น "รับสินค้า" ให้เองตอนบันทึก</b>';
+    return "";
+  }
+  paintType();
+  if(g("jtype")) g("jtype").onchange=function(){ paintType(); calc(); };
   /* ช่องชื่องานตัวเดียวกับหน้ารอใส่ราคา — เลือกงานเดิมแล้วราคา/วิธีคิดเด้งตาม */
   var nf=jobNameField(j.type, j.label, "ชื่องาน (เลือกงานเดิมแล้วราคาเด้งมาให้)");
   nf.box.style.flex="2"; nf.box.style.minWidth="210px";
@@ -4201,7 +4289,9 @@ function buildJobEdit(j, pan){
           '<br>คนขับรถบริษัทกินเงินเดือน ไม่ได้กินค่าเที่ยว · ถ้าไม่ใช่แบบนั้นให้เลือกคันอื่น'
         : (moved ? 'เปลี่ยนทะเบียนเป็น <b>'+esc((tk&&tk.plate)||"ไม่ระบุรถ")+'</b> '+
                    '(เดิม '+esc((find(DB.truck,j.truck)||{}).plate||"ไม่ระบุรถ")+') · ระยะทางไม่เปลี่ยน'
-                 : '');
+                 : '') +
+      (curType()!==j.type ? '<br>เปลี่ยนประเภทงาน <b>'+esc(TYPE_LABEL[j.type]||j.type)+' → '+esc(TYPE_LABEL[curType()]||curType())+'</b>' : '') +
+      autoRecvWarn();
   }
   ["price","nights","rate","qty"].forEach(function(k){ g(k).oninput=calc; });
   g("mode").onchange=calc;
@@ -4240,9 +4330,14 @@ function buildJobEdit(j, pan){
       g("price").focus(); return;
     }
     j.truck = g("truck").value || null;
+    var nt=curType();
+    if(nt!==j.type){
+      j.type=nt;
+      if(nt!=="รับสินค้า") j.dest="";
+    }
     if(hasMat){
       j.mat=g("mat").value;
-      if(j.type==="รับสินค้า") j.dest=g("dest").value;
+      if(j.type==="รับสินค้า") j.dest=g("dest").value||"โรงงาน";
     }
     /* จุดแวะ: ลำดับใน DOM มาจาก stopsOf(j) ชุดเดียวกับตอนวาด ลบจุดไหนไปแล้ววาดใหม่ทุกครั้ง */
     stopsOf(j).forEach(function(t,i){
@@ -4296,9 +4391,128 @@ function renderHome(){
   $("btnNew").disabled=act;
   $("btnNew").textContent = act ? "ปิดงานที่ค้างอยู่ก่อน" : "＋ เริ่มงานใหม่";
 }
+/* เบี้ยเลี้ยงคิดตามวันที่ผ่านไปของเดือน (เจ้าของสั่ง 3 ต.ค. 2569)
+   เดือนที่ผ่านไปแล้ว = เต็ม · เดือนนี้ = เต็ม ÷ 30 × วันที่วันนี้ (เช่น 3 ต.ค. = 3,000÷30×3 = 300)
+   ถึงวันสิ้นเดือน = เต็ม · ไม่เกินเต็มเดือน (เดือน 31 วัน) · เดือนอนาคต = 0
+   ทุกจุดที่โชว์เบี้ยเลี้ยงต้องเรียก allowOf() ตัวนี้ตัวเดียว ห้ามคิดเองในหน้าไหน */
+function allowDays(m){
+  var t=today(), cur=ym(t);
+  if(m<cur) return 30;
+  if(m>cur) return 0;
+  var d=parseInt(t.slice(8,10),10), p=m.split("-");
+  var dim=new Date(parseInt(p[0],10), parseInt(p[1],10), 0).getDate();
+  return d>=dim ? 30 : Math.min(30,d);
+}
+function allowBase(m){
+  var full=DB.set.allow||0, d=allowDays(m);
+  return d>=30 ? full : Math.round(full/30*d);
+}
 function allowOf(empId,m){
-  var ab=(DB.absent[empId]||{})[m]||0;
-  return Math.max(0, DB.set.allow - ab*DB.set.deduct);
+  return Math.max(0, allowBase(m) - absentCount(empId,m)*(DB.set.deduct||0));
+}
+function allowNote(m){
+  var d=allowDays(m);
+  return d>=30 ? "เต็มเดือน" : "คิดถึงวันที่ "+d+" ("+baht(DB.set.allow||0)+" ÷ 30 × "+d+")";
+}
+/* =============== วันลาอัตโนมัติ (v34 · 3 ต.ค. 2569 — เจ้าของสั่ง) ===============
+   ตั้งแต่ ต.ค. 2569: วันไหนไม่มีงานลงเลย = ลา หักเบี้ยเลี้ยงวันละ DB.set.deduct
+   ยกเว้น: วันหยุดบริษัท (day_marks kind=holiday · ทุกคน) · วันที่เจ้าของแตะว่า "มาทำงาน" ให้รายคน (kind=work)
+   นับถึง "เมื่อวาน" ของเดือนนี้ (วันนี้ยังไม่จบ) · เดือนก่อนหน้านับทั้งเดือน · เดือนก่อน ต.ค. 2569 ใช้วันขาดที่กรอกเองแบบเดิม
+   สิ้นเดือนมีข้อความเข้า Telegram (private.tg_month_offdays) แล้วเจ้าของกด "ยืนยันเดือนนี้" (month_confirm)
+   **ทุกจุดที่โชว์วันขาด/เบี้ยเลี้ยงต้องเรียก absentCount() ตัวนี้** */
+var AUTO_ABS_FROM="2026-10";
+function isAutoAbs(m){ return m>=AUTO_ABS_FROM; }
+function dimOf(m){ var p=m.split("-"); return new Date(parseInt(p[0],10), parseInt(p[1],10), 0).getDate(); }
+function absLastDay(m){
+  var cur=ym(today());
+  if(m<cur) return dimOf(m);
+  if(m>cur) return 0;
+  return parseInt(today().slice(8,10),10)-1;
+}
+function isHoliday(date){ return (DB.marks||[]).some(function(x){ return x.kind==="holiday" && x.d===date; }); }
+function isWorkMark(empId,date){ return (DB.marks||[]).some(function(x){ return x.kind==="work" && x.emp===empId && x.d===date; }); }
+function hasJobOn(empId,date){ return DB.job.some(function(j){ return j.emp===empId && j.date===date; }); }
+/* วันที่ไม่มีงานลงของคนนี้ในเดือน m → [{d:เลขวัน, date, work:true=เจ้าของแตะว่ามาทำงาน}] (ไม่รวมวันหยุดบริษัท) */
+function noJobDays(empId,m){
+  var out=[], last=absLastDay(m);
+  for(var d=1; d<=last; d++){
+    var date=m+"-"+pad(d);
+    if(hasJobOn(empId,date) || isHoliday(date)) continue;
+    out.push({d:d, date:date, work:isWorkMark(empId,date)});
+  }
+  return out;
+}
+function leaveDays(empId,m){ return noJobDays(empId,m).filter(function(x){ return !x.work; }); }
+function absentCount(empId,m){
+  if(isAutoAbs(m)) return leaveDays(empId,m).length;
+  return (DB.absent[empId]||{})[m]||0;
+}
+function monthConfirmed(m){ return !!(DB.mconf||{})[m]; }
+function absNote(empId,m){
+  var n=absentCount(empId,m);
+  if(!isAutoAbs(m)) return n ? "หักขาด "+n+" วัน" : "";
+  var L=leaveDays(empId,m).map(function(x){ return x.d; });
+  return (n ? "ลา "+n+" วัน (วันที่ "+L.join(", ")+")" : "ไม่มีวันลา") + (monthConfirmed(m) ? "" : " · รอเจ้าของยืนยันวันหยุด");
+}
+/* แตะวันหยุดบริษัท / แตะ "มาทำงาน" รายคน — เจ้าของเท่านั้น ยิง REST ตรง (RLS day_marks_owner ตรวจซ้ำ) */
+function markToggle(kind, empId, date, done){
+  if(!isOwner(me) || busyGuard()) return;
+  var ex=(DB.marks||[]).filter(function(x){ return x.kind===kind && x.d===date && (kind==="holiday" || x.emp===empId); })[0];
+  var job = ex
+    ? rest("day_marks?id=eq."+ex.id, {method:"DELETE"}).then(function(){ DB.marks=DB.marks.filter(function(x){ return x!==ex; }); })
+    : rest("day_marks", {method:"POST", headers:{Prefer:"return=representation"},
+        body:{d:date, kind:kind, emp_id:(kind==="work"?empId:null), by_emp:me.id}})
+        .then(function(r){ var x=(r||[])[0]; if(x) DB.marks.push({id:x.id, d:x.d, emp:x.emp_id||null, kind:x.kind}); });
+  job.then(function(){ render(); if(done) done(); })
+     .catch(function(e){ toast("บันทึกไม่สำเร็จ — "+(e&&e.message||e)); });
+}
+function monthConfirmToggle(m){
+  if(!isOwner(me) || busyGuard()) return;
+  var on=monthConfirmed(m);
+  (on ? rest("month_confirm?ym=eq."+m, {method:"DELETE"})
+      : rest("month_confirm", {method:"POST", headers:{Prefer:"resolution=merge-duplicates,return=representation"},
+          body:{ym:m, by_emp:me.id, confirmed_at:new Date().toISOString()}}))
+    .then(function(){
+      if(on) delete DB.mconf[m]; else DB.mconf[m]={at:new Date().toISOString(), by:me.id};
+      render(); toast(on ? "ยกเลิกการยืนยันแล้ว" : "ยืนยันวันหยุด/วันลาของ"+fmtMonth(m)+"แล้ว");
+    })
+    .catch(function(e){ toast("บันทึกไม่สำเร็จ — "+(e&&e.message||e)); });
+}
+/* ปฏิทินวันหยุด + วันลารายคน ในหน้าสรุปสิ้นเดือน */
+function paintOffDays(m, drivers){
+  var host=$("monOff"); if(!host) return;
+  if(!isAutoAbs(m)){ host.innerHTML='<p class="hint" style="margin:0">เดือนก่อน ต.ค. 2569 ใช้วันขาดที่กรอกเองในตารางด้านบน</p>'; return; }
+  var own=isOwner(me), last=absLastDay(m), dim=dimOf(m), conf=(DB.mconf||{})[m];
+  var p=m.split("-"), first=new Date(parseInt(p[0],10), parseInt(p[1],10)-1, 1).getDay();
+  var h='<div class="hint" style="margin:0 0 4px">'+(conf
+      ? '<b style="color:var(--ok)">✅ ยืนยันแล้ว</b> เมื่อ '+logWhen(conf.at)
+      : '<b style="color:var(--warn)">⏳ ยังไม่ยืนยัน</b> — ไม่มีงานลง = ลา หักวันละ '+baht(DB.set.deduct||0)+' บาท')+'</div>';
+  h+='<div style="font-weight:600; margin-top:8px">วันหยุดบริษัท <span class="hint" style="font-weight:400">'+(own?'แตะวันที่เพื่อตั้ง/ยกเลิก (ไม่หักเงินทุกคน)':'')+'</span></div>';
+  h+='<div class="offcal">'+["อา","จ","อ","พ","พฤ","ศ","ส"].map(function(x){ return '<div class="h">'+x+'</div>'; }).join("");
+  for(var i=0;i<first;i++) h+='<div></div>';
+  for(var d=1; d<=dim; d++){
+    var date=m+"-"+pad(d), hol=isHoliday(date);
+    h+='<button type="button" data-hol="'+date+'"'+(hol?' class="hol"':'')+((!own||d>last+1)?' disabled':'')+'>'+d+'</button>';
+  }
+  h+='</div>';
+  h+='<div style="font-weight:600; margin-top:12px">วันที่ไม่มีงานลง (นับเป็นลา) <span class="hint" style="font-weight:400">'+(own?'แตะวันที่ = มาทำงานจริง ไม่หักเงิน':'')+'</span></div>';
+  if(!drivers.length) h+='<p class="hint">ยังไม่มีคนขับที่มีงานเดือนนี้</p>';
+  drivers.forEach(function(e){
+    var L=noJobDays(e.id,m), n=L.filter(function(x){ return !x.work; }).length;
+    h+='<div style="margin-top:8px"><b>'+esc(e.name)+'</b> <span class="hint">ลา '+n+' วัน · หัก '+baht(n*(DB.set.deduct||0))+' บาท</span>'+
+       '<div class="row" style="gap:6px; flex-wrap:wrap; margin-top:5px">'+
+       (L.length ? L.map(function(x){
+         return '<button type="button" class="offchip '+(x.work?'wk':'lv')+'" data-wk="'+e.id+'|'+x.date+'"'+(own?'':' disabled')+
+                ' title="'+(x.work?'มาทำงาน (ไม่หัก)':'ลา (หักเงิน)')+'">'+x.d+'</button>';
+       }).join("") : '<span class="hint">มีงานลงครบทุกวัน</span>')+
+       '</div></div>';
+  });
+  if(own) h+='<div class="row" style="margin-top:14px; gap:8px"><button class="btn '+(conf?'ghost':'primary')+'" data-mconf="1">'+
+             (conf?'ยกเลิกการยืนยัน':'✅ ยืนยันเดือนนี้')+'</button></div>';
+  host.innerHTML=h;
+  host.querySelectorAll("[data-hol]").forEach(function(b){ b.onclick=function(){ markToggle("holiday", null, b.getAttribute("data-hol")); }; });
+  host.querySelectorAll("[data-wk]").forEach(function(b){ b.onclick=function(){ var a=b.getAttribute("data-wk").split("|"); markToggle("work", a[0], a[1]); }; });
+  var cb=host.querySelector("[data-mconf]"); if(cb) cb.onclick=function(){ monthConfirmToggle(m); };
 }
 function renderMyYear(){
   var y=today().slice(0,4);
@@ -4341,15 +4555,15 @@ function renderMine(){
   monthOptions($("minePick"), true, 3);
   var m=$("minePick").value;
   var list=sorted(DB.job.filter(function(j){ return j.emp===me.id && ym(j.date)===m && j.status==="done"; }));
-  var ab=(DB.absent[me.id]||{})[m]||0;
+  var ab=absentCount(me.id,m);
   var anyJob=workedMonth(me.id,m);
-  var allow=anyJob ? Math.max(0, DB.set.allow-ab*DB.set.deduct) : 0;
+  var allow=anyJob ? allowOf(me.id,m) : 0;
   var priced=list.filter(function(j){ return j.priced; });
   var fee=sumPay(priced), wait=list.length-priced.length;
   $("myTiles").innerHTML=
     tile("รวมรับเดือนนี้", baht(fee+allow), "ค่าเที่ยว + เบี้ยเลี้ยง", true) +
     tile("ค่าเที่ยว", baht(fee), list.length+" งาน"+(wait?" · รอราคา "+wait:"")) +
-    tile("เบี้ยเลี้ยง", baht(allow), !anyJob?"เดือนนี้ยังไม่มีงาน":(ab?("หักขาด "+ab+" วัน"):"เต็มเดือน")) +
+    tile("เบี้ยเลี้ยง", baht(allow), !anyJob?"เดือนนี้ยังไม่มีงาน":(allowNote(m)+(absNote(me.id,m)?" · "+absNote(me.id,m):""))) +
     tile("วันที่ออกงาน", uniqDays(list), "วันในเดือนนี้");
   jobList($("myJobs"), list.slice(0,mineLimit), false);
   var more=$("mineMore");
@@ -4619,9 +4833,9 @@ function slipSheet(e, m){
   var pend=mine.filter(function(j){ return !j.priced; });
   var fuels=slipDateAsc(DB.fuel.filter(function(f){ return f.emp===e.id && ym(f.date)===m; }));
 
-  var ab=(DB.absent[e.id]||{})[m]||0;
+  var ab=absentCount(e.id,m);
   var anyJob=workedMonth(e.id,m);
-  var allow=anyJob ? Math.max(0, (DB.set.allow||0)-ab*(DB.set.deduct||0)) : 0;
+  var allow=anyJob ? allowOf(e.id,m) : 0;
   /* 🔴 ของเดิมบวก j.price ตรงๆ → ตกค่าจุดแวะทั้งก้อน และคิดโหมด "คิว"/"วัน" ผิดด้วย
      แถวในตารางโชว์ payOf(j) ซึ่งรวมจุดแวะอยู่แล้ว ยอดรวมข้างล่างจึงน้อยกว่าผลบวกของแถว
      (เจอ 7 ก.ย. 2569 ใบของสัญจร เดือน ก.ย. รวม 3,700 ทั้งที่แถวบวกกันได้ 3,900)
@@ -4704,7 +4918,10 @@ function slipSheet(e, m){
       (stopN ? '<div class="sh-row sub"><span>ค่าแวะรับสินค้า '+stopN+' จุด</span><span class="num">'+baht(stopTot)+'</span></div>' : '') +
       '<div class="sh-row"><span>เบี้ยเลี้ยง</span><b class="num">'+baht(allow)+'</b></div>' +
       '<div class="sh-row sub"><span>'+(anyJob
-        ? 'เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0)+' − ขาดงาน '+ab+' วัน × '+baht(DB.set.deduct||0)+' = '+baht(ab*(DB.set.deduct||0))
+        ? (allowDays(m)>=30 ? 'เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0) : 'เบี้ยเลี้ยงถึงวันที่ '+allowDays(m)+' = '+baht(DB.set.allow||0)+' ÷ 30 × '+allowDays(m)+' = '+baht(allowBase(m)))+
+          (ab ? ' − '+(isAutoAbs(m)?'ลา':'ขาดงาน')+' '+ab+' วัน × '+baht(DB.set.deduct||0)+' = '+baht(ab*(DB.set.deduct||0)) : '') +
+          (isAutoAbs(m) && ab ? ' (วันที่ '+leaveDays(e.id,m).map(function(x){ return x.d; }).join(", ")+')' : '') +
+          (isAutoAbs(m) && !monthConfirmed(m) ? ' · ⚠️ ยังไม่ยืนยันวันหยุดของเดือนนี้' : '')
         : 'เดือนนี้ไม่มีงานเลย จึงไม่คิดเบี้ยเลี้ยง')+'</span><span></span></div>' +
       '<div class="sh-net"><span>รวมจ่ายสุทธิ</span><span class="num">'+baht(net)+' บาท</span></div>' +
     '</div>' +
@@ -4829,12 +5046,14 @@ function renderMonth(){
   var h='<thead><tr><th>พนักงาน</th><th class="r">งาน</th><th class="r">วันออกงาน</th><th class="r">คืน</th><th class="r">วันขาด</th><th class="r">เบี้ยเลี้ยง</th><th class="r">ค่าเที่ยว</th><th class="r">รวมจ่าย</th></tr></thead><tbody>';
   drivers.forEach(function(e){
     var L=list.filter(function(j){ return j.emp===e.id; });
-    var ab=(DB.absent[e.id]||{})[m]||0;
-    var allow=Math.max(0, DB.set.allow-ab*DB.set.deduct);
+    var ab=absentCount(e.id,m);
+    var allow=allowOf(e.id,m);
     totAllow+=allow;
     h+='<tr><td>'+e.name+'</td><td class="r num">'+L.length+'</td><td class="r num">'+uniqDays(L)+'</td>' +
        '<td class="r num">'+sum(L,"nights")+'</td>' +
-       '<td class="r"><input type="number" min="0" max="31" value="'+ab+'" data-ab="'+e.id+'" style="width:66px; text-align:right"></td>' +
+       (isAutoAbs(m)
+         ? '<td class="r num" title="'+esc(absNote(e.id,m))+'">'+ab+'</td>'
+         : '<td class="r"><input type="number" min="0" max="31" value="'+ab+'" data-ab="'+e.id+'" style="width:66px; text-align:right"></td>') +
        '<td class="r num">'+baht(allow)+'</td><td class="r num">'+baht(sumPay(L))+'</td>' +
        '<td class="r num" style="font-weight:600">'+baht(allow+sumPay(L))+'</td></tr>';
   });
@@ -4861,10 +5080,48 @@ function renderMonth(){
     tile("เบี้ยเลี้ยง", baht(totAllow), drivers.length+" คนที่มีงานเดือนนี้") +
     tile("ค่าค้างคืนรวม", baht(list.reduce(function(s,j){ return s+nightPay(j); },0)), sum(list,"nights")+" คืน (ราคาต่อคืนแยกตามงาน)");
   $("monHint").innerHTML = (isAdmin(me)
-      ? "เบี้ยเลี้ยงจ่ายเต็มเดือน หักเฉพาะวันที่ขาดงาน — <b>ช่องวันขาดต้องให้เจ้าของเป็นคนกรอก</b>"
-      : "เบี้ยเลี้ยงจ่ายเต็มเดือน หักเฉพาะวันที่ขาดงาน — กรอกวันขาดในตารางได้เลย") +
+      ? "เบี้ยเลี้ยง"+(allowDays(m)>=30?"จ่ายเต็มเดือน":"<b>"+allowNote(m)+"</b>")+" หักเฉพาะวันที่ขาดงาน — <b>ช่องวันขาดต้องให้เจ้าของเป็นคนกรอก</b>"
+      : "เบี้ยเลี้ยง"+(allowDays(m)>=30?"จ่ายเต็มเดือน":"<b>"+allowNote(m)+"</b>")+" หักเฉพาะวันที่ขาดงาน — กรอกวันขาดในตารางได้เลย") +
     (skipped ? ' · <b>ไม่แสดง '+skipped+' คนที่ไม่มีงานในเดือนนี้ (ไม่คิดเบี้ยเลี้ยงให้)</b>' : "");
   groupTable($("monType"), list, function(j){return j.type;}, function(k){return TYPE_LABEL[k];}, "ประเภทงาน");
+  paintCoSplit(m);
+  paintOffDays(m, drivers);
+  if(isAutoAbs(m)) $("monHint").innerHTML = "เบี้ยเลี้ยง"+(allowDays(m)>=30?"จ่ายเต็มเดือน":"<b>"+allowNote(m)+"</b>")+
+    " · <b>วันที่ไม่มีงานลง = ลา</b> หักวันละ "+baht(DB.set.deduct||0)+" — แก้วันหยุด/วันมาทำงานได้ที่ \"วันหยุด / วันลา\" ด้านล่าง"+
+    (monthConfirmed(m)?"":" · <b>ยังไม่ยืนยัน</b>") +
+    (skipped ? ' · <b>ไม่แสดง '+skipped+' คนที่ไม่มีงานในเดือนนี้ (ไม่คิดเบี้ยเลี้ยงให้)</b>' : "");
+}
+/* แยกต้นทุนสองบริษัท + สัดส่วน กม. ต่อคัน (v33) — นับงานที่ปิดแล้วทุกใบ ค่าเที่ยวนับเฉพาะที่ใส่ราคาแล้ว */
+function paintCoSplit(m){
+  var done=DB.job.filter(function(j){ return ym(j.date)===m && j.status==="done"; });
+  var g={rc:{n:0,pay:0,km:0,wait:0}, ts:{n:0,pay:0,km:0,wait:0}};
+  done.forEach(function(j){ var x=g[costOwner(j)]; x.n++; x.km+=kmOf(j); if(j.priced) x.pay+=payOf(j); else x.wait++; });
+  var h='<thead><tr><th>บริษัท</th><th class="r">งาน</th><th class="r">กม.</th><th class="r">ค่าเที่ยว</th></tr></thead><tbody>';
+  ["rc","ts"].forEach(function(k){
+    var x=g[k];
+    h+='<tr><td><span class="pill co-'+k+'">'+CO_ICON[k]+' '+CO_LABEL[k]+'</span>'+(x.wait?' <span class="hint">รอราคา '+x.wait+'</span>':'')+'</td>'+
+       '<td class="r num">'+x.n+'</td><td class="r num">'+x.km.toFixed(0)+'</td><td class="r num">'+baht(x.pay)+'</td></tr>';
+  });
+  h+='</tbody><tfoot><tr><td>รวม</td><td class="r num">'+(g.rc.n+g.ts.n)+'</td><td class="r num">'+(g.rc.km+g.ts.km).toFixed(0)+
+     '</td><td class="r num">'+baht(g.rc.pay+g.ts.pay)+'</td></tr></tfoot>';
+  $("monCo").innerHTML=h;
+  var t={};
+  done.forEach(function(j){
+    if(!j.truck) return;
+    var x=t[j.truck]=t[j.truck]||{rc:0,ts:0,nrc:0,nts:0};
+    var o=costOwner(j); x[o]+=kmOf(j); x["n"+o]++;
+  });
+  var ids=Object.keys(t).sort(function(a,b){ return (truck(a).plate||"").localeCompare(truck(b).plate||"","th"); });
+  var h2='<thead><tr><th>รถ</th><th class="r">รุ่งชัย (กม.)</th><th class="r">ท่าทราย (กม.)</th><th class="r">ส่วนของท่าทราย</th></tr></thead><tbody>';
+  if(!ids.length) h2+='<tr><td colspan="4" style="color:var(--ink3)">ไม่มีรายการ</td></tr>';
+  ids.forEach(function(id){
+    var x=t[id], tot=x.rc+x.ts, pct= tot>0 ? Math.round(x.ts/tot*100) : 0;
+    h2+='<tr><td>'+esc(truck(id).plate||"–")+(isCompanyTruck(id)?' <span class="hint">รถบริษัท</span>':'')+'</td>'+
+        '<td class="r num">'+x.rc.toFixed(0)+' <span class="hint">('+x.nrc+')</span></td>'+
+        '<td class="r num">'+x.ts.toFixed(0)+' <span class="hint">('+x.nts+')</span></td>'+
+        '<td class="r num" style="font-weight:600">'+(tot>0?pct+'%':'–')+'</td></tr>';
+  });
+  $("monCoTruck").innerHTML=h2+'</tbody>';
 }
 /* =============== สิทธิ์พนักงาน — เจ้าของเป็นคนกดเปิดให้คนขับใหม่ =============== */
 function activeOwners(){ return DB.emp.filter(function(e){ return e.role==="owner" && e.active!==false; }); }
@@ -4918,6 +5175,7 @@ function empCard(e){
       (pend?'<span class="pill t4">รอเปิดใช้งาน</span>':'') +
       (gone?'<span class="pill t1">ไม่ได้ใช้งานแล้ว'+(goneDate(e)?' · '+goneDate(e):'')+'</span>':'') +
       (isMe?'<span class="pill t3">คุณ</span>':'') +
+      (e.payVia==="ts"?'<span class="pill co-ts">⛱️ พนักงานท่าทราย</span>':'') +
     '</div>' +
     '<div class="hint num" style="margin-top:4px; word-break:break-all">'+esc(e.line||"–")+'</div>' +
     '<div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap">' +
@@ -4925,6 +5183,8 @@ function empCard(e){
         (gone?"เปิดใช้งานอีกครั้ง":(pend?"✓ เปิดใช้งาน":"ปิดใช้งาน"))+'</button>' +
       roleBtns(e) +
       '<button class="btn sm" data-emp-ren="'+e.id+'">แก้ชื่อ</button>' +
+      (isOwner(me) && isDriver(e) ? '<button class="btn sm" data-emp-pay="'+e.id+'">'+
+        (e.payVia==="ts"?"ย้ายกลับเป็นพนักงานรุ่งชัย":"ตั้งเป็นพนักงานท่าทราย")+'</button>' : '') +
       '<button class="btn sm ghost" data-emp-del="'+e.id+'">ลบ</button>' +
     '</div></div>';
 }
@@ -4951,6 +5211,16 @@ function wireEmpCards(){
       e.role=to; if(to==="owner") e.active=true;
       save(); render();
       toast(e.name+" เป็น"+roleLabel(to)+"แล้ว");
+    });
+  });
+  /* พนักงานท่าทราย (v33) — งานทั่วไปของคนนี้นับเป็นต้นทุนท่าทรายเป็นค่าเริ่มต้น
+     ต่อไปจะใช้ตัดสินว่าจ่ายเงินที่ท่าทราย (ยังไม่เปลี่ยนวิธีคิดเงินในแอปนี้) */
+  document.querySelectorAll("[data-emp-pay]").forEach(function(b){
+    var e=find(DB.emp, b.getAttribute("data-emp-pay")); if(!e) return;
+    armBtn(b,"แน่ใจ? กดอีกครั้ง",function(){
+      e.payVia = (e.payVia==="ts") ? "rc" : "ts";
+      save(); render();
+      toast(e.name+(e.payVia==="ts"?" เป็นพนักงานท่าทรายแล้ว — งานทั่วไปของเขานับเป็นต้นทุนท่าทราย":" กลับเป็นพนักงานรุ่งชัยแล้ว"), 5000);
     });
   });
   document.querySelectorAll("[data-emp-ren]").forEach(function(b){
@@ -5914,6 +6184,20 @@ function fuelList(host,list,showEmp){
     var amt=document.createElement("div"); amt.className="amt"; amt.textContent=baht(f.amount);
     row.appendChild(body); row.appendChild(amt); host.appendChild(row);
     if(canFixTruck(f)) body.appendChild(fixTruckBtn(f, body));
+    /* ลบรายการเติมน้ำมัน (3 ต.ค. 2569 — เจ้าของขอ) เจ้าของเท่านั้น · ฐานข้อมูลเก็บสำเนาไว้ใน edit_log
+       กู้คืนได้ที่หน้าตั้งค่า · trigger fuel_rechain_after ไล่เลขไมล์ครั้งก่อนของคันนั้นใหม่ให้เอง */
+    if(isOwner(me)){
+      var fxb=document.createElement("button");
+      fxb.className="btn sm ghost"; fxb.style.cssText="margin-top:8px; margin-left:6px; color:var(--accent)";
+      fxb.textContent="🗑️ ลบ";
+      armBtn(fxb, "ลบจริงไหม? กดอีกครั้ง", function(){
+        if(busyGuard()) return;
+        for(var i=0;i<DB.fuel.length;i++) if(DB.fuel[i].id===f.id){ DB.fuel.splice(i,1); break; }
+        save(); render();
+        toast("ลบรายการเติมน้ำมันแล้ว — กู้คืนได้ที่หน้าตั้งค่า");
+      });
+      body.appendChild(fxb);
+    }
     if(canSwapPhoto(f)){
       var spn=document.createElement("div"); spn.className="jobedit hidden";
       var sbt=document.createElement("button"); sbt.className="btn sm ghost"; sbt.textContent=swapBtnLabel();
@@ -6319,8 +6603,8 @@ function csvMonth(){
   var rows=[["พนักงาน","งาน","วันออกงาน","ค้างคืน","วันขาด","เบี้ยเลี้ยง","ค่าเที่ยว","รวมจ่าย"]];
   DB.emp.filter(isDriver).forEach(function(e){
     var L=DB.job.filter(function(j){ return ym(j.date)===m&&j.emp===e.id&&j.status==="done"&&j.priced; });
-    var ab=(DB.absent[e.id]||{})[m]||0;
-    var allow=Math.max(0, DB.set.allow-ab*DB.set.deduct);
+    var ab=absentCount(e.id,m);
+    var allow=workedMonth(e.id,m) ? allowOf(e.id,m) : 0;
     rows.push([e.name,L.length,uniqDays(L),sum(L,"nights"),ab,allow,sumPay(L),allow+sumPay(L)]);
   });
   copy(rows.map(function(r){return r.join(",");}).join("\n"));
