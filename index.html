@@ -2611,7 +2611,7 @@ function askStopOrNew(prev){
     title:"รับของต่อจากงานที่เพิ่งส่งใช่ไหม?",
     body:'งานที่เพิ่งปิด: <b>'+esc(jobTitle(prev))+'</b><br>'+
          'ปิดงานเมื่อ '+clock(prev.end.at)+' น. · '+plateChip(prev).replace(/<[^>]+>/g,"")+'<br><br>'+
-         'ถ้าใช่ ระบบจะบันทึกเป็น <b>จุดแวะรับสินค้า</b> ของงานนั้น <b>+'+baht(stopRate())+' บาท</b> ไม่ต้องเปิดงานใหม่',
+         'ถ้าใช่ ระบบจะบันทึกเป็น <b>จุดแวะรับสินค้า</b> ของงานนั้น <b>(ค่าแวะ'+STOP_WORD+baht(stopRate())+' บาท)</b> ไม่ต้องเปิดงานใหม่',
     yes:"✅ ใช่ — เป็นจุดแวะของงานเดิม",
     no:"ไม่ใช่ — เปิดงานรับสินค้าใหม่",
     onYes:function(){ saveStopFromDraft(prev); },
@@ -2629,7 +2629,7 @@ function saveStopFromDraft(prev){
     var rk=routeKm(prev); if(rk!=null) prev.km=rk;
     draft.shots=[];
     save();
-    toast("บันทึกเป็นจุดแวะที่ "+t.seq+" ของงาน \""+jobTitle(prev)+"\" แล้ว +"+baht(stopRate())+" บาท"+
+    toast("บันทึกเป็นจุดแวะที่ "+t.seq+" ของงาน \""+jobTitle(prev)+"\" แล้ว (ค่าแวะ"+STOP_WORD+baht(stopRate())+" บาท)"+
           (p?"":" (ปักพิกัดไม่ได้)"), 5000);
     go("home");
   });
@@ -2707,7 +2707,7 @@ function doneJob(){
     var j0=fin;
     askChoice({
       title:"วันนี้แวะรับของต่อไหม?",
-      body:'จุดแวะรับสินค้าได้ <b>+'+baht(stopRate())+' บาท/จุด</b> ถ้าแวะแล้วไม่บันทึก เงินส่วนนี้จะหายไปเลย<br><br>'+
+      body:'แวะรับสินค้าได้ <b>เหมา '+baht(stopRate())+' บาท/งาน ไม่จำกัดจุด</b> ถ้าแวะแล้วไม่บันทึก เงินส่วนนี้จะหายไปเลย<br><br>'+
            'ไม่ได้แวะก็กด "จบงานเลย" ได้ตามปกติ',
       yes:"✓ จบงานเลย ไม่ได้แวะรับของ",
       no:"🛑 ยังต้องแวะรับของ — บันทึกจุดแวะก่อน",
@@ -2871,7 +2871,17 @@ function stopsOf(j){
 }
 function stopRate(){ return (DB.set.stopRate==null?100:DB.set.stopRate); }
 function stopPay(t){ return (t.pay||0)>0 ? t.pay : stopRate(); }
-function stopsPay(j){ var n=0; stopsOf(j).forEach(function(t){ n+=stopPay(t); }); return n; }
+/* ค่าแวะรับสินค้า "เหมาต่องาน ไม่จำกัดจุด" (3 ต.ค. 2569 — เจ้าของสั่ง ย้อนใช้ตั้งแต่ 1 ก.ย. 2569)
+   งานตั้งแต่ STOP_FLAT_FROM: ได้ค่าจุดสูงสุดจุดเดียว (ปกติ = 100) ไม่ว่าจะแวะกี่จุด · ก่อนหน้านั้น: บวกทุกจุดแบบเดิม
+   ต้องตรงกับ public.stops_recalc() ฝั่งฐานข้อมูล (v36) */
+var STOP_FLAT_FROM="2026-09-01";
+function stopFlat(j){ return !!j && (j.date||"")>=STOP_FLAT_FROM; }
+function stopsSum(j, vals){
+  if(!vals.length) return 0;
+  return stopFlat(j) ? Math.max.apply(null, vals) : vals.reduce(function(a,b){ return a+b; },0);
+}
+function stopsPay(j){ return stopsSum(j, stopsOf(j).map(stopPay)); }
+var STOP_WORD = "เหมางานละ ";
 /* จุดแวะสุดท้าย = จุดจบงาน (เจ้าของยืนยัน) → ระยะทางต้องคิดสะสมทั้งสาย ไม่ใช่ต้นทาง–ปลายทางอย่างเดียว */
 /* ดูรายละเอียดทั้งสาย: เริ่ม → ส่ง → จุดแวะแต่ละจุด (ชื่อสถานที่ · สินค้า · เวลา · ค่าจุดแวะ · รูปบิล · แผนที่) */
 function ptLabel(p){
@@ -2900,7 +2910,7 @@ function buildStopsView(j, pan){
           '<div style="margin-top:2px">'+esc(ptLabel(st.p))+'</div>' +
           (t ? '<div class="hint">สินค้า: '+esc(t.mat||"–")+(t.note?' · '+esc(t.note):'')+'</div>' : '') +
         '</div>' +
-        (t ? '<div class="num" style="font-weight:700; white-space:nowrap">+'+baht(stopPay(t))+'</div>' : '') +
+        (t && !stopFlat(j) ? '<div class="num" style="font-weight:700; white-space:nowrap">+'+baht(stopPay(t))+'</div>' : '') +
       '</div>';
     var bar=document.createElement("div");
     bar.style.cssText="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center";
@@ -4231,7 +4241,7 @@ function buildJobEdit(j, pan){
         ? 'ย้ายพิกัด + รูป '+allShots(s.job).length+' รูป มาเป็นจุดแวะที่ '+(stopsOf(j).length+1)+' แล้ว<b>ลบใบรับสินค้านั้น</b> (กู้คืนได้)' +
           (s.job.status==="active" ? '<br><b style="color:var(--accent)">⚠️ ใบนี้คนขับยังเปิดอยู่ — กดแล้วให้คนขับปิดแอปเปิดใหม่ทันที ไม่งั้นใบนั้นจะกลับมา</b>' : '')
         : 'จุดแวะที่ '+(stopsOf(j).length+1)+' ที่ '+esc(s.place.name)+' (ไม่มีรูปบิล)') +
-        '<br>ค่าจุดแวะ +'+baht(stopRate())+' บาท · สายนี้จะจบที่จุดแวะนี้ · ระยะเส้นตรงใหม่ ≈ '+km.toFixed(1)+' กม. (ระยะถนนคำนวณให้หลังบันทึก)';
+        '<br>ค่าแวะ'+STOP_WORD+baht(stopRate())+' บาท (ไม่จำกัดจุด) · สายนี้จะจบที่จุดแวะนี้ · ระยะเส้นตรงใหม่ ≈ '+km.toFixed(1)+' กม. (ระยะถนนคำนวณให้หลังบันทึก)';
     }
     matSelect(g("amat"), "");
     g("asrc").onchange=info; info();
@@ -4251,17 +4261,17 @@ function buildJobEdit(j, pan){
       DB.stop.push(t);
       var rk=routeKm(j); if(rk!=null) j.km=rk;
       save(); paintStopsEdit(); calc();
-      toast("เพิ่มจุดแวะที่ "+t.seq+" แล้ว +"+baht(stopRate())+" บาท"+
+      toast("เพิ่มจุดแวะที่ "+t.seq+" แล้ว (ค่าแวะ"+STOP_WORD+baht(stopRate())+" บาท)"+
             (s.job && s.job.status==="active" ? "\nบอกคนขับให้ปิดแอปแล้วเปิดใหม่ตอนนี้" : ""), s.job ? 6000 : 0);
     });
   }
   function stopsPayNow(){
-    var n=0;
+    var v=[];
     stopsOf(j).forEach(function(t,i){
       var el=pan.querySelector('[data-k="spay'+i+'"]');
-      n += el ? (Math.max(0, parseFloat(el.value)||0)) : stopPay(t);
+      v.push(el ? (Math.max(0, parseFloat(el.value)||0)) : stopPay(t));
     });
-    return n;
+    return stopsSum(j, v);
   }
   g("mode").value = j.payMode||"เที่ยว";
   function unitWord(){ return g("mode").value==="วัน" ? "วัน" : (g("mode").value==="คิว" ? "คิว" : "เที่ยว"); }
@@ -4492,12 +4502,12 @@ function paintOffDays(m, drivers){
   var h='<div class="hint" style="margin:0 0 4px">'+(conf
       ? '<b style="color:var(--ok)">✅ ยืนยันแล้ว</b> เมื่อ '+logWhen(conf.at)
       : '<b style="color:var(--warn)">⏳ ยังไม่ยืนยัน</b> — ไม่มีงานลง = ลา หักวันละ '+baht(DB.set.deduct||0)+' บาท')+'</div>';
-  h+='<div style="font-weight:600; margin-top:8px">วันหยุดบริษัท <span class="hint" style="font-weight:400">'+(own?'แตะวันที่เพื่อตั้ง/ยกเลิก (ไม่หักเงินทุกคน)':'')+'</span></div>';
+  h+='<div style="font-weight:600; margin-top:8px">วันหยุดบริษัท <span class="hint" style="font-weight:400">'+(own?'แตะวันที่เพื่อตั้ง/ยกเลิก (ไม่หักเงินทุกคน) · ตั้งล่วงหน้าได้':'')+'</span></div>';
   h+='<div class="offcal">'+["อา","จ","อ","พ","พฤ","ศ","ส"].map(function(x){ return '<div class="h">'+x+'</div>'; }).join("");
   for(var i=0;i<first;i++) h+='<div></div>';
   for(var d=1; d<=dim; d++){
     var date=m+"-"+pad(d), hol=isHoliday(date);
-    h+='<button type="button" data-hol="'+date+'"'+(hol?' class="hol"':'')+((!own||d>last+1)?' disabled':'')+'>'+d+'</button>';
+    h+='<button type="button" data-hol="'+date+'"'+(hol?' class="hol"':'')+(!own?' disabled':'')+'>'+d+'</button>';
   }
   h+='</div>';
   h+='<div style="font-weight:600; margin-top:12px">วันที่ไม่มีงานลง (นับเป็นลา) <span class="hint" style="font-weight:400">'+(own?'แตะวันที่ = มาทำงานจริง ไม่หักเงิน':'')+'</span></div>';
@@ -4920,7 +4930,7 @@ function slipSheet(e, m){
       '<div class="sh-row"><span>ค่าเที่ยว ('+list.length+' งาน)</span><b class="num">'+baht(fee)+'</b></div>' +
       '<div class="sh-row sub"><span>ค่างาน</span><span class="num">'+baht(base)+'</span></div>' +
       '<div class="sh-row sub"><span>ค่าค้างคืน '+nightsN+' คืน</span><span class="num">'+baht(nightTot)+'</span></div>' +
-      (stopN ? '<div class="sh-row sub"><span>ค่าแวะรับสินค้า '+stopN+' จุด</span><span class="num">'+baht(stopTot)+'</span></div>' : '') +
+      (stopN ? '<div class="sh-row sub"><span>ค่าแวะรับสินค้า '+stopN+' จุด (เหมาต่องาน)</span><span class="num">'+baht(stopTot)+'</span></div>' : '') +
       '<div class="sh-row"><span>เบี้ยเลี้ยง</span><b class="num">'+baht(allow)+'</b></div>' +
       '<div class="sh-row sub"><span>'+(anyJob
         ? (allowDays(m)>=30 ? 'เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0) : 'เบี้ยเลี้ยงถึงวันที่ '+allowDays(m)+' = '+baht(DB.set.allow||0)+' ÷ 30 × '+allowDays(m)+' = '+baht(allowBase(m)))+
@@ -6510,7 +6520,7 @@ function paintStops(){
   var list=stopsOf(fin);
   $("stopSum").textContent = list.length ? (list.length+" จุด · +"+baht(stopsPay(fin))+" บาท") : "ยังไม่มี";
   /* ใส่เงินไว้บนปุ่มเลย — คนขับจะได้เห็นว่าบันทึกแล้วได้อะไร ไม่ใช่ปุ่มที่ไม่รู้ว่ากดไปทำไม */
-  $("btnAddStop").textContent = "＋ แวะรับสินค้า  +"+baht(stopRate())+" บาท";
+  $("btnAddStop").textContent = "＋ แวะรับสินค้า (เหมา "+baht(stopRate())+" บาท/งาน)";
   list.forEach(function(t,i){
     var d=document.createElement("div");
     d.className="card pad";
@@ -6594,7 +6604,7 @@ function openStop(){
     '<div class="jt">'+esc(jobTitle(fin))+'</div>' +
     '<div class="meta"><span class="pill '+TYPE_PILL[fin.type]+'">'+TYPE_LABEL[fin.type]+'</span>' +
     plateChip(fin)+'<span class="num">'+fmtDate(fin.date)+'</span>' +
-    '<span class="pill t3">+'+baht(stopRate())+' บาท</span></div>';
+    '<span class="pill t3">เหมา '+baht(stopRate())+' บาท/งาน</span></div>';
   $("stopNote").value="";
   buildStopMats(); paintStopMats(); refreshCar5();
   $("stopGeoText").textContent="กำลังหาพิกัด…";
@@ -6624,7 +6634,7 @@ function saveStop(){
   save();
   paintStops(); paintEndGeo();
   go("finish");
-  toast("บันทึกจุดแวะที่ "+n+" แล้ว +"+baht(stopRate())+" บาท"+(noGeo?" (ไม่มีพิกัด)":"")+
+  toast("บันทึกจุดแวะที่ "+n+" แล้ว (ค่าแวะ"+STOP_WORD+baht(stopRate())+" บาท)"+(noGeo?" (ไม่มีพิกัด)":"")+
         " — แวะเพิ่มอีกจุด หรือกดจบงานได้เลย");
 }
 
