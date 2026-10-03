@@ -2898,7 +2898,7 @@ function buildStopsView(j, pan){
     steps.push({k:"จุดแวะที่ "+(i+1), p:t, at:t.at, shots:t.shots||[], stop:t});
   });
   var head=document.createElement("div"); head.className="hint"; head.style.fontWeight="600";
-  head.textContent="เส้นทางงานนี้ "+steps.length+" จุด · "+kmText(j)+(stopsOf(j).length?" · ค่าจุดแวะรวม +"+baht(stopsPay(j))+" บาท":"");
+  head.textContent="เส้นทางงานนี้ "+steps.length+" จุด · "+kmText(j)+(stopsOf(j).length?(stopFlat(j)?" · ค่าแวะเหมา +":" · ค่าจุดแวะรวม +")+baht(stopsPay(j))+" บาท":"");
   wrap.appendChild(head);
   steps.forEach(function(st, n){
     var c=document.createElement("div"); c.className="card pad";
@@ -4146,7 +4146,7 @@ function buildJobEdit(j, pan){
          '</div>' +
          '<div class="row" style="align-items:flex-end; gap:10px; flex-wrap:wrap; margin-top:8px">' +
            '<label class="f" style="width:142px">สินค้า<select data-k="smat'+i+'"></select></label>' +
-           '<label class="f" style="width:124px">ค่าจุดแวะ (บาท)' +
+           '<label class="f" style="width:124px">'+(stopFlat(j)?'ค่าแวะ (เหมา·ใช้สูงสุด)':'ค่าจุดแวะ (บาท)') +
              '<input type="number" min="0" step="10" data-k="spay'+i+'" value="'+stopPay(t)+'"></label>' +
            '<label class="f" style="flex:1; min-width:190px">หมายเหตุ' +
              '<input type="text" data-k="snote'+i+'" value="'+esc(t.note||"")+'"></label>' +
@@ -4881,7 +4881,19 @@ function slipSheet(e, m){
       '<td>'+esc(jobTitle(j))+'</td>' +
       '<td class="c num">'+(j.nights?j.nights:"–")+'</td>' +
       '<td class="r num">'+baht(payBase(j)+nightPay(j))+'</td></tr>';
-    stopsOf(j).forEach(function(t,i){
+    /* ค่าแวะแบบเหมาต่องาน (ตั้งแต่ ก.ย. 2569) → รวมเป็นบรรทัดเดียว ไม่แตกยอดรายจุด
+       Why: เจ้าของติ 3 ต.ค. — บรรทัด 100 · 100 ทำให้ฝ่ายการเงินเข้าใจว่าจ่าย 200 ทั้งที่เหมาแค่ 100 */
+    var SL=stopsOf(j);
+    if(SL.length && stopFlat(j)){
+      h+='<tr class="sh-stop"><td></td><td></td>' +
+         '<td>↳ ค่าแวะรับสินค้า เหมา ('+SL.length+' จุด: '+SL.map(function(t,i){
+             return (t.seq||i+1)+(t.mat?' · '+esc(t.mat):'');
+           }).join(", ")+')</td>' +
+         '<td class="c"></td>' +
+         '<td class="r num">'+baht(stopsPay(j))+'</td></tr>';
+      return h;
+    }
+    SL.forEach(function(t,i){
       h+='<tr class="sh-stop"><td></td><td></td>' +
          '<td>↳ แวะรับ จุดที่ '+(t.seq||i+1) +
            (t.mat?' · '+esc(t.mat):'') + (t.note?' — '+esc(t.note):'') + '</td>' +
