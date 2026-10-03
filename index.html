@@ -314,6 +314,8 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 /* บรรทัดจุดแวะ — เยื้องเข้าไปและตัวเล็กลง จะได้อ่านออกว่าเป็นลูกของงานบรรทัดบน */
 .sheet tr.sh-stop td{font-size:.88em; padding-top:1.2pt; padding-bottom:1.2pt}
 .sheet tr.sh-stop td:nth-child(3){padding-left:14pt}
+.sheet td.sh-dt{font-weight:700; vertical-align:middle}
+.sheet tbody.sh-dg{break-inside:avoid; page-break-inside:avoid}
 .sheet .sh-lab{font-size:10.5pt; font-weight:700; margin:7pt 0 3pt}
 .sheet .sh-2col{display:flex; gap:4mm; align-items:flex-start}
 .sheet .sh-off{display:none}
@@ -4855,10 +4857,11 @@ function slipSheet(e, m){
      แถวในตารางโชว์ payOf(j) ซึ่งรวมจุดแวะอยู่แล้ว ยอดรวมข้างล่างจึงน้อยกว่าผลบวกของแถว
      (เจอ 7 ก.ย. 2569 ใบของสัญจร เดือน ก.ย. รวม 3,700 ทั้งที่แถวบวกกันได้ 3,900)
      **บวกเงินในใบสรุปต้องใช้ฟังก์ชันเดียวกับที่หน้าจอใช้เสมอ อย่าอ่านช่องดิบ** */
-  var base=0, nightTot=0, nightsN=0, stopTot=0, stopN=0;
+  var base=0, nightTot=0, nightsN=0, stopTot=0, stopN=0, stopJ=0, stopOld=0;
   list.forEach(function(j){
     base+=payBase(j); nightTot+=nightPay(j); nightsN+=(j.nights||0);
     stopTot+=stopsPay(j); stopN+=stopsOf(j).length;
+    if(stopsOf(j).length){ stopJ++; if(!stopFlat(j)) stopOld++; }
   });
   var fee=base+nightTot+stopTot, net=fee+allow;
 
@@ -4880,7 +4883,7 @@ function slipSheet(e, m){
       '<td class="num">'+esc(truck(j.truck).plate)+'</td>' +
       '<td>'+esc(jobTitle(j))+'</td>' +
       '<td class="c num">'+(j.nights?j.nights:"–")+'</td>' +
-      '<td class="r num">'+baht(payBase(j)+nightPay(j))+'</td></tr>';
+      '<td class="r num">'+baht(payBase(j)+nightPay(j))+'</td><!--D--></tr>';
     /* ค่าแวะแบบเหมาต่องาน (ตั้งแต่ ก.ย. 2569) → รวมเป็นบรรทัดเดียว ไม่แตกยอดรายจุด
        Why: เจ้าของติ 3 ต.ค. — บรรทัด 100 · 100 ทำให้ฝ่ายการเงินเข้าใจว่าจ่าย 200 ทั้งที่เหมาแค่ 100 */
     var SL=stopsOf(j);
@@ -4890,7 +4893,7 @@ function slipSheet(e, m){
              return (t.seq||i+1)+(t.mat?' · '+esc(t.mat):'');
            }).join(", ")+')</td>' +
          '<td class="c"></td>' +
-         '<td class="r num">'+baht(stopsPay(j))+'</td></tr>';
+         '<td class="r num">'+baht(stopsPay(j))+'</td><!--D--></tr>';
       return h;
     }
     SL.forEach(function(t,i){
@@ -4898,31 +4901,54 @@ function slipSheet(e, m){
          '<td>↳ แวะรับ จุดที่ '+(t.seq||i+1) +
            (t.mat?' · '+esc(t.mat):'') + (t.note?' — '+esc(t.note):'') + '</td>' +
          '<td class="c"></td>' +
-         '<td class="r num">'+baht(stopPay(t))+'</td></tr>';
+         '<td class="r num">'+baht(stopPay(t))+'</td><!--D--></tr>';
     });
     return h;
   }
+  /* ยอดรวมรายวัน (3 ต.ค. 2569 — เจ้าของขอ) = คอลัมน์ "รวมวัน" ขวาสุด รวมเป็นช่องเดียวต่อวัน (rowspan)
+     Why ไม่ทำเป็นแถวแยก: ลองแล้วใบยาวขึ้น ~23 แถว ช่องเซ็นชื่อหลุดไปหน้า 3 คนเดียว
+     คืนเป็นก้อนรายวัน เพื่อให้แบบสองคอลัมน์ตัดแบ่งที่รอยต่อวัน ไม่ตัดกลางวัน */
+  function slipDays(L){
+    var out=[], cur=null;
+    L.forEach(function(j){
+      if(!cur || cur.date!==j.date){ cur={date:j.date, jobs:[]}; out.push(cur); }
+      cur.jobs.push(j);
+    });
+    return out.map(function(g){
+      var parts=g.jobs.map(slipRow).join("").split("<!--D-->");
+      var tot=g.jobs.reduce(function(a,j){ return a+payOf(j); },0), h="";
+      for(var i=0;i<parts.length;i++){
+        h+=parts[i];
+        /* ช่องเดียวต่อวัน (rowspan) ตัวเลขกึ่งกลางแนวตั้ง ชิดขวา — เจ้าของขอ 3 ต.ค. 2569 */
+        if(i===0) h += '<td class="r num sh-dt" rowspan="'+(parts.length-1)+'">'+baht(tot)+'</td>';
+      }
+      /* tbody ต่อวัน + ห้ามตัดกลาง → ตอนพิมพ์ทั้งวันจะอยู่หน้าเดียวกัน ช่องรวมวันไม่ขาดครึ่ง */
+      return {n:g.jobs.length, html:'<tbody class="sh-dg">'+h+'</tbody>'};
+    });
+  }
   var HEAD='<thead><tr><th class="c">วันที่</th><th>ทะเบียน</th><th>รายการงาน</th>' +
-           '<th class="c">คืน</th><th class="r">เงิน</th></tr></thead>';
-  var CG1='<colgroup><col style="width:13%"><col style="width:18%"><col><col style="width:9%"><col style="width:17%"></colgroup>';
-  var CG2='<colgroup><col style="width:15%"><col style="width:23%"><col><col style="width:9%"><col style="width:21%"></colgroup>';
+           '<th class="c">คืน</th><th class="r">เงิน</th><th class="r">รวมวัน</th></tr></thead>';
+  var CG1='<colgroup><col style="width:11%"><col style="width:14%"><col><col style="width:7%"><col style="width:13%"><col style="width:13%"></colgroup>';
+  var CG2='<colgroup><col style="width:13%"><col style="width:19%"><col><col style="width:8%"><col style="width:16%"><col style="width:16%"></colgroup>';
   var TS=' style="font-size:'+fs+'; --pd:'+pd+'"';
   var table;
   if(!list.length){
-    table='<table'+TS+'>'+CG1+HEAD+'<tbody><tr><td colspan="5" class="c">ไม่มีงานที่ใส่ค่าเที่ยวแล้วในเดือนนี้</td></tr></tbody></table>';
+    table='<table'+TS+'>'+CG1+HEAD+'<tbody><tr><td colspan="6" class="c">ไม่มีงานที่ใส่ค่าเที่ยวแล้วในเดือนนี้</td></tr></tbody></table>';
   }else{
     /* ทำไว้ทั้งสองแบบ แล้ว slipFit() วัดของจริงเลือกให้ว่าจะใช้แบบไหน
        Why: คอลัมน์เดียวอ่านง่ายกว่า ใช้ก่อนเสมอ ถ้าล้นแผ่นค่อยสลับเป็นสองคอลัมน์
        ประหยัดกระดาษได้เท่าตัวโดยตัวหนังสือยังเท่าเดิม ดีกว่าย่อจนอ่านไม่ออก */
-    var half=Math.ceil(list.length/2);
+    var half=Math.ceil(list.length/2), DAYS=slipDays(list), cut=0, acc=0;
+    while(cut<DAYS.length && acc<half){ acc+=DAYS[cut].n; cut++; }
+    var dh=function(a){ return a.map(function(x){ return x.html; }).join(""); };
     table='<div class="sh-t1">' +
-        '<table'+TS+'>'+CG1+HEAD+'<tbody>'+list.map(slipRow).join("")+'</tbody>' +
-        '<tfoot><tr><td colspan="3">รวมค่าเที่ยว</td><td class="c num">'+(nightsN||"–")+'</td>' +
-        '<td class="r num">'+baht(fee)+'</td></tr></tfoot></table>' +
+        '<table'+TS+'>'+CG1+HEAD+dh(DAYS) +
+        '<tfoot style="display:table-row-group"><tr><td colspan="3">รวมค่าเที่ยว</td><td class="c num">'+(nightsN||"–")+'</td>' +
+        '<td class="r num">'+baht(fee)+'</td><td class="r num">'+baht(fee)+'</td></tr></tfoot></table>' +
       '</div>' +
       '<div class="sh-t2 sh-off"><div class="sh-2col">' +
-        '<table'+TS+'>'+CG2+HEAD+'<tbody>'+list.slice(0,half).map(slipRow).join("")+'</tbody></table>' +
-        '<table'+TS+'>'+CG2+HEAD+'<tbody>'+list.slice(half).map(slipRow).join("")+'</tbody></table>' +
+        '<table'+TS+'>'+CG2+HEAD+dh(DAYS.slice(0,cut))+'</table>' +
+        '<table'+TS+'>'+CG2+HEAD+dh(DAYS.slice(cut))+'</table>' +
       '</div></div>';
   }
   return '<div class="sheet">' +
@@ -4942,7 +4968,7 @@ function slipSheet(e, m){
       '<div class="sh-row"><span>ค่าเที่ยว ('+list.length+' งาน)</span><b class="num">'+baht(fee)+'</b></div>' +
       '<div class="sh-row sub"><span>ค่างาน</span><span class="num">'+baht(base)+'</span></div>' +
       '<div class="sh-row sub"><span>ค่าค้างคืน '+nightsN+' คืน</span><span class="num">'+baht(nightTot)+'</span></div>' +
-      (stopN ? '<div class="sh-row sub"><span>ค่าแวะรับสินค้า '+stopN+' จุด (เหมาต่องาน)</span><span class="num">'+baht(stopTot)+'</span></div>' : '') +
+      (stopN ? '<div class="sh-row sub"><span>'+(stopOld ? 'ค่าแวะรับสินค้า '+stopN+' จุด' : 'ค่าแวะรับสินค้า เหมา '+stopJ+' งาน'+(stopTot===stopJ*stopRate()?' × '+baht(stopRate()):'')+' (แวะรวม '+stopN+' จุด)')+'</span><span class="num">'+baht(stopTot)+'</span></div>' : '') +
       '<div class="sh-row"><span>เบี้ยเลี้ยง</span><b class="num">'+baht(allow)+'</b></div>' +
       '<div class="sh-row sub"><span>'+(anyJob
         ? (allowDays(m)>=30 ? 'เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0) : 'เบี้ยเลี้ยงถึงวันที่ '+allowDays(m)+' = '+baht(DB.set.allow||0)+' ÷ 30 × '+allowDays(m)+' = '+baht(allowBase(m)))+
