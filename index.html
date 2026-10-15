@@ -1146,8 +1146,10 @@ function rest(path,opt){
    Why: TOROW.emp ส่งทุกช่องขึ้นทุกครั้งที่ upsert ถ้าแปลงไปกลับแล้วค่าไม่เหมือนเดิมเป๊ะ
         (ไมโครวินาทีหาย) ชั้นซิงก์จะเห็นว่า "เปลี่ยน" แล้วดันแถว employees ขึ้นทุกรอบ
         เครื่องคนขับไม่มีสิทธิ์แก้ employees → RLS ตีกลับ → **ซิงก์หยุดทั้งสาย** (กับดักข้อ 26)
-   เก็บสตริงเดิมไว้ ค่าไปกลับเท่ากันเป๊ะ จึงไม่มีแถวผีถูกส่ง */
-function rowEmp(r){   return {id:r.id, name:r.name, nickname:r.nickname, role:r.role, line:r.line_user_id, active:r.active, phone:r.phone, leftAt:r.left_at||null, payVia:r.pay_via||"rc"}; }
+   เก็บสตริงเดิมไว้ ค่าไปกลับเท่ากันเป๊ะ จึงไม่มีแถวผีถูกส่ง
+   startDate (v39 วันเริ่มงาน) อ่านอย่างเดียว ไม่อยู่ใน TOROW.emp — เจ้าของแก้ผ่าน PATCH ตรง (data-emp-start)
+   ถ้าใส่ใน TOROW แถวใหม่จะส่ง null ทับค่าเริ่มต้น (คอลัมน์ not null) แล้วซิงก์หยุดทั้งสาย */
+function rowEmp(r){   return {id:r.id, name:r.name, nickname:r.nickname, role:r.role, line:r.line_user_id, active:r.active, phone:r.phone, leftAt:r.left_at||null, payVia:r.pay_via||"rc", startDate:r.start_date||null}; }
 function rowTruck(r){ return {id:r.id, plate:r.plate, size:r.size, active:r.active, driver:r.driver_id||"", company:!!r.company}; }
 function rowRate(r){  return {id:r.id, type:r.job_type, label:r.label, price:num(r.price,0), unit:r.unit||"เที่ยว", mat:r.material||"", dest:r.dest||"", at:r.updated_at, detail:r.detail||""}; }
 function rowJob(r){
@@ -1809,6 +1811,7 @@ function load(){
    Why: กล่องเด้งของ Safari มีปุ่ม "ระงับกล่องโต้ตอบ" ถ้าเผลอกด ปุ่มเพิ่มจะตายเงียบทั้งแอป */
 function askText(title, hint, cb, pre){
   var box=$("ask"), inp=$("askInput");
+  inp.type="text";   /* แก้วันเริ่มงานสลับเป็น date ไว้ — คืนเป็นข้อความทุกครั้ง */
   $("askTitle").textContent=title;
   $("askHint").textContent=hint||"";
   inp.value=pre||"";
@@ -4525,24 +4528,40 @@ function renderHome(){
    เดือนที่ผ่านไปแล้ว = เต็ม · เดือนนี้ = เต็ม ÷ 30 × วันที่วันนี้ (เช่น 3 ต.ค. = 3,000÷30×3 = 300)
    ถึงวันสิ้นเดือน = เต็ม · ไม่เกินเต็มเดือน (เดือน 31 วัน) · เดือนอนาคต = 0
    ทุกจุดที่โชว์เบี้ยเลี้ยงต้องเรียก allowOf() ตัวนี้ตัวเดียว ห้ามคิดเองในหน้าไหน */
-function allowDays(m){
-  var t=today(), cur=ym(t);
-  if(m<cur) return 30;
-  if(m>cur) return 0;
-  var d=parseInt(t.slice(8,10),10), p=m.split("-");
-  var dim=new Date(parseInt(p[0],10), parseInt(p[1],10), 0).getDate();
-  return d>=dim ? 30 : Math.min(30,d);
+/* วันเริ่มงาน (v39 · 15 ต.ค. 2569 — เจ้าของเลือก "คิดตามวันที่ทำงาน")
+   เดือนที่เริ่มงานกลางเดือน: เบี้ยเลี้ยง = เต็ม ÷ 30 × จำนวนวันตั้งแต่วันเริ่มงาน (ไม่เกิน 30 = เต็ม)
+   และไม่นับวันก่อนวันเริ่มงานเป็นวันลา (noJobDays) · คนที่เริ่มก่อนเดือนนั้นคิดแบบเดิมทุกอย่าง
+   ต้องตรงกับ tha_driver_earnings (rungchai_v39_start_date.sql) เป๊ะ — ท่าทรายดึงยอดจากตัวนั้น
+   startDayIn: 1 = ทั้งเดือน · 99 = ยังไม่เริ่มงานในเดือนนี้ · empId ว่าง = ยอดกลาง (ข้อความหัวตาราง)
+   ใช้ตั้งแต่ ต.ค. 2569 เท่านั้น (isAutoAbs) — เดือนก่อนหน้าปิดยอดจ่ายไปแล้ว ห้ามยอดย้อนหลังเปลี่ยน */
+function startDayIn(empId,m){
+  var e=empId ? find(DB.emp,empId) : null, s=(e&&e.startDate)||"";
+  if(!s || !isAutoAbs(m)) return 1;
+  var sm=s.slice(0,7);
+  if(sm<m) return 1;
+  if(sm>m) return 99;
+  return parseInt(s.slice(8,10),10);
 }
-function allowBase(m){
-  var full=DB.set.allow||0, d=allowDays(m);
+function allowDays(m,empId){
+  var t=today(), cur=ym(t);
+  if(m>cur) return 0;
+  var dim=dimOf(m), d=(m<cur) ? dim : parseInt(t.slice(8,10),10);
+  var sd=startDayIn(empId,m);
+  if(sd<=1) return d>=dim ? 30 : Math.min(30,d);
+  return Math.max(0, Math.min(30, d-sd+1));
+}
+function allowBase(m,empId){
+  var full=DB.set.allow||0, d=allowDays(m,empId);
   return d>=30 ? full : Math.round(full/30*d);
 }
 function allowOf(empId,m){
-  return Math.max(0, allowBase(m) - absentCount(empId,m)*(DB.set.deduct||0));
+  return Math.max(0, allowBase(m,empId) - absentCount(empId,m)*(DB.set.deduct||0));
 }
-function allowNote(m){
-  var d=allowDays(m);
-  return d>=30 ? "เต็มเดือน" : "คิดถึงวันที่ "+d+" ("+baht(DB.set.allow||0)+" ÷ 30 × "+d+")";
+function allowNote(m,empId){
+  var d=allowDays(m,empId), sd=startDayIn(empId,m);
+  if(d>=30) return "เต็มเดือน";
+  if(sd>1) return (sd>31 ? "ยังไม่ถึงวันเริ่มงาน" : "เริ่มงานวันที่ "+sd+" คิด "+d+" วัน")+" ("+baht(DB.set.allow||0)+" ÷ 30 × "+d+")";
+  return "คิดถึงวันที่ "+d+" ("+baht(DB.set.allow||0)+" ÷ 30 × "+d+")";
 }
 /* =============== วันลาอัตโนมัติ (v34 · 3 ต.ค. 2569 — เจ้าของสั่ง) ===============
    ตั้งแต่ ต.ค. 2569: วันไหนไม่มีงานลงเลย = ลา หักเบี้ยเลี้ยงวันละ DB.set.deduct
@@ -4562,10 +4581,10 @@ function absLastDay(m){
 function isHoliday(date){ return (DB.marks||[]).some(function(x){ return x.kind==="holiday" && x.d===date; }); }
 function isWorkMark(empId,date){ return (DB.marks||[]).some(function(x){ return x.kind==="work" && x.emp===empId && x.d===date; }); }
 function hasJobOn(empId,date){ return DB.job.some(function(j){ return j.emp===empId && j.date===date; }); }
-/* วันที่ไม่มีงานลงของคนนี้ในเดือน m → [{d:เลขวัน, date, work:true=เจ้าของแตะว่ามาทำงาน}] (ไม่รวมวันหยุดบริษัท) */
+/* วันที่ไม่มีงานลงของคนนี้ในเดือน m → [{d:เลขวัน, date, work:true=เจ้าของแตะว่ามาทำงาน}] (ไม่รวมวันหยุดบริษัท · ไม่รวมวันก่อนวันเริ่มงาน v39) */
 function noJobDays(empId,m){
   var out=[], last=absLastDay(m);
-  for(var d=1; d<=last; d++){
+  for(var d=startDayIn(empId,m); d<=last; d++){
     var date=m+"-"+pad(d);
     if(hasJobOn(empId,date) || isHoliday(date)) continue;
     out.push({d:d, date:date, work:isWorkMark(empId,date)});
@@ -4693,7 +4712,7 @@ function renderMine(){
   $("myTiles").innerHTML=
     tile("รวมรับเดือนนี้", baht(fee+allow), "ค่าเที่ยว + เบี้ยเลี้ยง", true) +
     tile("ค่าเที่ยว", baht(fee), list.length+" งาน"+(wait?" · รอราคา "+wait:"")) +
-    tile("เบี้ยเลี้ยง", baht(allow), !anyJob?"เดือนนี้ยังไม่มีงาน":(allowNote(m)+(absNote(me.id,m)?" · "+absNote(me.id,m):""))) +
+    tile("เบี้ยเลี้ยง", baht(allow), !anyJob?"เดือนนี้ยังไม่มีงาน":(allowNote(m,me.id)+(absNote(me.id,m)?" · "+absNote(me.id,m):""))) +
     tile("วันที่ออกงาน", uniqDays(list), "วันในเดือนนี้");
   jobList($("myJobs"), list.slice(0,mineLimit), false);
   var more=$("mineMore");
@@ -5140,7 +5159,9 @@ function slipSheet(e, m){
       (stopN ? '<div class="sh-row sub"><span>'+(stopOld ? 'ค่าแวะรับสินค้า '+stopN+' จุด' : 'ค่าแวะรับสินค้า เหมา '+stopJ+' งาน'+(stopTot===stopJ*stopRate()?' × '+baht(stopRate()):'')+' (แวะรวม '+stopN+' จุด)')+'</span><span class="num">'+baht(stopTot)+'</span></div>' : '') +
       '<div class="sh-row"><span>เบี้ยเลี้ยง</span><b class="num">'+baht(allow)+'</b></div>' +
       '<div class="sh-row sub"><span>'+(anyJob
-        ? (allowDays(m)>=30 ? 'เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0) : 'เบี้ยเลี้ยงถึงวันที่ '+allowDays(m)+' = '+baht(DB.set.allow||0)+' ÷ 30 × '+allowDays(m)+' = '+baht(allowBase(m)))+
+        ? (allowDays(m,e.id)>=30 ? 'เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0)
+            : (startDayIn(e.id,m)>1 ? 'เบี้ยเลี้ยงตั้งแต่วันเริ่มงาน '+fmtDate(e.startDate)+' = '+allowDays(m,e.id)+' วัน' : 'เบี้ยเลี้ยงถึงวันที่ '+allowDays(m,e.id))+
+              ' = '+baht(DB.set.allow||0)+' ÷ 30 × '+allowDays(m,e.id)+' = '+baht(allowBase(m,e.id)))+
           (ab ? ' − '+(isAutoAbs(m)?'ลา':'ขาดงาน')+' '+ab+' วัน × '+baht(DB.set.deduct||0)+' = '+baht(ab*(DB.set.deduct||0)) : '') +
           (isAutoAbs(m) && ab ? ' (วันที่ '+leaveDays(e.id,m).map(function(x){ return x.d; }).join(", ")+')' : '') +
           (isAutoAbs(m) && !monthConfirmed(m) ? ' · ⚠️ ยังไม่ยืนยันวันหยุดของเดือนนี้' : '')
@@ -5402,6 +5423,7 @@ function empCard(e){
       (e.payVia==="ts"?'<span class="pill co-ts">⛱️ พนักงานท่าทราย</span>':'') +
     '</div>' +
     '<div class="hint num" style="margin-top:4px; word-break:break-all">'+esc(e.line||"–")+'</div>' +
+    (isDriver(e) && e.startDate ? '<div class="hint" style="margin-top:2px">เริ่มงาน '+fmtDate(e.startDate)+'</div>' : '') +
     '<div class="row" style="gap:8px; margin-top:10px; flex-wrap:wrap">' +
       '<button class="btn sm '+(pend?"primary":"ghost")+'" data-emp-act="'+e.id+'">'+
         (gone?"เปิดใช้งานอีกครั้ง":(pend?"✓ เปิดใช้งาน":"ปิดใช้งาน"))+'</button>' +
@@ -5409,6 +5431,7 @@ function empCard(e){
       '<button class="btn sm" data-emp-ren="'+e.id+'">แก้ชื่อ</button>' +
       (isOwner(me) && isDriver(e) ? '<button class="btn sm" data-emp-pay="'+e.id+'">'+
         (e.payVia==="ts"?"ย้ายกลับเป็นพนักงานรุ่งชัย":"ตั้งเป็นพนักงานท่าทราย")+'</button>' : '') +
+      (isOwner(me) && isDriver(e) ? '<button class="btn sm" data-emp-start="'+e.id+'">แก้วันเริ่มงาน</button>' : '') +
       '<button class="btn sm ghost" data-emp-del="'+e.id+'">ลบ</button>' +
     '</div></div>';
 }
@@ -5446,6 +5469,29 @@ function wireEmpCards(){
       save(); render();
       toast(e.name+(e.payVia==="ts"?" เป็นพนักงานท่าทรายแล้ว — งานทั่วไปของเขานับเป็นต้นทุนท่าทราย":" กลับเป็นพนักงานรุ่งชัยแล้ว"), 5000);
     });
+  });
+  /* วันเริ่มงาน (v39) — เจ้าของเท่านั้น · ยิง PATCH ตรง ไม่ผ่านชั้นซิงก์ (ดูหมายเหตุที่ rowEmp)
+     RLS emp_owner_all ตรวจซ้ำ · ขอแถวกลับมาเช็ก ถ้าได้ 0 แถว = ไม่มีสิทธิ์ (PostgREST ไม่ขึ้น error) */
+  document.querySelectorAll("[data-emp-start]").forEach(function(b){
+    var e=find(DB.emp, b.getAttribute("data-emp-start")); if(!e) return;
+    b.onclick=function(){
+      if(!isOwner(me) || busyGuard()) return;
+      askText("วันเริ่มงานของ "+(e.name||""), "ก่อนวันนี้ไม่นับเป็นวันลา · เดือนแรกคิดเบี้ยเลี้ยงตามวันที่ทำงาน (เต็ม ÷ 30 × จำนวนวัน)", function(v){
+        /* เช็กไปกลับ: new Date("2026-02-30") ไม่ error แต่เลื่อนเป็น 2 มี.ค. — ต้องได้วันเดิมกลับมา */
+        var dt=/^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(v+"T00:00:00") : null;
+        if(!dt || isNaN(dt.getTime()) || dt.getFullYear()+"-"+pad(dt.getMonth()+1)+"-"+pad(dt.getDate())!==v || v<"2020-01-01" || v>"2100-12-31"){ toast("วันที่ไม่ถูกต้อง"); return; }
+        var first=DB.job.filter(function(j){ return j.emp===e.id; }).map(function(j){ return j.date; }).sort()[0];
+        rest("employees?id=eq."+e.id, {method:"PATCH", headers:{Prefer:"return=representation"}, body:{start_date:v}})
+          .then(function(r){
+            if(!r || !r.length) throw new Error("ไม่มีสิทธิ์แก้");
+            e.startDate=r[0].start_date||v; render();
+            toast("ตั้งวันเริ่มงาน "+e.name+" เป็น "+fmtDate(e.startDate)+" แล้ว"+
+                  (first && first<e.startDate ? " · ⚠️ มีงานก่อนวันนี้ ("+fmtDate(first)+") — ค่าเที่ยวงานนั้นยังนับ" : ""), 6000);
+          })
+          .catch(function(err){ toast("บันทึกไม่สำเร็จ — "+(err&&err.message||err)); });
+      }, e.startDate||today());
+      $("askInput").type="date"; $("askInput").min="2020-01-01"; $("askInput").max="2100-12-31"; $("askInput").value=e.startDate||today();
+    };
   });
   document.querySelectorAll("[data-emp-ren]").forEach(function(b){
     var e=find(DB.emp, b.getAttribute("data-emp-ren")); if(!e) return;
