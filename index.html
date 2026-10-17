@@ -83,7 +83,13 @@ button,input,select,textarea{font:inherit; color:inherit}
 .grid{display:grid; gap:14px}
 .g2{grid-template-columns:1fr 1fr}
 .sec-title{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); font-weight:600; margin:24px 0 10px}
-label.f{display:flex; flex-direction:column; gap:6px; font-size:14px; color:var(--ink2); font-weight:500}
+label.f{display:flex; flex-direction:column; gap:6px; font-size:14px; color:var(--ink2); font-weight:500; min-width:0; max-width:100%}
+/* หน้าจอต้องพอดีความกว้างมือถือเสมอ (เจ้าของขอ 17 ต.ค. 2569 — iPhone หน้าจอหดเหลือ 2/3 มีพื้นที่ว่างด้านขวา)
+   Why: มีของชิ้นไหนกว้างเกินจอแม้ชั่วครู่ Safari/Chrome บน iPhone จะซูมออกทั้งหน้าแล้วไม่ซูมกลับเอง
+   ใช้ clip ที่ body ไม่ใช้ hidden เพราะ hidden ทำให้หัวแอป (sticky) เลิกติดขอบบน */
+html{overflow-x:hidden}
+body{overflow-x:clip; max-width:100%}
+select{max-width:100%; text-overflow:ellipsis}
 input[type=text],input[type=number],input[type=date],select,textarea{
   width:100%; padding:12px 13px; font-size:16px; background:var(--surface); color:var(--ink);
   border:1px solid var(--line); border-radius:10px}
