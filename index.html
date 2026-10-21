@@ -200,6 +200,18 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 .amt{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; font-size:16px}
 .amt.wait{font-family:"IBM Plex Sans Thai",sans-serif; font-size:12.5px; font-weight:600; color:var(--warn); text-align:right; max-width:80px; white-space:normal}
 .thumb{width:60px; height:60px; flex:none; border-radius:11px; object-fit:cover; border:1px solid var(--line); cursor:zoom-in}
+.fpics{display:flex; flex-direction:column; gap:6px; flex:none}
+.fpic{display:flex; flex-direction:column; align-items:center; gap:2px; font-size:11px; color:var(--ink3); line-height:1.2}
+.fpic .thumb{width:72px; height:72px}
+.fbar{display:flex; gap:4px; flex-wrap:wrap; margin-top:8px}
+.fbar .btn{margin:0 !important; white-space:nowrap; padding:5px 7px; font-size:12.5px; border-radius:7px}
+.job.frow{position:relative}
+.job.frow .amt{position:absolute; top:14px; right:15px}
+.job.frow .jt{padding-right:64px}
+.fbar:empty{display:none}
+#ofuelSum{min-width:0}
+#ofuelSum td,#ofuelSum th{padding:10px 8px}
+#ofuelSum td:first-child{white-space:nowrap}
 .thumb.none{display:grid; place-items:center; background:var(--surface2); color:var(--ink3); font-size:11px; cursor:default}
 
 .live-card{border:1.5px solid var(--live); background:var(--live-soft); border-radius:var(--r); padding:16px}
@@ -730,6 +742,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
           <select id="ofuelPick" class="month"></select>
         </div>
       </div>
+      <div class="chips" id="ofuelTruckChips" style="margin-top:10px; gap:6px"></div>
       <div class="tiles" id="ofuelTiles" style="margin-top:10px"></div>
       <div class="row" style="justify-content:space-between; align-items:center; gap:10px; margin-top:18px">
         <div class="sec-title" style="margin:0" id="ofuelSumTitle">สรุปแยกตามรถ</div>
@@ -6471,14 +6484,27 @@ function fuelList(host,list,showEmp){
   if(!list.length){ host.innerHTML='<div class="pad hint">ยังไม่มีรายการ</div>'; return; }
   list.forEach(function(f){
     var row=document.createElement("div"); row.className="job";
-    var fpics=(f.shots||[]).concat(f.odoShots||[]);
-    if(fpics.length){
-      var im=document.createElement("img"); im.className="thumb"; im.src=fpics[0]; im.alt="ใบเสร็จน้ำมัน";
-      paintRot(im, fpics[0]);
-      im.title="ดูรูปทั้งหมด "+fpics.length+" รูป";
-      im.onclick=function(){ zoom(fpics,0); };
-      row.appendChild(im);
-    } else { var ph=document.createElement("div"); ph.className="thumb none"; ph.textContent="ไม่มีรูป"; row.appendChild(ph); }
+    /* รูปใบเสร็จ + รูปเลขไมล์ แยกให้เห็นทั้งสองใบ (20 ต.ค. 2569 — เจ้าของขอ)
+       แตะรูปไหนก็เปิดกล่องดูรูปเต็มที่ใบนั้น ปัดดูใบอื่นต่อได้ (หมุน/ซูมได้เหมือนเดิม) */
+    row.classList.add("frow");   /* ยอดเงินลอยมุมขวาบน ให้เนื้อหา+ปุ่มใช้ความกว้างเต็ม */
+    var rc=(f.shots||[]), oc=(f.odoShots||[]), fpics=rc.concat(oc);
+    var pc=document.createElement("div"); pc.className="fpics";
+    [[rc[0],0,"ใบเสร็จ"+(rc.length>1?" ("+rc.length+")":"")],
+     [oc[0],rc.length,"เลขไมล์"+(oc.length>1?" ("+oc.length+")":"")]].forEach(function(x){
+      var cell=document.createElement("div"); cell.className="fpic";
+      if(x[0]){
+        var im=document.createElement("img"); im.className="thumb"; im.src=x[0]; im.alt=x[2]; im.loading="lazy";
+        paintRot(im, x[0]);
+        im.title="แตะเพื่อดูรูปเต็ม";
+        im.onclick=function(){ zoom(fpics, x[1]); };
+        cell.appendChild(im);
+      } else {
+        var ph=document.createElement("div"); ph.className="thumb none"; ph.textContent="ไม่มีรูป"; cell.appendChild(ph);
+      }
+      var cap=document.createElement("span"); cap.textContent=x[2]; cell.appendChild(cap);
+      pc.appendChild(cell);
+    });
+    row.appendChild(pc);
     var body=document.createElement("div"); body.className="body";
     var run = fuelRun(f), kml = fuelKmL(f);
     body.innerHTML='<div class="jt">'+esc(truck(f.truck).plate)+(f.note?' · '+esc(f.note):'')+'</div>' +
@@ -6496,7 +6522,9 @@ function fuelList(host,list,showEmp){
       '</div>';
     var amt=document.createElement("div"); amt.className="amt"; amt.textContent=baht(f.amount);
     row.appendChild(body); row.appendChild(amt); host.appendChild(row);
-    if(canFixTruck(f)) body.appendChild(fixTruckBtn(f, body));
+    /* ปุ่ม แก้รายการ · ลบ · เปลี่ยนรูป อยู่บรรทัดเดียวกันใต้การ์ด (20 ต.ค. 2569 — เจ้าของขอ) */
+    var fbar=document.createElement("div"); fbar.className="fbar"; body.appendChild(fbar);
+    if(canFixTruck(f)) fbar.appendChild(fixTruckBtn(f, body));
     /* ลบรายการเติมน้ำมัน (3 ต.ค. 2569 — เจ้าของขอ) เจ้าของเท่านั้น · ฐานข้อมูลเก็บสำเนาไว้ใน edit_log
        กู้คืนได้ที่หน้าตั้งค่า · trigger fuel_rechain_after ไล่เลขไมล์ครั้งก่อนของคันนั้นใหม่ให้เอง */
     if(isOwner(me)){
@@ -6509,7 +6537,7 @@ function fuelList(host,list,showEmp){
         save(); render();
         toast("ลบรายการเติมน้ำมันแล้ว — กู้คืนได้ที่หน้าตั้งค่า");
       });
-      body.appendChild(fxb);
+      fbar.appendChild(fxb);
     }
     if(canSwapPhoto(f)){
       var spn=document.createElement("div"); spn.className="jobedit hidden";
@@ -6519,7 +6547,7 @@ function fuelList(host,list,showEmp){
         if(!spn.classList.contains("hidden")){ spn.classList.add("hidden"); spn.innerHTML=""; return; }
         spn.classList.remove("hidden"); buildSwapPhoto("fuel", f, spn);
       };
-      body.appendChild(sbt); row.appendChild(spn);
+      fbar.appendChild(sbt); row.appendChild(spn);
     }
   });
 }
@@ -6543,15 +6571,33 @@ function renderFuel(){
 }
 /* เจ้าของเลือกได้ว่าจะดูสรุปแบบไหน — จำไว้ระหว่างที่เปิดแอปอยู่ (เจ้าของสั่ง 5 ก.ย. 2569) */
 var ofuelBy="truck";
+var ofuelTruck="";
 function renderOwnerFuel(){
   monthOptions($("ofuelPick"), true, null, true);
   var m=$("ofuelPick").value;
   /* เปิดมาให้อยู่เดือนปัจจุบันเสมอ · ปุ่มกลับเดือนนี้โผล่เฉพาะตอนย้อนดูเดือนเก่า */
   $("ofuelNow").classList.toggle("hidden", m===ym(today()));
   var list=DB.fuel.filter(function(f){ return ym(f.date)===m; }).sort(function(a,b){ return b.at-a.at; });
+  /* เลือกดูตามทะเบียน (20 ต.ค. 2569 — เจ้าของขอ) ชิปเฉพาะคันที่มีการเติมในเดือนนั้น
+     เลือกแล้วกรองทั้งตัวเลขบนสุด ตารางสรุป และรายการเติม · จำไว้ระหว่างเปิดแอป */
+  var tids={}; list.forEach(function(f){ if(f.truck) tids[f.truck]=true; });
+  var tl=Object.keys(tids).sort(function(a,b){ return String(truck(a).plate).localeCompare(String(truck(b).plate),"th"); });
+  if(ofuelTruck && !tids[ofuelTruck]) ofuelTruck="";
+  var tc=$("ofuelTruckChips"); tc.innerHTML="";
+  if(tl.length>1){
+    [""].concat(tl).forEach(function(id){
+      var b=document.createElement("button"); b.type="button"; b.className="chip";
+      b.style.padding="7px 14px";
+      b.textContent = id ? "🚛 "+truck(id).plate : "ทุกคัน";
+      b.setAttribute("aria-pressed", id===ofuelTruck ? "true" : "false");
+      b.onclick=function(){ ofuelTruck=id; renderOwnerFuel(); };
+      tc.appendChild(b);
+    });
+  }
+  if(ofuelTruck) list=list.filter(function(f){ return f.truck===ofuelTruck; });
   var lit=sum(list,"liters");
   $("ofuelTiles").innerHTML=
-    tile("ค่าน้ำมันรวม", baht(sum(list,"amount")), fmtMonth(m)+" · "+list.length+" ครั้ง", true) +
+    tile("ค่าน้ำมันรวม", baht(sum(list,"amount")), (ofuelTruck?truck(ofuelTruck).plate+" · ":"")+fmtMonth(m)+" · "+list.length+" ครั้ง", true) +
     tile("จำนวนลิตร", lit?lit.toFixed(0):"–", lit?"ลิตร (เฉพาะที่กรอก)":"ยังไม่ได้กรอกลิตร") +
     tile("เฉลี่ยต่อครั้ง", list.length?baht(sum(list,"amount")/list.length):"0", "บาท") +
     tile("ราคาเฉลี่ย/ลิตร", lit?(sum(list,"amount")/lit).toFixed(2):"–", "บาท");
@@ -6574,7 +6620,7 @@ function canFixTruck(f){
 }
 function fixTruckBtn(f, body){
   var b=document.createElement("button");
-  b.className="btn sm ghost"; b.textContent = isStaff(me) ? "✏️ แก้รายการ" : "✏️ แก้ทะเบียน";
+  b.className="btn sm ghost"; b.textContent = isStaff(me) ? "✏️ แก้ไข" : "✏️ แก้ทะเบียน";
   b.style.marginTop="8px";
   b.onclick=function(){ openFixTruck(f, body, b); };
   return b;
@@ -6724,8 +6770,10 @@ function fuelSummary(tbl, list, by){
   var isEmp = (by==="emp");
   var keyOf = isEmp ? function(f){ return f.emp||""; } : function(f){ return f.truck||""; };
   var subOf = isEmp ? function(f){ return f.truck||""; } : function(f){ return f.emp||""; };
+  /* ตารางเหลือ 4 ช่อง ทะเบียน · คนขับ · กม./ล. · บาท/กม. ให้เห็นครบบนมือถือไม่ต้องเลื่อนข้าง (20 ต.ค. 2569 — เจ้าของขอ)
+     ยอดเงิน/ลิตร/จำนวนครั้ง ดูที่ตัวเลขบนสุด (กดเลือกทะเบียนได้) */
   var nameOf= isEmp ? function(k){ return String(emp(k).name||"?"); }
-                    : function(k){ return truck(k).plate+" · "+(truck(k).size||""); };
+                    : function(k){ return String(truck(k).plate||"?"); };
   var subName=isEmp ? function(k){ return String(truck(k).plate||"?"); }
                     : function(k){ return String(emp(k).name||"?"); };
   var g={};
@@ -6742,9 +6790,8 @@ function fuelSummary(tbl, list, by){
   keys.sort(function(a,b){ return nameOf(a).localeCompare(nameOf(b),"th"); });
   var T={n:0, liters:0, amount:0, run:0, runL:0, runB:0};
   var h='<thead><tr><th>'+(isEmp?"คนขับ":"รถ")+'</th><th>'+(isEmp?"รถ":"คนขับ")+'</th>' +
-        '<th class="r">ครั้ง</th><th class="r">ลิตร</th><th class="r">รวมเงิน</th>' +
-        '<th class="r">ระยะ (กม.)</th><th class="r">กม./ล.</th><th class="r">บาท/กม.</th></tr></thead><tbody>';
-  if(!keys.length) h+='<tr><td colspan="8" style="color:var(--ink3)">ไม่มีรายการ</td></tr>';
+        '<th class="r">กม./ล.</th><th class="r">บาท/กม.</th></tr></thead><tbody>';
+  if(!keys.length) h+='<tr><td colspan="4" style="color:var(--ink3)">ไม่มีรายการ</td></tr>';
   keys.forEach(function(k){
     var v=g[k];
     T.n+=v.n; T.liters+=v.liters; T.amount+=v.amount;
@@ -6755,19 +6802,11 @@ function fuelSummary(tbl, list, by){
     var kml=v.runL>0 ? v.run/v.runL : 0;
     h+='<tr><td>'+esc(nameOf(k))+'</td>' +
        '<td>'+esc(subs||"–")+'</td>' +
-       '<td class="r num">'+v.n+'</td>' +
-       '<td class="r num">'+v.liters.toFixed(1)+'</td>' +
-       '<td class="r num">'+baht(v.amount)+'</td>' +
-       '<td class="r num">'+(v.run?v.run.toLocaleString("th-TH"):"–")+'</td>' +
        '<td class="r num">'+(kml?kml.toFixed(2):"–")+'</td>' +
        '<td class="r num">'+(v.run>0?(v.runB/v.run).toFixed(2):"–")+'</td></tr>';
   });
   var tk=T.runL>0 ? T.run/T.runL : 0;
   h+='</tbody><tfoot><tr><td>รวม</td><td>–</td>' +
-     '<td class="r num">'+T.n+'</td>' +
-     '<td class="r num">'+T.liters.toFixed(1)+'</td>' +
-     '<td class="r num">'+baht(T.amount)+'</td>' +
-     '<td class="r num">'+(T.run?T.run.toLocaleString("th-TH"):"–")+'</td>' +
      '<td class="r num">'+(tk?tk.toFixed(2):"–")+'</td>' +
      '<td class="r num">'+(T.run>0?(T.runB/T.run).toFixed(2):"–")+'</td></tr></tfoot>';
   tbl.innerHTML=h;
