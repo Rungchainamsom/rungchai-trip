@@ -383,6 +383,26 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
     เข้าสู่ระบบด้วย LINE
   </button>
   <p class="hint" id="loginState" style="margin:14px 0 4px; min-height:22px"></p>
+  <!-- ผูกเครื่อง (v40) — ยืนยัน LINE ครั้งแรกครั้งเดียว แล้วแตะไอคอนเข้าได้เลย -->
+  <div id="devBox" class="hidden" style="width:100%; margin-top:10px">
+    <button class="line-btn" id="devStartBtn">📱 ยืนยัน LINE ผูกเครื่องนี้ (ทำครั้งเดียว)</button>
+    <div id="devCodeBox" class="hidden" style="margin-top:16px; text-align:center">
+      <p class="hint" style="margin:0 0 8px">ยืนยัน LINE แล้ว ถ้าหน้า LINE ขึ้น <b>รหัส 6 ตัว</b> ให้กรอกที่นี่</p>
+      <input id="devCode" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code"
+             style="width:100%; font-size:30px; letter-spacing:10px; text-align:center; padding:10px; border-radius:12px; border:1.5px solid var(--line)">
+      <button class="btn primary big block" id="devCodeOk" style="margin-top:10px">ผูกเครื่อง</button>
+    </div>
+  </div>
+  <button class="btn block hidden" id="devRetry" style="margin-top:10px">ลองใหม่</button>
+  <!-- หน้า LINE (เปิดจากปุ่มผูกเครื่อง) แสดงรหัส 6 ตัวให้เอาไปกรอกในแอป -->
+  <div id="devShow" class="hidden" style="margin-top:8px; text-align:center">
+    <p id="devShowHi" style="margin:0 0 6px; font-size:17px"></p>
+    <div id="devShowCode" class="num" style="font-size:46px; font-weight:700; letter-spacing:12px; margin:6px 0 10px"></div>
+    <p class="hint" style="margin:0">กลับไปที่แอป <b>ค่าเที่ยว</b> บนหน้าจอมือถือ<b>ของคุณเอง</b> แล้วกรอกรหัสนี้ภายใน 5 นาที</p>
+    <p class="hint bad" style="margin:10px 0 0; font-weight:600">⚠️ ห้ามบอกรหัสนี้ให้ใคร แม้จะอ้างว่าเป็นเจ้าของหรือแอดมิน<br>
+      ถ้าคุณไม่ได้กดผูกเครื่องเอง ให้ปิดหน้านี้ แล้วแจ้งเจ้าของ<br>
+      (คนที่ได้รหัสไปจะเข้าแอปแทนคุณได้ และมือถือของคุณจะหลุด)</p>
+  </div>
 </div>
 
 <div id="appView" class="hidden">
@@ -418,6 +438,10 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="sec-title">งานวันนี้ · <span id="todayLabel" class="num"></span></div>
       <div class="tiles" id="homeTiles"></div>
       <div class="card" id="homeJobs" style="margin-top:12px"></div>
+      <div class="card pad hidden" id="devHomeCard" style="margin-top:16px; text-align:center">
+        <p style="margin:0 0 10px; font-size:16px">📱 ผูกมือถือเครื่องนี้ ครั้งต่อไปแตะไอคอนเข้าได้เลย ไม่ต้องเข้า LINE</p>
+        <button class="btn primary block" id="devHomeBind">ผูกเครื่องนี้</button>
+      </div>
       <div class="card pad" style="margin-top:16px; text-align:center">
         <a class="btn block" href="help-driver.html" target="_blank" rel="noopener"
            style="display:block; text-decoration:none; font-size:18px">📖 คู่มือใช้งาน (ตัวหนังสือใหญ่ อ่านง่าย)</a>
@@ -957,6 +981,34 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       </div>
       </div>
 
+      <div id="devBlock">
+      <div class="sec-title">เครื่องที่ผูก (เข้าแอปไม่ต้องผ่าน LINE)</div>
+      <div class="card pad stack">
+        <p class="hint" style="margin:0">
+          พนักงาน 1 คน ใช้ได้ 1 เครื่อง · ผูกเครื่องใหม่ เครื่องเดิมหลุดเอง และแจ้ง Telegram ทุกครั้ง ·
+          <b>มือถือหาย ให้เจ้าของกด "ยกเลิก" ทันที</b> (แอดมินดูได้อย่างเดียว)
+        </p>
+        <div class="row" id="devMine"></div>
+        <div id="devSwitch" class="hidden stack" style="gap:8px; border-top:1px solid var(--line); padding-top:10px">
+          <div class="row">
+            <label class="f" style="flex:2; min-width:180px">ระบบผูกเครื่อง
+              <select id="devModeSel">
+                <option value="off">ปิด — ทุกคนใช้ LINE แบบเดิม</option>
+                <option value="pilot">ทดลอง — เฉพาะเจ้าของ + แอดมิน</option>
+                <option value="all">เปิดทุกคน</option>
+              </select></label>
+            <label class="f" style="flex:1; min-width:150px">ล็อกอิน LINE แบบเดิม
+              <select id="devLegacySel">
+                <option value="0">ยังใช้ได้</option>
+                <option value="1">ปิดแล้ว</option>
+              </select></label>
+            <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="devSwitchSave">บันทึกสวิตช์</button></label>
+          </div>
+        </div>
+        <div id="devList" class="stack" style="gap:8px"></div>
+      </div>
+      </div>
+
       <div id="prvBlock">
       <div class="sec-title">ลองดูหน้าจอของพนักงาน</div>
       <div class="card pad stack">
@@ -1363,6 +1415,354 @@ function lineLogin(opts){
   }).catch(function(e){
     clearSession();
     loginMsg("เข้าไม่ได้ — "+(e&&e.message?e.message:e),1);
+  });
+}
+
+/* =====================================================================
+   ผูกเครื่อง (v40 · 22 ต.ค. 2569) — ยืนยัน LINE ครั้งแรกครั้งเดียว แล้วจำเครื่อง
+   Why: แอปบนหน้าจอ (PWA) พอบัตรผ่านหมดต้องเด้งไป LINE แล้ว LINE ไม่เด้งกลับเข้าแอป (iPhone ค้างใน Safari)
+   คุณหลิงเคาะ: ไม่มี PIN · 1 คน = 1 เครื่อง · ไม่หมดอายุเอง · เปิดแอปทุกครั้งเซิร์ฟเวอร์เช็คว่าเครื่องยังไม่ถูกยกเลิก
+   - เครื่องเก็บ "รหัสเครื่อง" สุ่ม 64 ตัวไว้ใน localStorage · เซิร์ฟเวอร์เก็บแค่ sha256
+   - เปิดแอป → Edge Function `device` (action session) เช็คเครื่อง → ได้บัตรผ่าน 12 ชม. (ต่ออายุเองเงียบๆ)
+   - บัตรผ่านมี claim dev → ฐานข้อมูลเช็คทุกคำขอ (app_emp_id) ยกเลิกปุ๊บใช้ไม่ได้ทันที
+   - ผูกครั้งแรก: เปิดหน้า LINE (liff.line.me?pair=…) → หน้า LINE ขึ้นรหัส 6 ตัว → กรอกในแอป
+     ถ้าหน้า LINE เปิดในที่เก็บข้อมูลเดียวกับแอป (Android บางรุ่น) ผูกให้เองไม่ต้องกรอก
+   ===================================================================== */
+var DEV_KEY="rc-device", DEV_PEND="rc-device-pending", DEV_PILOT="rc-bind-pilot", PAIR_SS="rc-pair";
+var DEV_ON=false, DEV_CHECKED=0, DEV_MODE={mode:"off", legacy_off:false};
+var DEV_MSG={
+  off:"ระบบผูกเครื่องยังไม่เปิด — เข้าด้วย LINE แบบเดิมไปก่อน",
+  not_open:"ช่วงนี้ยังทดลองเฉพาะเจ้าของกับแอดมิน — เข้าด้วย LINE แบบเดิมไปก่อน",
+  pending:"บัญชีนี้ยังไม่ได้รับอนุญาต — แจ้งเจ้าของให้เปิดใช้งานให้ในหน้าตั้งค่า",
+  pair_used:"รหัสนี้ใช้ไปแล้ว — กดยืนยัน LINE ใหม่อีกครั้ง",
+  no_pair:"ยังไม่ได้ยืนยัน LINE หรือรหัสนี้ไม่ใช่ของเครื่องนี้ — กดยืนยัน LINE ใหม่",
+  expired:"รหัสหมดอายุ (เกิน 5 นาที) — กดยืนยัน LINE ใหม่",
+  locked:"กรอกรหัสผิดเกิน 5 ครั้ง — กดยืนยัน LINE ใหม่",
+  line_rejected:"LINE ไม่ยืนยันตัวตน — ลองใหม่อีกครั้ง",
+  revoked:"เครื่องนี้ถูกยกเลิกแล้ว — กดยืนยัน LINE เพื่อผูกเครื่องใหม่",
+  unknown:"ไม่พบเครื่องนี้ในระบบ — กดยืนยัน LINE เพื่อผูกเครื่องใหม่",
+  no_session:"บัตรผ่านหมดอายุ — ออกแล้วเข้าใหม่อีกครั้ง",
+  revoked_relogin:"เจ้าของเพิ่งยกเลิกเครื่องของคุณ — กด “ออก” แล้วยืนยัน LINE ผูกเครื่องใหม่",
+  bad_input:"ข้อมูลไม่ครบ ลองใหม่อีกครั้ง",
+  server:"เซิร์ฟเวอร์ขัดข้อง ลองใหม่อีกครั้ง"
+};
+function devErr(r){ return DEV_MSG[(r&&r.error)||"server"] || ("ผูกเครื่องไม่สำเร็จ ("+String((r&&r.error)||"?").slice(0,30)+")"); }
+function devGet(){ try{ var s=localStorage.getItem(DEV_KEY); return /^[0-9a-f]{64}$/.test(s||"") ? s : null; }catch(e){ return null; } }
+function devSet(s){ try{ localStorage.setItem(DEV_KEY, s); }catch(e){} }
+function devClear(){ try{ localStorage.removeItem(DEV_KEY); }catch(e){} }
+function randHex(n){
+  var a=new Uint8Array(n); crypto.getRandomValues(a);
+  return Array.prototype.map.call(a, function(b){ return ("0"+b.toString(16)).slice(-2); }).join("");
+}
+/* คำขอผูกที่ค้างอยู่ (pair + รหัสเครื่องที่จะใช้) อายุ 10 นาที */
+function devPendGet(){
+  try{
+    var p=JSON.parse(localStorage.getItem(DEV_PEND)||"null");
+    if(p && /^[0-9a-f]{32}$/.test(p.pair||"") && /^[0-9a-f]{64}$/.test(p.secret||"") && p.at > Date.now()-600000) return p;
+  }catch(e){}
+  return null;
+}
+function devPendClear(){ try{ localStorage.removeItem(DEV_PEND); }catch(e){} }
+/* ชื่อเครื่องไว้โชว์เจ้าของ/Telegram — บอกแค่ชนิดเครื่อง ไม่เก็บอะไรระบุตัวคน */
+function devLabel(){
+  var u=navigator.userAgent||"";
+  var os=/iPhone/.test(u)?"iPhone":/iPad/.test(u)?"iPad":/Android/.test(u)?"Android":/Windows/.test(u)?"Windows":/Macintosh/.test(u)?"Mac":"เครื่องอื่น";
+  var m=(os==="Android") ? u.match(/Android[^;)]*;\s*([^;)]+?)(?:\s+Build\/|\))/) : null;
+  var model=(m && m[1] && m[1]!=="K") ? " "+m[1].trim() : "";
+  var app=(window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone ? " · แอปบนหน้าจอ" : "";
+  return (os+model+app).slice(0,60);
+}
+function devApi(body, token){
+  var h={"Content-Type":"application/json", apikey:CFG.key};
+  if(token) h.Authorization="Bearer "+token;
+  return fetch(CFG.url+"/functions/v1/device", {method:"POST", headers:h, body:JSON.stringify(body)})
+    .then(function(r){ return r.json().catch(function(){ return {ok:false, error:"server"}; }); });
+}
+function devRetryBtn(on, fn){
+  var b=$("devRetry"); b.classList.toggle("hidden", !on);
+  b.onclick=function(){ b.classList.add("hidden"); fn(); };
+}
+/* เข้าแอปด้วยบัตรผ่านแบบผูกเครื่อง — ไม่เก็บลง rc-trip-session
+   Why: เปิดแอปครั้งหน้าต้องถามเซิร์ฟเวอร์ทุกครั้ง (คุณหลิงเคาะ) ห้ามเข้าเองจากบัตรที่เก็บในเครื่อง */
+function devEnter(r){
+  DEV_ON=true; DEV_CHECKED=Date.now();
+  clearSession();
+  var e=r.employee||{};
+  return enterWith({token:r.token, exp:r.expires_at, me:{id:e.id, name:e.name, nickname:e.nickname, role:e.role}})
+    .catch(function(err){
+      toast("โหลดข้อมูลไม่สำเร็จ — "+(err&&err.message?err.message:err));
+    });
+}
+/* เปิดแอป: เครื่องนี้ผูกไว้แล้ว → ถามเซิร์ฟเวอร์ก่อนทุกครั้ง */
+var DEV_SESS_BUSY=false;
+function devSession(sec){
+  if(DEV_SESS_BUSY) return;   /* focus + visibilitychange มาพร้อมกันได้ กันยิงซ้ำ */
+  DEV_SESS_BUSY=true;
+  loginMsg("กำลังเข้าสู่ระบบ…");
+  devApi({action:"session", secret:sec}).then(function(r){
+    DEV_SESS_BUSY=false;
+    if(r && r.ok){ loginMsg(""); return devEnter(r); }
+    var er=r&&r.error;
+    if(er==="revoked" || er==="unknown"){
+      devClear();
+      loginMsg(devErr(r),1);
+      return devModeCheck().then(legacyStart);
+    }
+    /* เจ้าของปิดระบบผูกเครื่อง / ถอยกลับเป็นช่วงทดลอง → ใช้ LINE แบบเดิม (ไม่ลบรหัสเครื่อง เปิดใหม่แล้วใช้ต่อได้) */
+    if(er==="off" || er==="not_open"){ return devModeCheck().then(legacyStart); }
+    loginMsg(devErr(r),1);
+    devRetryBtn(true, function(){ devSession(sec); });
+  }, function(){
+    DEV_SESS_BUSY=false;
+    loginMsg("ต่อเน็ตไม่ได้ — เช็คอินเทอร์เน็ตแล้วแตะ “ลองใหม่”",1);
+    devRetryBtn(true, function(){ devSession(sec); });
+  });
+}
+/* ระหว่างใช้แอป: บัตรใกล้หมด หรือกลับมาเปิดแอปหลังพักไว้นาน → ถามเซิร์ฟเวอร์ใหม่ */
+function devRefresh(force){
+  var sec=devGet();
+  if(!DEV_ON || !sec) return;
+  var soon=(AUTH.exp||0) - Date.now() < 3600000;
+  if(!force && !soon && Date.now()-DEV_CHECKED < 600000) return;
+  DEV_CHECKED=Date.now();
+  devApi({action:"session", secret:sec}).then(function(r){
+    if(r && r.ok){ AUTH.token=r.token; AUTH.exp=r.expires_at; return; }
+    var er=r&&r.error;
+    if(er==="revoked" || er==="unknown"){ devClear(); location.reload(); return; }
+    if(er==="off" || er==="pending" || er==="not_open"){ location.reload(); }
+  }, function(){ /* เน็ตหลุดชั่วคราว รอบหน้าค่อยลองใหม่ */ });
+}
+document.addEventListener("visibilitychange", function(){ if(!document.hidden) devRefresh(false); });
+setInterval(function(){ devRefresh(false); }, 300000);
+
+/* สวิตช์จากเซิร์ฟเวอร์ — ตัดสินว่าจะโชว์ปุ่มผูกเครื่อง / ปุ่ม LINE แบบเดิม */
+function devModeCheck(){
+  return devApi({action:"mode"}).then(function(r){
+    if(r && r.mode) DEV_MODE={mode:r.mode, legacy_off:!!r.legacy_off};
+  }, function(){}).then(devPaintLogin);
+}
+/* ช่วงทดลอง ปุ่มผูกเครื่องโชว์เฉพาะเครื่องที่เปิดลิงก์ ?bind=1 (เจ้าของ+แอดมิน) — คนอื่นเห็นหน้าเดิมทุกอย่าง */
+function devPilotFlag(){
+  if(/[?&]bind=1\b/.test(location.search)){ try{ localStorage.setItem(DEV_PILOT,"1"); }catch(e){} return true; }
+  try{ return localStorage.getItem(DEV_PILOT)==="1"; }catch(e){ return false; }
+}
+function devPaintLogin(){
+  var show = DEV_MODE.mode==="all" || (DEV_MODE.mode==="pilot" && devPilotFlag());
+  $("devBox").classList.toggle("hidden", !show);
+  $("lineBtn").classList.toggle("hidden", !!DEV_MODE.legacy_off);
+  $("devCodeBox").classList.toggle("hidden", !(show && devPendGet()));
+}
+/* ทางเดิม: บัตรผ่าน LINE ในเครื่อง → ถ้าไม่มีลองเข้า LINE เงียบๆ (ปิดทางเดิมแล้ว = ข้าม) */
+function legacyStart(){
+  if(DEV_MODE.legacy_off){ clearSession(); return; }
+  var s=loadSession();
+  if(s){
+    enterWith(s).then(function(){
+      /* บัตรเก่าออกก่อนเจ้าของกดยกเลิกเครื่องคนนี้ → ฐานข้อมูลไม่รู้จักแล้ว (ไม่เห็นแม้แต่ชื่อตัวเอง)
+         ทิ้งบัตรแล้วเริ่มใหม่ = ต้องยืนยัน LINE ใหม่ */
+      if(me && !DB.emp.some(function(e){ return e.id===me.id; })){ clearSession(); location.reload(); }
+    }, function(){
+      clearSession();
+      lineLogin({silent:true});
+    });
+    return;
+  }
+  lineLogin({silent:true});
+}
+/* ปุ่ม "ยืนยัน LINE ผูกเครื่องนี้" */
+function devStart(){
+  var p={pair:randHex(16), secret:randHex(32), at:Date.now()};
+  try{ localStorage.setItem(DEV_PEND, JSON.stringify(p)); }catch(e){}
+  $("devCode").value="";
+  $("devCodeBox").classList.remove("hidden");
+  loginMsg("ยืนยันตัวตนในหน้า LINE แล้วกลับมากรอกรหัส 6 ตัวที่นี่");
+  var url="https://liff.line.me/"+CFG.liffId+"?pair="+p.pair;
+  var w=null; try{ w=window.open(url, "_blank"); }catch(e){}
+  if(!w) location.href=url;   /* เปิดหน้าต่างใหม่ไม่ได้ → ไปหน้า LINE ตรงๆ คำขอค้างยังอยู่ กลับมาแอปแล้วกรอกต่อได้ */
+}
+/* กรอกรหัส 6 ตัว → ผูกเครื่อง */
+function devBindCode(){
+  var p=devPendGet();
+  if(!p){ loginMsg("รหัสหมดเวลาแล้ว — กด “ยืนยัน LINE ผูกเครื่องนี้” ใหม่",1); return; }
+  var code=($("devCode").value||"").replace(/\D/g,"");
+  if(code.length!==6){ loginMsg("กรอกรหัสให้ครบ 6 ตัว",1); $("devCode").focus(); return; }
+  var b=$("devCodeOk"); b.disabled=true; b.textContent="⏳ กำลังผูกเครื่อง…";
+  devApi({action:"bind", pair:p.pair, code:code, secret:p.secret, label:devLabel()}).then(function(r){
+    b.disabled=false; b.textContent="ผูกเครื่อง";
+    if(r && r.ok){
+      devSet(p.secret); devPendClear();
+      $("devCodeBox").classList.add("hidden");
+      loginMsg("");
+      toast("ผูกเครื่องเรียบร้อย ครั้งต่อไปแตะไอคอนเข้าได้เลย", 4000);
+      return devEnter(r);
+    }
+    if(r && r.error==="wrong_code"){
+      loginMsg("รหัสไม่ถูก"+(r.left>0?" (กรอกได้อีก "+r.left+" ครั้ง)":" — กดยืนยัน LINE ใหม่"),1);
+      return;
+    }
+    if(r && /^(expired|locked|pair_used)$/.test(r.error||"")) devPendClear();
+    loginMsg(devErr(r),1);
+  }, function(){
+    b.disabled=false; b.textContent="ผูกเครื่อง";
+    loginMsg("ต่อเน็ตไม่ได้ — ลองกดผูกเครื่องอีกครั้ง",1);
+  });
+}
+/* หน้า LINE ที่เปิดจากปุ่มผูกเครื่อง — จำ pair ไว้ก่อน LIFF ตัด query ทิ้ง (เด้งไปล็อกอิน LINE แล้วกลับมาก็ยังอยู่) */
+function pairCapture(){
+  var q=location.search||"", m=q.match(/[?&]pair=([0-9a-f]{32})(?:&|$)/);
+  if(!m){
+    var st=q.match(/[?&]liff\.state=([^&]+)/);
+    if(st){ try{ m=decodeURIComponent(st[1]).match(/[?&]pair=([0-9a-f]{32})(?:&|$)/); }catch(e){} }
+  }
+  if(m){ try{ sessionStorage.setItem(PAIR_SS, JSON.stringify({pair:m[1], at:Date.now()})); }catch(e){} }
+  try{
+    var s=JSON.parse(sessionStorage.getItem(PAIR_SS)||"null");
+    if(s && /^[0-9a-f]{32}$/.test(s.pair||"") && s.at > Date.now()-600000) return s.pair;
+  }catch(e){}
+  return null;
+}
+function pairPage(pair){
+  $("lineBtn").classList.add("hidden");
+  loginMsg("กำลังยืนยันตัวตนกับ LINE…");
+  if(typeof liff==="undefined"){ loginMsg("โหลดตัวเชื่อม LINE ไม่ได้ ลองเปิดใหม่อีกครั้ง",1); return; }
+  liffReady().then(function(){
+    if(!liff.isLoggedIn()){ liff.login(); return null; }
+    var idt=liff.getIDToken();
+    if(!idt){ forceRelogin("LINE ไม่ได้ส่งบัตรประจำตัวมา"); return null; }
+    var dec=null; try{ dec=liff.getDecodedIDToken(); }catch(_){}
+    if(dec && dec.exp && (dec.exp*1000) < (Date.now()+60000)){ forceRelogin("บัตร LINE หมดอายุ"); return null; }
+    return devApi({action:"confirm", id_token:idt, pair:pair});
+  }).then(function(r){
+    if(!r) return;
+    if(r.error==="line_rejected"){ forceRelogin("บัตร LINE ใช้ไม่ได้"); return; }
+    try{ sessionStorage.removeItem(PAIR_SS); sessionStorage.removeItem(RELOGIN_FLAG); }catch(e){}
+    if(/[?&]pair=/.test(location.search)){ try{ history.replaceState({}, "", location.pathname); }catch(e){} }
+    if(!r.ok){ loginMsg(devErr(r),1); return; }
+    /* หน้า LINE นี้ใช้ที่เก็บข้อมูลเดียวกับแอป (คำขอค้างตรงกัน) → ผูกให้เลยไม่ต้องกรอก */
+    var p=devPendGet();
+    if(p && p.pair===pair){
+      return devApi({action:"bind", pair:p.pair, code:r.code, secret:p.secret, label:devLabel()}).then(function(b){
+        if(b && b.ok){
+          devSet(p.secret); devPendClear();
+          loginMsg("ผูกเครื่องเรียบร้อย ✅ กลับไปแตะไอคอนแอปได้เลย");
+          return;
+        }
+        pairShow(r);
+      }, function(){ pairShow(r); });
+    }
+    pairShow(r);
+  }).catch(function(e){
+    loginMsg("ยืนยันไม่สำเร็จ — "+(e&&e.message?e.message:e),1);
+  });
+}
+function pairShow(r){
+  loginMsg("");
+  $("devShowHi").textContent="สวัสดี "+(r.name||"")+" · รหัสผูกเครื่องของคุณคือ";
+  $("devShowCode").textContent=r.code;
+  $("devShow").classList.remove("hidden");
+}
+/* ผูกจากในแอป (เข้า LINE แบบเดิมอยู่แล้ว) — ไม่ต้องไปหน้า LINE อีก */
+function devBindSession(){
+  if(PRV&&PRV.on){ prvWarn(); return; }
+  var sec=randHex(32);
+  devApi({action:"bind_session", secret:sec, label:devLabel()}, AUTH.token).then(function(r){
+    if(r && r.ok){
+      devSet(sec); DEV_ON=true; DEV_CHECKED=Date.now(); clearSession();
+      AUTH.token=r.token; AUTH.exp=r.expires_at;
+      toast("ผูกเครื่องนี้แล้ว ครั้งต่อไปแตะไอคอนเข้าได้เลย", 4000);
+      DEV_LIST_AT=0; render();
+      return;
+    }
+    toast(devErr(r), 4000);
+  }, function(){ toast("ต่อเน็ตไม่ได้ ลองใหม่อีกครั้ง"); });
+}
+function devCanBindHere(){
+  if(DEV_ON || devGet() || !me || DEV_MODE.legacy_off) return false;
+  return DEV_MODE.mode==="all" || (DEV_MODE.mode==="pilot" && isStaff(me));
+}
+/* หน้าตั้งค่า › เครื่องที่ผูก — แอดมินดูได้ · เจ้าของยกเลิก/เปลี่ยนสวิตช์ได้ (ฐานข้อมูลเช็คสิทธิ์ซ้ำ) */
+var DEV_LIST=null, DEV_LIST_AT=0, DEV_LIST_BUSY=false;
+function devFmt(t){
+  if(!t) return "–";
+  var d=new Date(t); if(isNaN(d)) return "–";
+  return d.getDate()+"/"+(d.getMonth()+1)+"/"+(d.getFullYear()+543-2500)+" "+("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2);
+}
+function devPaintBlock(){
+  var blk=$("devBlock"); if(!blk) return;
+  var staff=isStaff(me); blk.classList.toggle("hidden", !staff);
+  if(!staff) return;
+  var mine=$("devMine");
+  mine.innerHTML = DEV_ON
+    ? '<span class="pill t1">✅ เครื่องนี้ผูกแล้ว</span>'
+    : (devCanBindHere()
+        ? '<button class="btn primary" id="devMineBind">ผูกเครื่องนี้</button><span class="hint">ผูกแล้วเครื่องเดิม (ถ้ามี) จะหลุด</span>'
+        : '<span class="hint">เครื่องนี้ยังไม่ได้ผูก</span>');
+  var mb=$("devMineBind"); if(mb) mb.onclick=devBindSession;
+  $("devSwitch").classList.toggle("hidden", !isOwner(me));
+  if(DEV_LIST_BUSY) return;
+  if(DEV_LIST && Date.now()-DEV_LIST_AT < 30000){ devPaintList(); return; }
+  DEV_LIST_BUSY=true;
+  rest("rpc/device_list",{method:"POST", body:{}}).then(function(r){
+    DEV_LIST=r; DEV_LIST_AT=Date.now();
+    if(r && r.config){ DEV_MODE={mode:r.config.mode, legacy_off:!!r.config.legacy_off}; }
+  }, function(e){
+    DEV_LIST=null;
+    $("devList").innerHTML='<p class="hint bad" style="margin:0">ดึงรายการเครื่องไม่ได้ ('+esc(String(e&&e.message||e).slice(0,80))+')</p>';
+  }).then(function(){ DEV_LIST_BUSY=false; if(DEV_LIST) devPaintList(); });
+}
+function devPaintList(){
+  var owner=isOwner(me), box=$("devList");
+  $("devModeSel").value=DEV_MODE.mode; $("devLegacySel").value=DEV_MODE.legacy_off?"1":"0";
+  var ds=(DEV_LIST&&DEV_LIST.devices)||[];
+  if(!ds.length){ box.innerHTML='<p class="hint" style="margin:0">ยังไม่มีใครผูกเครื่อง</p>'; return; }
+  box.innerHTML=ds.map(function(d,i){
+    var who=esc(emp(d.emp_id).nickname||emp(d.emp_id).name||"?");
+    var st = d.revoked_at
+      ? '<span class="hint">หลุดแล้ว '+devFmt(d.revoked_at)+' · '+(d.revoke_reason==="owner"?"เจ้าของยกเลิก ("+esc(emp(d.revoked_by).name||"?")+")":"เปลี่ยนเครื่อง")+'</span>'
+      : '<span class="pill t1">ใช้อยู่</span>';
+    return '<div class="row" style="justify-content:space-between; border-bottom:1px solid var(--line); padding:6px 0">'+
+      '<div style="min-width:0"><b>'+who+'</b> · '+esc(d.label||"–")+'<br>'+
+      '<span class="hint">ผูก '+devFmt(d.created_at)+' · เปิดล่าสุด '+devFmt(d.last_seen_at)+'</span><br>'+st+'</div>'+
+      (owner && !d.revoked_at ? '<button class="btn sm" data-devrev="'+i+'">ยกเลิกเครื่อง</button>' : '')+
+      '</div>';
+  }).join("");
+  Array.prototype.forEach.call(box.querySelectorAll("[data-devrev]"), function(b){
+    b.onclick=function(){ devRevoke(ds[+b.getAttribute("data-devrev")]); };
+  });
+}
+function devRevoke(d){
+  if(!d) return;
+  var who=emp(d.emp_id).nickname||emp(d.emp_id).name||"?";
+  askChoice({
+    title:"ยกเลิกเครื่องของ "+who+" ?",
+    body:esc(d.label||"")+"<br>เครื่องนี้จะใช้แอปไม่ได้ทันที ต้องยืนยัน LINE ผูกเครื่องใหม่ · ระบบแจ้ง Telegram ว่าใครเป็นคนยกเลิก",
+    yes:"ยกเลิกเครื่องนี้", no:"ไม่ยกเลิก",
+    onYes:function(){
+      rest("rpc/device_revoke",{method:"POST", body:{p_emp:d.emp_id}}).then(function(r){
+        if(r && r.ok){
+          toast("ยกเลิกเครื่องของ "+who+" แล้ว");
+          if(me && d.emp_id===me.id && DEV_ON){ devClear(); location.reload(); return; }
+        } else toast("ไม่มีเครื่องที่ใช้อยู่แล้ว");
+        DEV_LIST_AT=0; devPaintBlock();
+      }, function(e){ toast("ยกเลิกไม่สำเร็จ — "+(e&&e.message?e.message:e)); });
+    },
+    onNo:function(){}
+  });
+}
+function devSwitchSave(){
+  var m=$("devModeSel").value, lo=$("devLegacySel").value==="1";
+  if(lo && m!=="all"){ toast("ปิดล็อกอินแบบเดิมได้เมื่อเปิดผูกเครื่องให้ทุกคนแล้วเท่านั้น", 4000); return; }
+  askChoice({
+    title:"เปลี่ยนสวิตช์ผูกเครื่อง ?",
+    body:"ผูกเครื่อง: <b>"+esc($("devModeSel").selectedOptions[0].text)+"</b><br>ล็อกอิน LINE แบบเดิม: <b>"+(lo?"ปิด":"ยังใช้ได้")+"</b>"+
+         (lo?"<br>⚠️ คนที่ยังไม่ผูกเครื่องจะต้องยืนยัน LINE ผูกเครื่องก่อนใช้ต่อ":"")+"<br>ระบบแจ้ง Telegram ทุกครั้ง",
+    yes:"บันทึก", no:"ไม่เปลี่ยน",
+    onYes:function(){
+      rest("rpc/device_config_set",{method:"POST", body:{p_mode:m, p_legacy_off:lo}}).then(function(){
+        toast("บันทึกสวิตช์แล้ว"); DEV_LIST_AT=0; devPaintBlock();
+      }, function(e){ toast("บันทึกไม่สำเร็จ — "+(e&&e.message?e.message:e)); });
+    },
+    onNo:function(){}
   });
 }
 
@@ -1861,18 +2261,31 @@ function askText(title, hint, cb, pre){
 function renderLogin(){
   var b=document.getElementById("lineBtn");
   if(b) b.onclick=function(){ lineLogin(); };
+  $("devStartBtn").onclick=devStart;
+  $("devCodeOk").onclick=devBindCode;
+  $("devCode").onkeydown=function(e){ if(e.key==="Enter"){ e.preventDefault(); devBindCode(); } };
 
-  /* เปิดแอปมา ถ้ายังมีบัตรผ่านที่ไม่หมดอายุ เข้าให้เลย ไม่ต้องผ่าน LINE */
-  var s=loadSession();
-  if(s){
-    enterWith(s).catch(function(){
-      clearSession();
-      lineLogin({silent:true});   /* บัตรใช้ไม่ได้แล้ว ลองขอใหม่แบบเงียบๆ */
-    });
-    return;
-  }
-  lineLogin({silent:true});
+  /* หน้า LINE ที่เปิดจากปุ่มผูกเครื่อง (v40) → ยืนยันตัวตนแล้วโชว์รหัส 6 ตัว */
+  var pair=pairCapture();
+  if(pair){ pairPage(pair); return; }
+
+  /* เครื่องนี้ผูกไว้แล้ว (v40) → ถามเซิร์ฟเวอร์ทุกครั้งที่เปิดแอป ไม่ผ่าน LINE */
+  var sec=devGet();
+  if(sec){ devSession(sec); return; }
+
+  /* ยังไม่ผูก → ดูสวิตช์ก่อน (ปิดทางเดิมแล้วจะไม่เข้าด้วยบัตร LINE เก่า)
+     แล้วค่อยเข้าแบบเดิม: มีบัตรผ่านที่ไม่หมดอายุ เข้าให้เลย ไม่ต้องผ่าน LINE */
+  devModeCheck().then(legacyStart);
 }
+/* กลับมาที่แอปหลังไปยืนยันในหน้า LINE — ถ้าหน้า LINE ผูกให้แล้ว (ที่เก็บข้อมูลเดียวกัน) เข้าแอปต่อเลย */
+function devOnReturn(){
+  if(document.hidden || me) return;
+  var sec=devGet();
+  if(sec && !$("loginView").classList.contains("hidden") && $("devShow").classList.contains("hidden")){ devSession(sec); return; }
+  if(devPendGet() && !$("devBox").classList.contains("hidden")) $("devCodeBox").classList.remove("hidden");
+}
+document.addEventListener("visibilitychange", devOnReturn);
+window.addEventListener("focus", devOnReturn);
 
 
 function find(arr,id){ for(var i=0;i<arr.length;i++) if(arr[i].id===id) return arr[i]; return null; }
@@ -4532,6 +4945,8 @@ function renderLive(){
 function renderHome(){
   $("todayLabel").textContent=fmtDate(today());
   renderLive();
+  /* ผูกเครื่อง (v40) — คนที่ยังเข้าด้วย LINE แบบเดิม กดผูกจากตรงนี้ได้เลย (ช่วงทดลองโชว์เฉพาะเจ้าของ/แอดมิน) */
+  $("devHomeCard").classList.toggle("hidden", !(devCanBindHere() && !(PRV&&PRV.on)));
   var mine=sorted(DB.job.filter(function(j){ return j.emp===me.id && j.date===today(); }));
   var done=mine.filter(function(j){ return j.status==="done"; });
   var wait=done.filter(function(j){ return !j.priced; }).length;
@@ -5830,6 +6245,7 @@ function renderSettings(){
   $("trashBlock").classList.toggle("hidden", !isOwner(me));
   /* ลองดูหน้าจอพนักงาน — เจ้าของเท่านั้น (แอดมินเห็นหน้าตั้งค่าด้วย) */
   $("prvBlock").classList.toggle("hidden", !isOwner(me));
+  devPaintBlock();
   prvPaintSel();
   paintEmpList();
   $("empSearch").oninput=paintEmpList;
@@ -6979,7 +7395,34 @@ function csvJobs(){
 
 /* ---------- ผูกปุ่ม ---------- */
 $("lineBtn").onclick=lineLogin;
+$("devHomeBind").onclick=devBindSession;
+$("devSwitchSave").onclick=devSwitchSave;
 $("logoutBtn").onclick=function(){
+  /* เครื่องที่ผูกไว้ (v40): ออก = ลืมเครื่องนี้ ครั้งหน้าต้องยืนยัน LINE ผูกใหม่ — ไม่งั้นกดออกแล้วเปิดใหม่ก็เข้าเองอยู่ดี */
+  /* มีรหัสเครื่องค้างอยู่ก็ต้องยกเลิกด้วย แม้ตอนนี้เข้าทาง LINE แบบเดิม (สวิตช์ถูกถอยกลับ) (Codex รอบ 3 ข้อ 2) */
+  if(DEV_ON || devGet()){
+    askChoice({
+      title:"ออกจากระบบบนเครื่องนี้ ?",
+      body:"ครั้งหน้าต้อง <b>ยืนยัน LINE ผูกเครื่องใหม่</b> ก่อนเข้าแอป",
+      yes:"ออกจากระบบ", no:"ไม่ออก",
+      onYes:function(){
+        /* ยกเลิกเครื่องนี้ฝั่งเซิร์ฟเวอร์ก่อน แล้วค่อยลบในเครื่อง
+           Why: ถ้าลบในเครื่องทั้งที่เซิร์ฟเวอร์ยังไม่ยกเลิก สำเนารหัสที่หลุดไปยังใช้ได้ และกดออกซ้ำไม่ได้แล้ว */
+        var sec=devGet(), done=function(){
+          devClear(); devPendClear(); DEV_ON=false;
+          AUTH.token=null; AUTH.exp=0; me=null; clearSession();
+          location.reload();
+        };
+        if(!sec){ done(); return; }
+        devApi({action:"logout", secret:sec}).then(function(r){
+          if(r && r.ok) done();
+          else toast("ออกไม่สำเร็จ ("+devErr(r)+") — ลองกดออกอีกครั้ง หรือให้เจ้าของกดยกเลิกเครื่องให้", 5000);
+        }, function(){ toast("ต่อเน็ตไม่ได้ — ต่อเน็ตแล้วกดออกอีกครั้ง", 4000); });
+      },
+      onNo:function(){}
+    });
+    return;
+  }
   AUTH.token=null; AUTH.exp=0; me=null; clearSession();
   try{ if(typeof liff!=="undefined" && liff.isLoggedIn && liff.isLoggedIn()) liff.logout(); }catch(e){}
   location.reload();
