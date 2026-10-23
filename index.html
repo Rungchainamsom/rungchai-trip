@@ -1729,7 +1729,7 @@ function devCanBindHere(){
   return DEV_MODE.mode==="all" || (DEV_MODE.mode==="pilot" && isStaff(me));
 }
 /* หน้าตั้งค่า › เครื่องที่ผูก — แอดมินดูได้ · เจ้าของยกเลิก/เปลี่ยนสวิตช์ได้ (ฐานข้อมูลเช็คสิทธิ์ซ้ำ) */
-var DEV_LIST=null, DEV_LIST_AT=0, DEV_LIST_BUSY=false, DEV_SW_DIRTY=false;
+var DEV_LIST=null, DEV_LIST_AT=0, DEV_LIST_BUSY=false, DEV_SW_DIRTY=false, DEV_SHOW_OLD=false;
 function devFmt(t){
   if(!t) return "–";
   var d=new Date(t); if(isNaN(d)) return "–";
@@ -1784,22 +1784,35 @@ function devPaintList(){
   /* เจ้าของเลือกค้างไว้แล้วยังไม่กดบันทึก → ห้ามเขียนทับ
      Why: 23 ต.ค. 69 เลือก "ทดลอง" ระหว่างรายการเครื่องยังโหลด กล่องเด้งกลับเป็น "ปิด" แล้วบันทึกไม่เปลี่ยนอะไร */
   if(!DEV_SW_DIRTY){ $("devModeSel").value=DEV_MODE.mode; $("devLegacySel").value=DEV_MODE.legacy_off?"1":"0"; }
-  var ds=(DEV_LIST&&DEV_LIST.devices)||[];
-  if(!ds.length){ box.innerHTML='<p class="hint" style="margin:0">ยังไม่มีใครผูกเครื่อง</p>'; return; }
+  /* เครื่องที่หลุดแล้วซ่อนไว้ก่อน กดปุ่มถึงจะเห็นประวัติ — คุณหลิงขอ 23 ต.ค. 69 (รายการยาวจนหาเครื่องที่ใช้อยู่ไม่เจอ) */
+  var all=(DEV_LIST&&DEV_LIST.devices)||[];
+  var nOld=all.filter(function(d){ return d.revoked_at; }).length;
+  var ds=DEV_SHOW_OLD ? all : all.filter(function(d){ return !d.revoked_at; });
+  var oldBtn=nOld ? '<div><button class="btn sm ghost" id="devOldToggle">'+(DEV_SHOW_OLD?"ซ่อนเครื่องที่หลุดแล้ว":"ดูเครื่องที่หลุดแล้ว ("+nOld+")")+'</button></div>' : '';
+  if(!ds.length){
+    box.innerHTML='<p class="hint" style="margin:0">ยังไม่มีเครื่องที่ใช้อยู่</p>'+oldBtn;
+    devOldBind(); return;
+  }
   box.innerHTML=ds.map(function(d,i){
     var who=esc(emp(d.emp_id).nickname||emp(d.emp_id).name||"?");
+    var why=d.revoke_reason==="owner" ? "เจ้าของยกเลิก ("+esc(emp(d.revoked_by).name||"?")+")"
+          : d.revoke_reason==="self" ? "ออกจากระบบเอง" : "เปลี่ยนเครื่อง";
     var st = d.revoked_at
-      ? '<span class="hint">หลุดแล้ว '+devFmt(d.revoked_at)+' · '+(d.revoke_reason==="owner"?"เจ้าของยกเลิก ("+esc(emp(d.revoked_by).name||"?")+")":"เปลี่ยนเครื่อง")+'</span>'
+      ? '<span class="hint">หลุดแล้ว '+devFmt(d.revoked_at)+' · '+why+'</span>'
       : '<span class="pill t1">ใช้อยู่</span>';
     return '<div class="row" style="justify-content:space-between; border-bottom:1px solid var(--line); padding:6px 0">'+
       '<div style="min-width:0"><b>'+who+'</b> · '+esc(d.label||"–")+(myDev && d.id===myDev ? ' <span class="pill t3">เครื่องนี้</span>' : '')+'<br>'+
       '<span class="hint">ผูก '+devFmt(d.created_at)+' · เปิดล่าสุด '+devFmt(d.last_seen_at)+'</span><br>'+st+'</div>'+
       (owner && !d.revoked_at ? '<button class="btn sm" data-devrev="'+i+'">ยกเลิกเครื่อง</button>' : '')+
       '</div>';
-  }).join("");
+  }).join("")+oldBtn;
   Array.prototype.forEach.call(box.querySelectorAll("[data-devrev]"), function(b){
     b.onclick=function(){ devRevoke(ds[+b.getAttribute("data-devrev")]); };
   });
+  devOldBind();
+}
+function devOldBind(){
+  var b=$("devOldToggle"); if(b) b.onclick=function(){ DEV_SHOW_OLD=!DEV_SHOW_OLD; devPaintList(); };
 }
 function devRevoke(d){
   if(!d) return;
