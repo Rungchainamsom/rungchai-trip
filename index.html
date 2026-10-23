@@ -1549,7 +1549,10 @@ function devPilotFlag(){
 function devPaintLogin(){
   var show = DEV_MODE.mode==="all" || (DEV_MODE.mode==="pilot" && devPilotFlag());
   $("devBox").classList.toggle("hidden", !show);
-  $("lineBtn").classList.toggle("hidden", !!DEV_MODE.legacy_off);
+  /* แอปบนหน้าจอ: ปุ่ม LINE แบบเดิมใช้ไม่ได้อยู่แล้ว (LINE ไม่เด้งกลับเข้าแอป) มีปุ่มผูกเครื่องก็ซ่อนไปเลย
+     คุณหลิงขอ 23 ต.ค. 69 · แท็บเบราว์เซอร์ธรรมดา (เช่น คอม) ยังเห็นปุ่ม LINE เหมือนเดิม */
+  var standalone=(window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone===true;
+  $("lineBtn").classList.toggle("hidden", !!DEV_MODE.legacy_off || (show && standalone));
   $("devCodeBox").classList.toggle("hidden", !(show && devPendGet()));
 }
 /* ทางเดิม: บัตรผ่าน LINE ในเครื่อง → ถ้าไม่มีลองเข้า LINE เงียบๆ (ปิดทางเดิมแล้ว = ข้าม) */
@@ -1681,7 +1684,7 @@ function devCanBindHere(){
   return DEV_MODE.mode==="all" || (DEV_MODE.mode==="pilot" && isStaff(me));
 }
 /* หน้าตั้งค่า › เครื่องที่ผูก — แอดมินดูได้ · เจ้าของยกเลิก/เปลี่ยนสวิตช์ได้ (ฐานข้อมูลเช็คสิทธิ์ซ้ำ) */
-var DEV_LIST=null, DEV_LIST_AT=0, DEV_LIST_BUSY=false;
+var DEV_LIST=null, DEV_LIST_AT=0, DEV_LIST_BUSY=false, DEV_SW_DIRTY=false;
 function devFmt(t){
   if(!t) return "–";
   var d=new Date(t); if(isNaN(d)) return "–";
@@ -1712,7 +1715,9 @@ function devPaintBlock(){
 }
 function devPaintList(){
   var owner=isOwner(me), box=$("devList");
-  $("devModeSel").value=DEV_MODE.mode; $("devLegacySel").value=DEV_MODE.legacy_off?"1":"0";
+  /* เจ้าของเลือกค้างไว้แล้วยังไม่กดบันทึก → ห้ามเขียนทับ
+     Why: 23 ต.ค. 69 เลือก "ทดลอง" ระหว่างรายการเครื่องยังโหลด กล่องเด้งกลับเป็น "ปิด" แล้วบันทึกไม่เปลี่ยนอะไร */
+  if(!DEV_SW_DIRTY){ $("devModeSel").value=DEV_MODE.mode; $("devLegacySel").value=DEV_MODE.legacy_off?"1":"0"; }
   var ds=(DEV_LIST&&DEV_LIST.devices)||[];
   if(!ds.length){ box.innerHTML='<p class="hint" style="margin:0">ยังไม่มีใครผูกเครื่อง</p>'; return; }
   box.innerHTML=ds.map(function(d,i){
@@ -1759,6 +1764,8 @@ function devSwitchSave(){
     yes:"บันทึก", no:"ไม่เปลี่ยน",
     onYes:function(){
       rest("rpc/device_config_set",{method:"POST", body:{p_mode:m, p_legacy_off:lo}}).then(function(){
+        /* ล้างได้เฉพาะเมื่อกล่องยังเป็นค่าที่เพิ่งบันทึก — ถ้าเลือกใหม่ระหว่างรอ ให้คงค่าที่เลือกใหม่ไว้ */
+        if($("devModeSel").value===m && ($("devLegacySel").value==="1")===lo) DEV_SW_DIRTY=false;
         toast("บันทึกสวิตช์แล้ว"); DEV_LIST_AT=0; devPaintBlock();
       }, function(e){ toast("บันทึกไม่สำเร็จ — "+(e&&e.message?e.message:e)); });
     },
@@ -7397,6 +7404,7 @@ function csvJobs(){
 $("lineBtn").onclick=lineLogin;
 $("devHomeBind").onclick=devBindSession;
 $("devSwitchSave").onclick=devSwitchSave;
+$("devModeSel").onchange=$("devLegacySel").onchange=function(){ DEV_SW_DIRTY=true; };
 $("logoutBtn").onclick=function(){
   /* เครื่องที่ผูกไว้ (v40): ออก = ลืมเครื่องนี้ ครั้งหน้าต้องยืนยัน LINE ผูกใหม่ — ไม่งั้นกดออกแล้วเปิดใหม่ก็เข้าเองอยู่ดี */
   /* มีรหัสเครื่องค้างอยู่ก็ต้องยกเลิกด้วย แม้ตอนนี้เข้าทาง LINE แบบเดิม (สวิตช์ถูกถอยกลับ) (Codex รอบ 3 ข้อ 2) */
