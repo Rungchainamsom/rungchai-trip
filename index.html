@@ -83,6 +83,24 @@ button,input,select,textarea{font:inherit; color:inherit}
 .grid{display:grid; gap:14px}
 .g2{grid-template-columns:1fr 1fr}
 .sec-title{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink3); font-weight:600; margin:24px 0 10px}
+/* หน้าตั้งค่า — แต่ละหมวดมีสี + ไอคอนของตัวเอง เลื่อนผ่านๆ ก็รู้ว่าอยู่หมวดไหน
+   (แบบ ข · คุณหลิงเลือก 23 ต.ค. 2569) เปลี่ยนแค่หน้าตา ไม่แตะการทำงาน — สีหมวดตั้งที่ style="--cc:…" ของแต่ละหมวด */
+.setnav{display:flex; flex-wrap:wrap; gap:8px; margin:18px 0 0}
+.setnav button{border:0; background:var(--cc); color:#fff; border-radius:999px; padding:8px 14px; min-height:40px;
+  font:inherit; font-size:14.5px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px}
+.scat{--cc:#6b7280; margin:22px 0 0; border-radius:16px; overflow:hidden; scroll-margin-top:120px;
+  background:color-mix(in srgb, var(--cc) 11%, var(--surface)); border:1px solid color-mix(in srgb, var(--cc) 30%, var(--line))}
+.scat-head{display:flex; align-items:center; gap:10px; background:var(--cc); color:#fff; padding:13px 16px;
+  font-family:"Bai Jamjuree","IBM Plex Sans Thai",sans-serif; font-weight:700; font-size:19px; line-height:1.3}
+.scat-ic{font-size:22px; line-height:1}
+.scat-n{margin-left:auto; background:rgba(255,255,255,.25); border-radius:999px; padding:2px 11px; font-size:13.5px; font-weight:600; white-space:nowrap}
+.scat-n:empty{display:none}
+.scat-body{padding:12px}
+.scat-body .card,.scat-body .tablewrap{box-shadow:none; border-color:color-mix(in srgb, var(--cc) 22%, var(--line))}
+.scat-body .sec-title{color:color-mix(in srgb, var(--cc) 80%, var(--ink)); letter-spacing:.04em; font-size:14px; margin:16px 0 8px}
+.scat .btn.primary,.scat .btn.scat-add{background:var(--cc); border-color:var(--cc); color:#fff; font-weight:600}
+.scat .btn.scat-fold{background:var(--surface); border:1.5px solid var(--cc); color:color-mix(in srgb, var(--cc) 78%, var(--ink));
+  font-weight:600; width:100%; justify-content:flex-start; padding:10px 14px; font-size:15px}
 label.f{display:flex; flex-direction:column; gap:6px; font-size:14px; color:var(--ink2); font-weight:500; min-width:0; max-width:100%}
 /* หน้าจอต้องพอดีความกว้างมือถือเสมอ (เจ้าของขอ 17 ต.ค. 2569 — iPhone หน้าจอหดเหลือ 2/3 มีพื้นที่ว่างด้านขวา)
    Why: มีของชิ้นไหนกว้างเกินจอแม้ชั่วครู่ Safari/Chrome บน iPhone จะซูมออกทั้งหน้าแล้วไม่ซูมกลับเอง
@@ -893,7 +911,10 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <p class="hint hidden" id="setAdmNote" style="margin:18px 0 -8px; color:var(--accent); font-weight:600">
         คุณเข้าใช้ในฐานะ <b>แอดมิน</b> — ตั้งค่าเรื่องเงินกับจัดการสิทธิ์พนักงาน ต้องให้เจ้าของเป็นคนทำ
       </p>
-      <div class="sec-title">ค่าตั้งต้น</div>
+      <nav class="setnav" id="setNav" aria-label="ไปที่หมวด"></nav>
+      <div class="scat" id="scat-base" data-cat="base" data-ic="⚙️" data-t="ค่าตั้งต้น" style="--cc:#7a5cc4">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">⚙️</span><span>ค่าตั้งต้น</span><span class="scat-n" id="scatN-base"></span></div>
+      <div class="scat-body">
       <div class="card pad grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
         <label class="f" data-money="1">เบี้ยเลี้ยง/เดือน (บาท)<input type="number" id="sAllow" step="100"></label>
         <label class="f" data-money="1">หักวันขาด วันละ (บาท)<input type="number" id="sDeduct" step="10"></label>
@@ -907,8 +928,11 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="sSave">บันทึก</button></label>
         <p class="hint" id="imgStat" style="grid-column:1/-1; margin:0"></p>
       </div>
+      </div></div>
 
-      <div class="sec-title">เก็บกวาดรูปในถัง</div>
+      <div class="scat" id="scat-orph" data-cat="orph" data-ic="🧹" data-t="เก็บกวาดรูปในถัง" style="--cc:#8d6e4f">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">🧹</span><span>เก็บกวาดรูปในถัง</span><span class="scat-n" id="scatN-orph"></span></div>
+      <div class="scat-body">
       <div class="card pad stack">
         <p class="hint" style="margin:0">
           หารูปที่ไม่มีงานหรือรายการเติมน้ำมันอ้างถึงแล้ว (เช่นบันทึกงานค้างไว้แล้วลบทิ้ง)
@@ -919,9 +943,11 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         </div>
         <div id="orphOut" class="hint" style="margin:0"></div>
       </div>
+      </div></div>
 
-      <div id="empBlock">
-      <div class="sec-title">พนักงาน</div>
+      <div class="scat" id="empBlock" data-cat="emp" data-ic="👷" data-t="พนักงาน" style="--cc:#3f7cc4">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">👷</span><span>พนักงาน</span><span class="scat-n" id="scatN-emp"></span></div>
+      <div class="scat-body">
       <div class="card pad" style="margin-bottom:10px">
         <label class="f">ค้นหาชื่อ<input type="text" id="empSearch" placeholder="พิมพ์ชื่อบางส่วนก็ได้" autocomplete="off"></label>
       </div>
@@ -929,36 +955,44 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="card pad row" style="margin-top:10px">
         <label class="f" style="flex:2; min-width:160px">ชื่อ–สกุล<input type="text" id="eName" placeholder="เช่น สมชาย ทองดี"></label>
         <label class="f" style="flex:1; min-width:120px">บทบาท<select id="eRole"><option value="driver">คนขับ</option><option value="admin">แอดมิน (ออฟฟิศ)</option><option value="owner">เจ้าของ</option></select></label>
-        <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="eAdd">เพิ่ม</button></label>
+        <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn scat-add" id="eAdd">＋ เพิ่ม</button></label>
       </div>
-      </div>
+      </div></div>
 
-      <div class="sec-title">รถ</div>
+      <div class="scat" id="scat-truck" data-cat="truck" data-ic="🚚" data-t="รถ" style="--cc:#d9822b">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">🚚</span><span>รถ</span><span class="scat-n" id="scatN-truck"></span></div>
+      <div class="scat-body">
       <div class="tablewrap"><table id="truckTable"></table></div>
       <div class="card pad row" style="margin-top:10px">
         <label class="f" style="flex:2; min-width:160px">ทะเบียน<input type="text" id="tPlate" placeholder="82-1234 อด"></label>
         <label class="f" style="flex:1; min-width:130px">ประเภทรถ<select id="tSize"></select></label>
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="tSizeAdd" style="border-style:dashed">＋ ประเภท</button></label>
-        <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="tAdd">เพิ่ม</button></label>
+        <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn scat-add" id="tAdd">＋ เพิ่ม</button></label>
       </div>
+      </div></div>
 
-      <div class="sec-title">รายการสินค้า</div>
+      <div class="scat" id="scat-mat" data-cat="mat" data-ic="📦" data-t="รายการสินค้า" style="--cc:#3d9a6a">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">📦</span><span>รายการสินค้า</span><span class="scat-n" id="scatN-mat"></span></div>
+      <div class="scat-body">
       <div class="tablewrap"><table id="matTable"></table></div>
       <div class="card pad row" style="margin-top:10px">
         <label class="f" style="flex:2; min-width:160px">ชื่อสินค้า<input type="text" id="mName" placeholder="เช่น หินคลุก"></label>
-        <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="mAdd">เพิ่ม</button></label>
+        <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn scat-add" id="mAdd">＋ เพิ่ม</button></label>
       </div>
       <p class="hint" style="margin:8px 0 0">
         ลำดับในตารางนี้คือลำดับที่โผล่ในช่องเลือกสินค้า ·
         แก้ชื่อแล้วงานเก่าที่ใช้ชื่อเดิมจะถูกแก้ตามให้ด้วย · ลบแล้วงานเก่ายังเก็บชื่อเดิมไว้เหมือนเดิม
       </p>
+      </div></div>
 
-      <div class="sec-title">สถานที่ (ชื่อจุดรับ–ส่ง)</div>
+      <div class="scat" id="scat-place" data-cat="place" data-ic="📍" data-t="สถานที่ (ชื่อจุดรับ–ส่ง)" style="--cc:#c4505a">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">📍</span><span>สถานที่ (ชื่อจุดรับ–ส่ง)</span><span class="scat-n" id="scatN-place"></span></div>
+      <div class="scat-body">
       <div id="placeTable" class="stack" style="gap:8px"></div>
       <div class="card pad row" style="margin-top:10px">
         <label class="f" style="flex:2; min-width:150px">ชื่อสถานที่<input type="text" id="plName" maxlength="60" placeholder="เช่น ท่าทราย"></label>
         <label class="f" style="flex:2; min-width:170px">พิกัด (วางจาก Google Maps)<input type="text" id="plLL" placeholder="17.7659, 102.1627"></label>
-        <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn" id="plAdd">เพิ่ม</button></label>
+        <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn scat-add" id="plAdd">＋ เพิ่ม</button></label>
       </div>
       <div class="sec-title" style="font-size:14px">จุดที่ยังไม่มีชื่อ</div>
       <div id="looseTable" class="stack" style="gap:8px"></div>
@@ -967,9 +1001,11 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         เลือกสถานที่ที่มีชื่อ = แก้งานเป็นพิกัดมาตรฐานของที่นั้น ระยะทางจะเท่ากันทุกใบ ·
         ลบสถานที่ไม่กระทบพิกัดของงานที่ลงไปแล้ว
       </p>
+      </div></div>
 
-      <div id="trashBlock">
-      <div class="sec-title">งานที่ถูกลบ</div>
+      <div class="scat" id="trashBlock" data-cat="trash" data-ic="🗑️" data-t="งานที่ถูกลบ" style="--cc:#6b7280">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">🗑️</span><span>งานที่ถูกลบ</span><span class="scat-n" id="scatN-trash"></span></div>
+      <div class="scat-body">
       <div class="card pad stack">
         <p class="hint" style="margin:0">
           งานที่ถูกลบไปยังกู้คืนได้ ข้อมูลเก็บไว้ครบทั้งค่าเที่ยว รูป และพิกัด
@@ -979,10 +1015,11 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         </div>
         <div id="trashOut"></div>
       </div>
-      </div>
+      </div></div>
 
-      <div id="devBlock">
-      <div class="sec-title">เครื่องที่ผูก (เข้าแอปไม่ต้องผ่าน LINE)</div>
+      <div class="scat" id="devBlock" data-cat="dev" data-ic="📱" data-t="เครื่องที่ผูก (เข้าแอปไม่ต้องผ่าน LINE)" style="--cc:#2a9aa4">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">📱</span><span>เครื่องที่ผูก (เข้าแอปไม่ต้องผ่าน LINE)</span><span class="scat-n" id="scatN-dev"></span></div>
+      <div class="scat-body">
       <div class="card pad stack">
         <p class="hint" style="margin:0">
           พนักงาน 1 คน ใช้ได้ 1 เครื่อง · ผูกเครื่องใหม่ เครื่องเดิมหลุดเอง และแจ้ง Telegram ทุกครั้ง ·
@@ -1007,10 +1044,11 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         </div>
         <div id="devList" class="stack" style="gap:8px"></div>
       </div>
-      </div>
+      </div></div>
 
-      <div id="prvBlock">
-      <div class="sec-title">ลองดูหน้าจอของพนักงาน</div>
+      <div class="scat" id="prvBlock" data-cat="prv" data-ic="👀" data-t="ลองดูหน้าจอของพนักงาน" style="--cc:#b0509a">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">👀</span><span>ลองดูหน้าจอของพนักงาน</span><span class="scat-n" id="scatN-prv"></span></div>
+      <div class="scat-body">
       <div class="card pad stack">
         <p class="hint" style="margin:0">
           เปิดดูว่าหน้าจอของคนขับ (หรือแอดมิน) หน้าตาเป็นอย่างไร พร้อมงานจริงของคนนั้น ·
@@ -1022,15 +1060,20 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
           <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="prvGo">เปิดดูหน้าจอ</button></label>
         </div>
       </div>
-      </div>
+      </div></div>
 
-      <div class="sec-title">ข้อมูล</div>
+      <div class="scat" id="scat-data" data-cat="data" data-ic="🔄" data-t="ข้อมูล" style="--cc:#4a55a2">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">🔄</span><span>ข้อมูล</span><span class="scat-n" id="scatN-data"></span></div>
+      <div class="scat-body">
       <div class="card pad row">
         <button class="btn" id="reloadCloud">ดึงข้อมูลล่าสุดจากคลาวด์</button>
         <span class="hint">ใช้เมื่อมีคนอื่นเพิ่งบันทึกงานเข้ามา</span>
       </div>
+      </div></div>
 
-      <div class="sec-title">คู่มือการใช้งาน</div>
+      <div class="scat" id="scat-help" data-cat="help" data-ic="📖" data-t="คู่มือการใช้งาน" style="--cc:#8a8a2b">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">📖</span><span>คู่มือการใช้งาน</span><span class="scat-n" id="scatN-help"></span></div>
+      <div class="scat-body">
       <div class="card pad stack">
         <p class="hint" style="margin:0">ส่งลิงก์คู่มือให้พนักงานทางไลน์ได้เลย</p>
         <div class="row">
@@ -1039,6 +1082,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
           <a class="btn" href="help-owner.html" target="_blank" rel="noopener" style="text-decoration:none">📗 คู่มือเจ้าของ</a>
         </div>
       </div>
+      </div></div>
     </section>
   </div>
 </div>
@@ -1798,7 +1842,9 @@ function bootstrap(){
     rest("day_marks?select=id,d,emp_id,kind").catch(function(){ return []; }),
     rest("month_confirm?select=*").catch(function(){ return []; }),
     /* ราคาน้ำมันปั๊มล่าสุดที่บันทึกในระบบ (v35) — เครื่องคนขับเห็นแต่รายการของตัวเอง เลยต้องถามคลาวด์ */
-    rest("rpc/fuel_price_latest").catch(function(){ return []; })
+    rest("rpc/fuel_price_latest").catch(function(){ return []; }),
+    /* v41: ช่องรูปที่เปลี่ยน/เพิ่มล่าสุดของแต่ละงาน → รูปย่อหน้ารายการงานเอาช่องนั้นขึ้นก่อน */
+    rest("photo_swap?select=row_id,field&tbl=eq.jobs&new_path=not.is.null&order=id.desc&limit=500").catch(function(){ return []; })
   ]).then(function(a){
     DB.emp   = a[0].map(rowEmp);
     DB.truck = a[1].map(rowTruck);
@@ -1809,6 +1855,8 @@ function bootstrap(){
     DB.stop  = (a[9]||[]).map(rowStop);
     /* ระยะตามถนน (v28) ใช้ได้เฉพาะตอนพิกัดทั้งสายยังเหมือนตอนที่ฐานข้อมูลคำนวณ — จำลายเซ็นไว้ */
     DB.job.forEach(function(j){ j._roadSig = roadSig(j); });
+    var swapF={}; (a[15]||[]).forEach(function(s){ if(!swapF[s.row_id]) swapF[s.row_id]=s.field; });
+    DB.job.forEach(function(j){ if(swapF[j.id]) j._swapField=swapF[j.id]; });
     DB.fixOpen = {};
     (a[10]||[]).forEach(function(f){ DB.fixOpen[f.job_id] = f; });
     DB.places = (a[11]||[]).map(rowPlace);
@@ -2614,6 +2662,14 @@ function lbGo(step){
 function lbClose(){ $("lb").classList.remove("on"); document.body.style.overflow=""; }
 function allShots(j){
   var out=(j.shots||[]).concat(j.shotsEnd||[]);
+  stopsOf(j).forEach(function(t){ out=out.concat(t.shots||[]); });
+  return out;
+}
+/* รูปย่อหน้ารายการงาน (v41 · คุณหลิงสั่ง 23 ต.ค. 2569) — งานที่เคยเปลี่ยน/เพิ่มรูป ให้ช่องที่เปลี่ยนล่าสุดขึ้นก่อน
+   รูปใหม่อยู่ลำดับที่ 1 ของช่องนั้นอยู่แล้ว (swap_photo) · j._swapField มาจาก photo_swap ตอน bootstrap */
+function coverShots(j){
+  if(j._swapField!=="photos_end") return allShots(j);
+  var out=(j.shotsEnd||[]).concat(j.shots||[]);
   stopsOf(j).forEach(function(t){ out=out.concat(t.shots||[]); });
   return out;
 }
@@ -3542,7 +3598,7 @@ function jobList(host,list,showEmp){
   var SUS=isStaff(me) ? suspectAll() : {};
   list.forEach(function(j){
     var row=document.createElement("div"); row.className="job";
-    var pics=allShots(j);
+    var pics=coverShots(j);
     if(pics.length){
       var im=document.createElement("img"); im.className="thumb"; im.src=pics[0]; im.alt="รูปงาน";
       paintRot(im, pics[0]);
@@ -4238,6 +4294,13 @@ function canSwapPhoto(o){
   if(isStaff(me)) return true;
   return o.emp===me.id && o.date===today();
 }
+/* ลบรูป (v41 · 23 ต.ค. 2569 — คุณหลิงสั่ง) = ซ่อนจากงาน ไฟล์ยังอยู่ · เจ้าของ = ทุกรายการ ·
+   คนอื่น = เฉพาะรายการของตัวเองวันนี้ (แอดมินลบของคนอื่นไม่ได้) — public.hide_photo ตรวจซ้ำ */
+function canHidePhoto(o){
+  if(!me || !o) return false;
+  if(isOwner(me)) return true;
+  return o.emp===me.id && o.date===today();
+}
 function swapBtnLabel(){ return "🖼️ เปลี่ยนรูป"; }
 /* ลิงก์ชั่วคราว (ที่หน้าจอถืออยู่) ของ path นี้ — ใช้ ROTPATH ย้อนกลับ เพราะ index อาจไม่ตรงถ้าบางรูปขอลิงก์ไม่ได้ */
 function urlOfPath(arr, path, paths){
@@ -4302,7 +4365,7 @@ function buildSwapPhoto(kind, o, pan){
     return;
   }
   var head=document.createElement("div"); head.className="hint";
-  head.textContent = "เลือกรูปที่ผิด แล้วถ่าย/เลือกรูปที่ถูกต้องมาแทน · รูปเดิมไม่ถูกลบ เก็บไว้ดูย้อนหลังได้ · แจ้งกลุ่ม Telegram ทุกครั้ง";
+  head.textContent = "เลือกรูปที่ผิด แล้วถ่าย/เลือกรูปที่ถูกต้องมาแทน (รูปใหม่ขึ้นเป็นรูปแรก) · กด 🗑️ ใต้รูปเพื่อเอารูปออกจากงาน · รูปเดิมไม่ถูกลบจริง เก็บไว้ดูย้อนหลังได้ · แจ้งกลุ่ม Telegram ทุกครั้ง";
   wrap.appendChild(head);
 
   var lf=document.createElement("label"); lf.className="f"; lf.style.maxWidth="260px";
@@ -4347,7 +4410,7 @@ function buildSwapPhoto(kind, o, pan){
   bar.appendChild(go); bar.appendChild(no);
   wrap.appendChild(info); wrap.appendChild(bar);
 
-  var hisBtn=document.createElement("button"); hisBtn.type="button"; hisBtn.className="btn sm ghost"; hisBtn.textContent="🕘 ดูรูปเดิมที่เคยถูกเปลี่ยน";
+  var hisBtn=document.createElement("button"); hisBtn.type="button"; hisBtn.className="btn sm ghost"; hisBtn.textContent="🕘 ดูรูปเดิมที่เคยถูกเปลี่ยน/ลบ";
   var his=document.createElement("div");
   wrap.appendChild(hisBtn); wrap.appendChild(his);
 
@@ -4356,11 +4419,21 @@ function buildSwapPhoto(kind, o, pan){
   function paint(){
     var f=fdef(), paths=(o[f[1]]||[]), urls=(o[f[2]]||[]);
     picks.innerHTML="";
+    var canHide=canHidePhoto(o);
     paths.forEach(function(p, i){
       var u=urlOfPath(urls, p, paths);
       var b=swapThumb(u, "รูปที่ "+(i+1), st.old===p, false);
       b.onclick=function(){ st.old=p; paint(); };
-      picks.appendChild(b);
+      if(!canHide){ picks.appendChild(b); return; }
+      /* ปุ่มลบอยู่ใต้รูป แยกจากปุ่มรูป (ปุ่มซ้อนในปุ่มไม่ได้) */
+      var cell=document.createElement("div");
+      cell.style.cssText="display:flex; flex-direction:column; align-items:center; gap:4px";
+      var del=document.createElement("button"); del.type="button"; del.className="btn sm ghost";
+      del.style.cssText="padding:4px 8px; font-size:13px; color:var(--accent); width:92px";
+      del.textContent="🗑️ ลบรูปนี้";
+      del.onclick=function(){ askHide(p, i, paths.length); };
+      cell.appendChild(b); cell.appendChild(del);
+      picks.appendChild(cell);
     });
     if(paths.length<3){
       var add=swapThumb(null, paths.length ? "เพิ่มอีกรูป" : "ยังไม่มีรูป · เพิ่ม", st.old===null, true);
@@ -4391,11 +4464,69 @@ function buildSwapPhoto(kind, o, pan){
   cam.onchange=function(){ took(cam); }; gal.onchange=function(){ took(gal); };
   no.onclick=function(){ pan.classList.add("hidden"); pan.innerHTML=""; };
 
+  /* ฐานข้อมูลตอบรายการรูปชุดใหม่ของช่องนี้มา (r.photos) — อัปเดตในเครื่องเฉพาะช่องนี้ แล้วแก้ snapshot ช่องเดียวกัน
+     Why: ถ้าเรียก takeSnapshot() ทั้งก้อน แถวอื่นที่ยังรอส่งขึ้นคลาวด์จะถูกมองว่าส่งแล้ว (ข้อมูลหายเงียบ) */
+  function applyPhotos(f, paths, r, newPath, newUrl){
+    var arr=(r.photos||[]).slice();
+    o[f[1]]=arr;
+    if(newUrl){ ROTPATH[newUrl]=newPath; }
+    var urls=[], cur=o[f[2]]||[];
+    arr.forEach(function(p){ var u=(p===newPath ? newUrl : urlOfPath(cur, p, paths)); if(u) urls.push(u); });
+    o[f[2]]=urls;
+    var key=rowKey(kind, o);
+    if(SNAP[key]){
+      try{ var sn=JSON.parse(SNAP[key]); sn[f[0]]=arr; SNAP[key]=JSON.stringify(sn); }catch(e){}
+    }
+  }
+
+  /* ช่องที่ตอนบันทึกบังคับต้องมีรูป — ใช้แค่เตือนก่อนลบรูปสุดท้าย (ไม่ห้าม เผื่อรูปผิดใบจริงๆ) */
+  function mustHave(f){
+    if(kind==="fuel") return true;
+    if(!TWO_STEP[o.type]) return false;
+    return f[0]==="photos_start" || !!o.end;
+  }
+  function askHide(p, i, total){
+    if(busyGuard()) return;
+    var f=fdef(), u=urlOfPath(o[f[2]], p, o[f[1]]||[]);
+    var body=(u ? '<img src="'+esc(u)+'" alt="รูปที่จะลบ" style="width:120px; height:120px; object-fit:cover; border-radius:8px; display:block; margin:0 0 10px">' : '')+
+      esc(f[3])+' · รูปที่ '+(i+1)+' จาก '+total+' รูป<br>'+
+      'รูปจะหายจากงานนี้ แต่ <b>ไฟล์ไม่ถูกลบจริง</b> ย้อนดูได้ที่ "ดูรูปเดิมที่เคยถูกเปลี่ยน/ลบ" · แจ้งกลุ่ม Telegram';
+    if(total===1){
+      body+='<div style="margin-top:10px; padding:10px; border-radius:10px; background:var(--warn-soft); color:var(--warn); font-weight:600">'+
+        '⚠️ นี่คือรูปสุดท้ายของช่องนี้ — ลบแล้วช่องนี้จะไม่มีรูปเลย'+
+        (mustHave(f) ? '<br>ช่องนี้ปกติต้องมีรูปอย่างน้อย 1 รูป ควรเพิ่มรูปที่ถูกต้องทันทีหลังลบ' : '')+'</div>';
+    }
+    askChoice({
+      title:"ลบรูปนี้ออกจากงานไหม?", body:body,
+      yes:"🗑️ ลบรูปนี้ออกจากงาน", no:"ไม่ลบ",
+      onYes:function(){ doHide(f, p, u); }, onNo:function(){}
+    });
+    /* askChoice มี 3 ปุ่ม — "ไม่ลบ" ซ้ำกับ "ยกเลิก" เอาออก เหลือ ลบ / ยกเลิก */
+    var nb=document.querySelector("#askChoice [data-n]"); if(nb) nb.remove();
+  }
+  function doHide(f, p, u){
+    var paths=(o[f[1]]||[]);
+    info.textContent="กำลังลบรูป…"; go.disabled=true; no.disabled=true;
+    rest("rpc/hide_photo",{method:"POST", body:{
+      p_tbl:tbl, p_id:o.id, p_field:f[0], p_path:p, p_note:nIn.value||null, p_old_url:u||null }})
+    .then(function(r){
+      go.disabled=false; no.disabled=false;
+      if(!r || !r.ok){ toast((r&&r.msg)||"ลบรูปไม่สำเร็จ"); paint(); return; }
+      applyPhotos(f, paths, r, null, null);
+      toast(r.msg||"ลบรูปแล้ว");
+      pan.classList.add("hidden"); pan.innerHTML="";
+      render();
+    }).catch(function(e){
+      go.disabled=false; no.disabled=false;
+      toast("ลบรูปไม่สำเร็จ "+((e&&e.message)||"")); paint();
+    });
+  }
+
   hisBtn.onclick=function(){
     his.innerHTML='<div class="hint">กำลังโหลด…</div>';
     rest("photo_swap?select=*&row_id=eq."+o.id+"&order=id.desc&limit=30").then(function(rows){
       rows=(rows||[]).filter(function(r){ return r.old_path; });
-      if(!rows.length){ his.innerHTML='<div class="hint">ยังไม่เคยมีการเปลี่ยนรูปในรายการนี้</div>'; return; }
+      if(!rows.length){ his.innerHTML='<div class="hint">ยังไม่เคยมีการเปลี่ยนหรือลบรูปในรายการนี้</div>'; return; }
       return Promise.all(rows.map(function(r){ return signOne(r.old_path); })).then(function(urls){
         his.innerHTML="";
         rows.forEach(function(r, i){
@@ -4409,7 +4540,7 @@ function buildSwapPhoto(kind, o, pan){
             line.appendChild(im);
           }
           var tx=document.createElement("div"); tx.className="hint";
-          tx.textContent=lbl+" · เปลี่ยนโดย "+(r.by_emp ? (emp(r.by_emp).name||"ไม่ทราบชื่อ") : "–")+" · "+logWhen(r.at)+
+          tx.textContent=lbl+(r.kind==="hide" ? " · 🗑️ ลบออกจากงานโดย " : " · เปลี่ยนโดย ")+(r.by_emp ? (emp(r.by_emp).name||"ไม่ทราบชื่อ") : "–")+" · "+logWhen(r.at)+
                          (r.note ? " · "+r.note : "")+(urls[i] ? "" : " · (เปิดรูปไม่ได้)");
           line.appendChild(tx);
           his.appendChild(line);
@@ -4438,18 +4569,9 @@ function buildSwapPhoto(kind, o, pan){
     }).then(function(x){
       var r=x.r;
       if(!r || !r.ok){ toast((r&&r.msg)||"เปลี่ยนรูปไม่สำเร็จ"); back(); return; }
-      /* อัปเดตในเครื่องเฉพาะช่องนี้ แล้วแก้ snapshot ช่องเดียวกัน
-         Why: ถ้าเรียก takeSnapshot() ทั้งก้อน แถวอื่นที่ยังรอส่งขึ้นคลาวด์จะถูกมองว่าส่งแล้ว (ข้อมูลหายเงียบ) */
-      var arr=(r.photos||[]).slice();
-      o[f[1]]=arr;
-      if(x.url){ ROTPATH[x.url]=newPath; }
-      var urls=[], cur=o[f[2]]||[];
-      arr.forEach(function(p){ var u=(p===newPath ? x.url : urlOfPath(cur, p, paths)); if(u) urls.push(u); });
-      o[f[2]]=urls;
-      var key=rowKey(kind, o);
-      if(SNAP[key]){
-        try{ var sn=JSON.parse(SNAP[key]); sn[f[0]]=arr; SNAP[key]=JSON.stringify(sn); }catch(e){}
-      }
+      applyPhotos(f, paths, r, newPath, x.url);
+      /* v41: รูปย่อหน้ารายการงานใช้ช่องที่เพิ่งเปลี่ยนเป็นรูปแรก */
+      if(kind==="job") o._swapField=f[0];
       toast(r.msg||"เปลี่ยนรูปแล้ว");
       pan.classList.add("hidden"); pan.innerHTML="";
       render();
@@ -5198,7 +5320,7 @@ function renderWait(){
       '</div>' + (j.note?'<div class="hint">'+esc(j.note)+'</div>':'');
     var isSus=fixBadges(j, head, c, SUS);
     c.appendChild(head);
-    var pics=allShots(j);
+    var pics=coverShots(j);
     if(pics.length){ var cc=document.createElement("div"); cc.className="car"; c.appendChild(cc); carousel(cc,pics,null,null); }
     /* ระยะทางผิดตั้งแต่ตรงนี้ = เดาราคางานเดิมไม่ได้ จึงให้แก้พิกัดได้จากหน้านี้เลย (v23) */
     if(canReqFix(j)){
@@ -6210,7 +6332,7 @@ function foldApply(id,label,sel){
   var btn=$("fold-"+id);
   if(!btn){
     btn=document.createElement("button"); btn.id="fold-"+id; btn.type="button";
-    btn.className="btn sm ghost"; btn.style.margin="0 0 8px";
+    btn.className="btn sm ghost scat-fold"; btn.style.margin="0 0 8px";
     btn.onclick=function(){ FOLD_OPEN[id]=!FOLD_OPEN[id]; foldApply(id,label,sel); };
     box.parentNode.insertBefore(btn, box);
   }
@@ -6295,6 +6417,26 @@ function renderSettings(){
   fillSelect($("tSize"), sizes, function(x){return x;}, function(x){return x;}, true);
   wireDel("data-del-t", DB.truck);
   wireTruckEdit();
+  setNavPaint();
+}
+
+/* แถบลัดหัวหน้าตั้งค่า + ป้ายจำนวนบนหัวหมวด (แบบ ข · 23 ต.ค. 2569)
+   สร้างจากหมวดที่ "มองเห็นอยู่" เท่านั้น — แอดมินไม่เห็นหมวดพนักงาน/งานที่ถูกลบ ปุ่มลัดก็ต้องไม่โผล่ */
+function setNavPaint(){
+  var cnt={ emp: DB.emp.filter(function(e){ return e.active!==false; }).length+" คน",
+            truck: DB.truck.length+" คัน", mat: matList().length+" รายการ",
+            place: (DB.places||[]).length+" แห่ง" };
+  Object.keys(cnt).forEach(function(k){ var el=$("scatN-"+k); if(el) el.textContent=cnt[k]; });
+  var nav=$("setNav"); if(!nav) return;
+  nav.innerHTML="";
+  $("v-set").querySelectorAll(".scat").forEach(function(sec){
+    if(sec.classList.contains("hidden")) return;
+    var b=document.createElement("button"); b.type="button";
+    b.style.cssText="--cc:"+sec.style.getPropertyValue("--cc");
+    b.textContent=sec.getAttribute("data-ic")+" "+sec.getAttribute("data-t").replace(/ \(.*\)$/,"");
+    b.onclick=function(){ sec.scrollIntoView({behavior:"smooth", block:"start"}); };
+    nav.appendChild(b);
+  });
 }
 
 /* แก้ทะเบียน / เปลี่ยนประเภทรถ ที่ลงไว้ผิด
