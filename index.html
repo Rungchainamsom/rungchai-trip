@@ -1022,7 +1022,8 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="scat-body">
       <div class="card pad stack">
         <p class="hint" style="margin:0">
-          พนักงาน 1 คน ใช้ได้ 1 เครื่อง · ผูกเครื่องใหม่ เครื่องเดิมหลุดเอง และแจ้ง Telegram ทุกครั้ง ·
+          คนขับใช้ได้ 1 เครื่อง · เจ้าของ/แอดมิน สูงสุด 3 เครื่อง (เช่น มือถือ + คอม) ·
+          ผูกเกินโควตา เครื่องที่ไม่ได้ใช้นานที่สุดหลุดเอง · แจ้ง Telegram ทุกครั้ง ·
           <b>มือถือหาย ให้เจ้าของกด "ยกเลิก" ทันที</b> (แอดมินดูได้อย่างเดียว)
         </p>
         <div class="row" id="devMine"></div>
@@ -1738,13 +1739,7 @@ function devPaintBlock(){
   var blk=$("devBlock"); if(!blk) return;
   var staff=isStaff(me); blk.classList.toggle("hidden", !staff);
   if(!staff) return;
-  var mine=$("devMine");
-  mine.innerHTML = DEV_ON
-    ? '<span class="pill t1">✅ เครื่องนี้ผูกแล้ว</span>'
-    : (devCanBindHere()
-        ? '<button class="btn primary" id="devMineBind">ผูกเครื่องนี้</button><span class="hint">ผูกแล้วเครื่องเดิม (ถ้ามี) จะหลุด</span>'
-        : '<span class="hint">เครื่องนี้ยังไม่ได้ผูก</span>');
-  var mb=$("devMineBind"); if(mb) mb.onclick=devBindSession;
+  devPaintMine();
   $("devSwitch").classList.toggle("hidden", !isOwner(me));
   if(DEV_LIST_BUSY) return;
   if(DEV_LIST && Date.now()-DEV_LIST_AT < 30000){ devPaintList(); return; }
@@ -1757,8 +1752,35 @@ function devPaintBlock(){
     $("devList").innerHTML='<p class="hint bad" style="margin:0">ดึงรายการเครื่องไม่ได้ ('+esc(String(e&&e.message||e).slice(0,80))+')</p>';
   }).then(function(){ DEV_LIST_BUSY=false; if(DEV_LIST) devPaintList(); });
 }
+/* id เครื่องนี้ = claim dev ในบัตรผ่าน (มีเฉพาะตอนเข้าด้วยเครื่องที่ผูก) */
+function devMyId(){
+  try{
+    var p=String(AUTH.token||"").split(".")[1]||""; p=p.replace(/-/g,"+").replace(/_/g,"/");
+    while(p.length%4) p+="=";
+    return JSON.parse(atob(p)).dev||null;
+  }catch(e){ return null; }
+}
+/* แถว "เครื่องนี้" — บอกตามจริงว่าผูกแล้วจะเป็นเครื่องที่เท่าไร หรือเครื่องไหนจะหลุด (v41: เจ้าของ/แอดมิน 3 · คนขับ 1) */
+function devPaintMine(){
+  var mine=$("devMine"); if(!mine) return;
+  if(DEV_ON){ mine.innerHTML='<span class="pill t1">✅ เครื่องนี้ผูกแล้ว</span>'; return; }
+  if(!devCanBindHere()){ mine.innerHTML='<span class="hint">เครื่องนี้ยังไม่ได้ผูก</span>'; return; }
+  var lim=(DEV_LIST&&DEV_LIST.limits) ? (isStaff(me)?DEV_LIST.limits.staff:DEV_LIST.limits.driver) : (isStaff(me)?3:1);
+  var act=((DEV_LIST&&DEV_LIST.devices)||[]).filter(function(d){ return d.emp_id===me.id && !d.revoked_at; });
+  var hint;
+  if(!DEV_LIST) hint="";
+  else if(act.length<lim) hint="จะเป็นเครื่องที่ "+(act.length+1)+" ของคุณ (สูงสุด "+lim+" เครื่อง) · เครื่องเดิมใช้ได้ต่อ";
+  else {
+    var old=act.slice().sort(function(a,b){ return ms(a.last_seen_at||a.created_at)-ms(b.last_seen_at||b.created_at); })[0];
+    hint="⚠️ ครบ "+lim+" เครื่องแล้ว ผูกเครื่องนี้ เครื่อง “"+(old.label||"–")+"” (ไม่ได้ใช้นานที่สุด) จะหลุด";
+  }
+  mine.innerHTML='<button class="btn primary" id="devMineBind">ผูกเครื่องนี้</button><span class="hint" id="devMineHint"></span>';
+  $("devMineHint").textContent=hint;
+  $("devMineBind").onclick=devBindSession;
+}
 function devPaintList(){
-  var owner=isOwner(me), box=$("devList");
+  var owner=isOwner(me), box=$("devList"), myDev=DEV_ON?devMyId():null;
+  devPaintMine();
   /* เจ้าของเลือกค้างไว้แล้วยังไม่กดบันทึก → ห้ามเขียนทับ
      Why: 23 ต.ค. 69 เลือก "ทดลอง" ระหว่างรายการเครื่องยังโหลด กล่องเด้งกลับเป็น "ปิด" แล้วบันทึกไม่เปลี่ยนอะไร */
   if(!DEV_SW_DIRTY){ $("devModeSel").value=DEV_MODE.mode; $("devLegacySel").value=DEV_MODE.legacy_off?"1":"0"; }
@@ -1770,7 +1792,7 @@ function devPaintList(){
       ? '<span class="hint">หลุดแล้ว '+devFmt(d.revoked_at)+' · '+(d.revoke_reason==="owner"?"เจ้าของยกเลิก ("+esc(emp(d.revoked_by).name||"?")+")":"เปลี่ยนเครื่อง")+'</span>'
       : '<span class="pill t1">ใช้อยู่</span>';
     return '<div class="row" style="justify-content:space-between; border-bottom:1px solid var(--line); padding:6px 0">'+
-      '<div style="min-width:0"><b>'+who+'</b> · '+esc(d.label||"–")+'<br>'+
+      '<div style="min-width:0"><b>'+who+'</b> · '+esc(d.label||"–")+(myDev && d.id===myDev ? ' <span class="pill t3">เครื่องนี้</span>' : '')+'<br>'+
       '<span class="hint">ผูก '+devFmt(d.created_at)+' · เปิดล่าสุด '+devFmt(d.last_seen_at)+'</span><br>'+st+'</div>'+
       (owner && !d.revoked_at ? '<button class="btn sm" data-devrev="'+i+'">ยกเลิกเครื่อง</button>' : '')+
       '</div>';
@@ -1784,13 +1806,14 @@ function devRevoke(d){
   var who=emp(d.emp_id).nickname||emp(d.emp_id).name||"?";
   askChoice({
     title:"ยกเลิกเครื่องของ "+who+" ?",
-    body:esc(d.label||"")+"<br>เครื่องนี้จะใช้แอปไม่ได้ทันที ต้องยืนยัน LINE ผูกเครื่องใหม่ · ระบบแจ้ง Telegram ว่าใครเป็นคนยกเลิก",
+    body:esc(d.label||"")+"<br>เครื่องนี้จะใช้แอปไม่ได้ทันที ต้องยืนยัน LINE ผูกเครื่องใหม่ (เครื่องอื่นของคนนี้ใช้ต่อได้) · ระบบแจ้ง Telegram ว่าใครเป็นคนยกเลิก",
     yes:"ยกเลิกเครื่องนี้", no:"ไม่ยกเลิก",
     onYes:function(){
-      rest("rpc/device_revoke",{method:"POST", body:{p_emp:d.emp_id}}).then(function(r){
+      /* v41: ยกเลิกทีละเครื่อง (เดิม device_revoke ยกเลิกทุกเครื่องของคนนั้น) */
+      rest("rpc/device_revoke_one",{method:"POST", body:{p_device:d.id}}).then(function(r){
         if(r && r.ok){
           toast("ยกเลิกเครื่องของ "+who+" แล้ว");
-          if(me && d.emp_id===me.id && DEV_ON){ devClear(); location.reload(); return; }
+          if(DEV_ON && d.id===devMyId()){ devClear(); location.reload(); return; }
         } else toast("ไม่มีเครื่องที่ใช้อยู่แล้ว");
         DEV_LIST_AT=0; devPaintBlock();
       }, function(e){ toast("ยกเลิกไม่สำเร็จ — "+(e&&e.message?e.message:e)); });
