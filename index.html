@@ -1609,13 +1609,30 @@ function legacyStart(){
       /* บัตรเก่าออกก่อนเจ้าของกดยกเลิกเครื่องคนนี้ → ฐานข้อมูลไม่รู้จักแล้ว (ไม่เห็นแม้แต่ชื่อตัวเอง)
          ทิ้งบัตรแล้วเริ่มใหม่ = ต้องยืนยัน LINE ใหม่ */
       if(me && !DB.emp.some(function(e){ return e.id===me.id; })){ clearSession(); location.reload(); }
-    }, function(){
-      clearSession();
-      lineLogin({silent:true});
+    }, function(err){
+      /* 24 ต.ค. 69 — คุณหลิง: "ไม่ได้ใช้เกิน 30 นาที เปิดแอปแล้วเด้งไปหน้า LINE ก่อน"
+         Why: พักแอปนาน มือถือปลุกแอปขึ้นมาใหม่ตอนเน็ตยังไม่พร้อม โหลดข้อมูลรอบแรกล้ม
+              โค้ดเดิมโยนบัตรผ่านทิ้งทุกกรณี แล้วส่งไปหน้า LINE ทั้งที่บัตรยังใช้ได้อีกหลายวัน
+         ทิ้งบัตรเฉพาะตอนคลาวด์บอกว่าบัตรใช้ไม่ได้จริง (401 / JWT) นอกนั้นลองโหลดใหม่ในแอป */
+      var m=String((err&&err.message)||err||"");
+      if(/^\[401\]|jwt|PGRST30/i.test(m)){ setBusy(false); clearSession(); lineLogin({silent:true}); return; }
+      legacyRetry(s, 1);
     });
     return;
   }
   lineLogin({silent:true});
+}
+function legacyRetry(s, n){
+  setBusy(true);
+  setTimeout(function(){
+    bootstrap().then(function(){ setBusy(false); buildTabs(); render(); }, function(err){
+      var m=String((err&&err.message)||err||"");
+      if(/^\[401\]|jwt|PGRST30/i.test(m)){ clearSession(); location.reload(); return; }
+      if(n<3){ legacyRetry(s, n+1); return; }
+      setBusy(false);
+      toast("ต่อเน็ตไม่ได้ — เช็คอินเทอร์เน็ต แล้วดึงหน้าลงเพื่อโหลดใหม่", 6000);
+    });
+  }, 1500*n);
 }
 /* ปุ่ม "ยืนยัน LINE ผูกเครื่องนี้" */
 function devStart(){
