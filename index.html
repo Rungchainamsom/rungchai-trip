@@ -213,6 +213,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 .btn.suspfix{border-color:var(--warn); color:var(--warn); background:var(--warn-soft); font-weight:700}
 .tab .badge.warn{background:var(--warn)}
 .jt{font-family:"Bai Jamjuree",sans-serif; font-weight:600; font-size:16.5px; line-height:1.35}
+.jnote{font-size:13.5px; color:var(--ink2); line-height:1.45; margin-top:2px; overflow-wrap:anywhere}
 .meta{font-size:13px; color:var(--ink2); display:flex; flex-wrap:wrap; gap:5px 11px; margin-top:4px; align-items:center}
 .geo{color:var(--accent); text-decoration:none; border-bottom:1px dotted currentColor}
 .amt{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; font-size:16px}
@@ -2559,6 +2560,11 @@ function jobTitle(j){
   if(d) t+=" → "+d;
   return t;
 }
+/* หมายเหตุใต้ชื่องาน (27 ต.ค. 2569 — เจ้าของขอ)
+   Why: ชื่องานซ้ำกันแต่ราคา/พิกัดไม่เท่ากัน ทวนยอดค่าเที่ยวแล้วแยกไม่ออกว่าใบไหนเป็นงานอะไร */
+function noteLine(j){
+  return j.note ? '<div class="jnote">📝 '+esc(j.note)+'</div>' : '';
+}
 function haversine(a,b){
   if(!a||!b||a.lat==null||b.lat==null) return null;
   var R=6371, toR=Math.PI/180;
@@ -3668,7 +3674,7 @@ function jobList(host,list,showEmp){
     else if(j.end&&j.end.lat!=null) geo='<a class="geo" target="_blank" rel="noopener" href="'+mapsPoint(j.end)+'">📍 ปลายทาง</a>';
     else if(j.start&&j.start.lat!=null) geo='<a class="geo" target="_blank" rel="noopener" href="'+mapsPoint(j.start)+'">📍 ต้นทาง</a>';
     body.innerHTML=
-      '<div class="jt">'+esc(jobTitle(j))+'</div>' +
+      '<div class="jt">'+esc(jobTitle(j))+'</div>' + noteLine(j) +
       '<div class="meta">' +
         '<span class="pill '+TYPE_PILL[j.type]+'">'+TYPE_LABEL[j.type]+'</span>' +
         (j.mat&&j.label?'<span>'+j.mat+'</span>':'') +
@@ -3682,8 +3688,7 @@ function jobList(host,list,showEmp){
       (j.flatTrip&&(j.price||0)>0?'<span class="pill t3">เหมาวันงานทั่วไป</span>':'') +
         (stopsOf(j).length?'<button type="button" class="pill t3" data-stopsbtn="1" style="border:0; cursor:pointer; font-family:inherit" title="กดดูรายละเอียดจุดแวะ">🛑 แวะรับ '+stopsOf(j).length+' จุด +'+baht(stopsPay(j))+' ▾</button>':'') + geo +
         (j.status==="active"?'<span class="pill live"><i class="dot"></i> กำลังทำงาน</span>':'') +
-      '</div>' +
-      (j.note?'<div class="hint">'+esc(j.note)+'</div>':'');
+      '</div>';
     var isSus=fixBadges(j, body, row, SUS);
     var amt=document.createElement("div");
     if(j.status==="active"){ amt.className="amt"; amt.textContent="—"; }
@@ -4789,6 +4794,8 @@ function buildJobEdit(j, pan){
       '<label class="f" style="width:118px">คืนละ (บาท)' +
         '<input type="number" data-k="rate" min="0" step="50" value="'+nightRate(j)+'"></label>' +
     '</div>' +
+    '<label class="f" style="margin-top:10px">หมายเหตุ (โชว์ใต้ชื่องาน — ใช้แยกงานชื่อซ้ำ)' +
+      '<input type="text" data-k="jnote" maxlength="200" placeholder="เช่น ย้ายจากบ้านผือไปหนองแสง · รถติดหล่มต้องลาก" value="'+esc(j.note||"")+'"></label>' +
     '<label class="row" style="gap:9px; margin-top:10px; font-size:15px; color:var(--ink2); align-items:center">' +
       '<input type="checkbox" data-k="sync" style="width:20px; height:20px; flex:none">' +
       'อัปเดตราคามาตรฐานในสมุดราคางานด้วย</label>' +
@@ -5077,6 +5084,7 @@ function buildJobEdit(j, pan){
       g("price").focus(); return;
     }
     j.truck = g("truck").value || null;
+    j.note = g("jnote").value.trim();
     var nt=curType();
     if(nt!==j.type){
       j.type=nt;
@@ -5362,7 +5370,7 @@ function renderWait(){
     var c=document.createElement("div"); c.className="card pad stack"; c.style.marginBottom="12px";
     var head=document.createElement("div");
     head.innerHTML=
-      '<div class="jt">'+esc(jobTitle(j))+'</div>' +
+      '<div class="jt">'+esc(jobTitle(j))+'</div>' + noteLine(j) +
       '<div class="meta"><span class="pill '+TYPE_PILL[j.type]+'">'+TYPE_LABEL[j.type]+'</span>' +
       '<span>'+emp(j.emp).name+'</span>'+plateChip(j) +
       '<span class="num">'+fmtDate(j.date)+'</span>' +
@@ -5370,7 +5378,7 @@ function renderWait(){
       (j.nights?'<span>🌙 คนขับแจ้งค้าง '+j.nights+' คืน</span>':'') +
       (j.bill?'<span>บิล '+esc(j.bill)+'</span>':'') +
       (j.start&&j.start.lat!=null&&j.end&&j.end.lat!=null?'<a class="geo" target="_blank" rel="noopener" href="'+mapsRoute(j.start,j.end)+'">🗺️ เส้นทาง</a>':'') +
-      '</div>' + (j.note?'<div class="hint">'+esc(j.note)+'</div>':'');
+      '</div>';
     var isSus=fixBadges(j, head, c, SUS);
     c.appendChild(head);
     var pics=coverShots(j);
