@@ -358,6 +358,9 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 .sheet tr.sh-stop td{font-size:.88em; padding-top:1.2pt; padding-bottom:1.2pt}
 .sheet tr.sh-stop td:nth-child(3){padding-left:14pt}
 .sheet td.sh-dt{font-weight:700; vertical-align:middle}
+/* หมายเหตุใต้ชื่องาน (27 ต.ค. 2569) — ตัวเล็ก สีเทา อยู่ช่องเดียวกับชื่องาน ไม่เพิ่มแถว */
+.sheet .sh-note{font-size:.84em; line-height:1.3; margin-top:.6pt}
+.sheet .sh-note, .sheet .sh-note *{color:#555}
 .sheet tbody.sh-dg{break-inside:avoid; page-break-inside:avoid}
 .sheet .sh-lab{font-size:10.5pt; font-weight:700; margin:7pt 0 3pt}
 .sheet .sh-2col{display:flex; gap:4mm; align-items:flex-start}
@@ -5693,7 +5696,8 @@ function slipSheet(e, m){
   function slipRow(j){
     var h='<tr><td class="c num">'+fmtDate(j.date).slice(0,5)+'</td>' +
       '<td class="num">'+esc(truck(j.truck).plate)+'</td>' +
-      '<td>'+esc(jobTitle(j))+'</td>' +
+      '<td>'+esc(jobTitle(j)) +
+        (j.note?'<div class="sh-note">หมายเหตุ: '+esc(j.note)+'</div>':'')+'</td>' +
       '<td class="c num">'+(j.nights?j.nights:"–")+'</td>' +
       '<td class="r num">'+baht(payBase(j)+nightPay(j))+'</td><!--D--></tr>';
     /* ค่าแวะแบบเหมาต่องาน (ตั้งแต่ ก.ย. 2569) → รวมเป็นบรรทัดเดียว ไม่แตกยอดรายจุด
