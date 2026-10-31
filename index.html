@@ -129,6 +129,16 @@ textarea{min-height:58px; resize:vertical}
 .pill.t2{background:var(--accent-soft); color:var(--accent)}
 .pill.t3{background:var(--ok-soft); color:var(--ok)}
 .pill.t4{background:var(--warn-soft); color:var(--warn)}
+/* เรตค่าเที่ยวใหม่ (rv2 · 31 ต.ค. 2569) */
+.rvbox{border:1px solid var(--line); background:var(--surface2); border-radius:12px; padding:10px 12px; width:100%; box-sizing:border-box}
+.rvbox .rvl{display:flex; justify-content:space-between; gap:10px; font-size:15px; padding:2px 0}
+.rvbox .rvl b{font-family:'IBM Plex Mono',monospace}
+.rvbox.q{background:var(--warn-soft); border-color:transparent}
+.rvrow{display:flex; gap:6px; align-items:center; flex-wrap:nowrap}
+.rvrow input{width:72px; min-width:0; flex:0 0 72px}
+.rvrow select{flex:1 1 auto; min-width:0; width:auto}
+.rvrow .btn.sm{flex:0 0 auto; padding-left:10px; padding-right:10px}
+
 .pill.co-rc{background:#e3ecf7; color:#1f4f86}
 .offcal{display:grid; grid-template-columns:repeat(7,1fr); gap:5px; margin:8px 0 4px}
 .offcal .h{font-size:12px; color:var(--ink3); text-align:center}
@@ -862,6 +872,8 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="sec-title">ค่าจ้างรายคน</div>
       <p class="hint" id="monHint" style="margin:-4px 0 10px">เบี้ยเลี้ยงจ่ายเต็มเดือน หักเฉพาะวันที่ขาดงาน — กรอกวันขาดในตารางได้เลย</p>
       <div class="tablewrap"><table id="monTable"></table></div>
+      <div id="monRange" class="hidden" style="margin:10px 0"></div>
+      <div id="monCmp" class="hidden" style="margin:10px 0"></div>
       <div class="sec-title">วันหยุด / วันลา</div>
       <div class="card pad" id="monOff"></div>
       <div class="sec-title">แยกต้นทุนตามบริษัท</div>
@@ -931,6 +943,45 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <label class="f">คุณภาพรูปที่เก็บ<select id="sImgq"><option>ประหยัด</option><option>ปกติ</option><option>ชัด</option></select></label>
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="sSave">บันทึก</button></label>
         <p class="hint" id="imgStat" style="grid-column:1/-1; margin:0"></p>
+      </div>
+      </div></div>
+
+      <div class="scat" id="rvBlock" data-cat="rv" data-ic="💰" data-t="เรตค่าเที่ยว" style="--cc:#b4541f">
+      <div class="scat-head"><span class="scat-ic" aria-hidden="true">💰</span><span>เรตค่าเที่ยว</span><span class="scat-n" id="scatN-rv"></span></div>
+      <div class="scat-body">
+      <div class="card pad stack">
+        <p class="hint" style="margin:0">
+          ระบบใช้เรตนี้คิดราคาให้ในหน้า "รอใส่ราคา" — <b>เจ้าของยังต้องกดยืนยันทุกใบ</b> ·
+          ระยะ = ขาไปส่งขาเดียว (ไม่นับจุดแวะ) · จุดเริ่มและปลายทางต้องตรงกับสถานที่ในสมุด ไม่ตรง = ไม่คิดให้ ขึ้น ❓
+        </p>
+        <div class="row">
+          <label class="f" style="width:200px">เริ่มใช้กับงานตั้งแต่วันที่<input type="date" id="rvFrom"></label>
+          <label class="f" style="flex:1; min-width:220px">โหมด<select id="rvMode">
+            <option value="trial">ทดลองคู่กัน — โชว์เรตใหม่ข้างราคาเดิม เจ้าของเลือกเอง</option>
+            <option value="live">ใช้เรตใหม่ — ระบบใส่ราคาใหม่ให้เลย</option>
+          </select></label>
+        </div>
+        <h3 style="margin:6px 0 0; font-size:17px">1. ค่าเที่ยวตามระยะ (ขาเดียว)</h3>
+        <p class="hint" style="margin:0">ใช้กับงานส่งสินค้า / รับสินค้า · แต่ละแถว = ระยะไม่เกินกี่ กม. ได้กี่บาท</p>
+        <div id="rvBands" class="stack" style="gap:6px"></div>
+        <button class="btn ghost sm" id="rvBandAdd" type="button">＋ เพิ่มขั้น</button>
+        <h3 style="margin:10px 0 0; font-size:17px">2. งานคิดเป็นรอบ (วิ่งวน)</h3>
+        <p class="hint" style="margin:0">เกณฑ์: วิ่งวนจุดเดิมในวันเดียว ตั้งแต่ 3 รอบ และระยะต่อรอบไม่เกิน 15 กม. · เลือกชื่องานจากสมุดราคา แล้วใส่ราคาต่อรอบ</p>
+        <div id="rvRounds" class="stack" style="gap:6px"></div>
+        <button class="btn ghost sm" id="rvRoundAdd" type="button">＋ เพิ่มงานคิดเป็นรอบ</button>
+        <h3 style="margin:10px 0 0; font-size:17px">3. ช่วงค่าแรงต่อเดือน (เตือนอย่างเดียว)</h3>
+        <p class="hint" style="margin:0">ค่าเที่ยว + เบี้ยเลี้ยง · เตือนในหน้าสรุปสิ้นเดือน เห็นเฉพาะเจ้าของ · คนที่เริ่มงานกลางเดือนคิดตามสัดส่วนวัน</p>
+        <div class="row">
+          <label class="f" style="width:150px">ขั้นต่ำ (บาท)<input type="number" id="rvMin" step="500" min="0"></label>
+          <label class="f" style="width:150px">เพดาน (บาท)<input type="number" id="rvMax" step="500" min="0"></label>
+        </div>
+        <div class="row"><button class="btn primary" id="rvSave" type="button">บันทึกเรต</button></div>
+        <h3 style="margin:10px 0 0; font-size:17px">ลองคิดย้อนหลัง</h3>
+        <div class="row" style="align-items:flex-end">
+          <label class="f" style="width:200px">เดือน<select id="rvSimM"></select></label>
+        </div>
+        <div class="tablewrap"><table id="rvSim"></table></div>
+        <p class="hint" id="rvSimNote" style="margin:0"></p>
       </div>
       </div></div>
 
@@ -1935,7 +1986,8 @@ function bootstrap(){
              genTrip:num(S.general_trip_rate,50),
              stopRate:num(S.stop_rate,100),
              tankPrice:num(S.tank_price,36.30),
-             imgq: S.image_quality || "ประหยัด" };
+             imgq: S.image_quality || "ประหยัด",
+             rv2: rv2Clean(S.rate_v2) };
     DB.tg={ token:(S.telegram&&S.telegram.token)||"", chat:(S.telegram&&S.telegram.chat_id)||"", log:[] };
     DB.lastTruck = S.last_truck || {};
     DB.rot={};
@@ -2327,6 +2379,8 @@ function runSync(){
       {key:"last_truck",            value:DB.lastTruck||{}},
       {key:"truck_sizes",           value:DB.sizes||SIZES}
     ];
+    /* เรตใหม่ (rv2) ส่งเฉพาะตอนเจ้าของเคยบันทึกแล้ว — ไม่งั้นค่าตั้งต้นจะถูกเขียนขึ้นคลาวด์จากเครื่องใครก็ได้ */
+    if(DB.set.rv2) rows.push({key:"rate_v2", value:DB.set.rv2});
     return rest("settings", {method:"POST", body:rows,
       headers:{Prefer:"resolution=merge-duplicates,return=minimal"}});
   }
@@ -2335,7 +2389,7 @@ function runSync(){
 /* ---------- โครงว่างตอนหน้าเว็บเพิ่งเปิด (ยังไม่ล็อกอิน) ---------- */
 function load(){
   return {emp:[], truck:[], rate:[], job:[], stop:[], fuel:[], places:[], absent:{}, marks:[], mconf:{}, lastTruck:{}, rot:{}, sizes:SIZES.slice(),
-          mats:[], set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, stopRate:100, imgq:"ประหยัด", fuelPrice:31.94, tankPrice:36.30},
+          mats:[], set:{allow:3000, deduct:100, night:200, general:300, genTrip:50, stopRate:100, imgq:"ประหยัด", fuelPrice:31.94, tankPrice:36.30, rv2:null},
           tg:{token:"", chat:"", log:[]}};
 }
 /* ถามข้อความหนึ่งบรรทัด แบบไม่ใช้ window.prompt
@@ -5363,6 +5417,310 @@ function groupTable(tbl,list,keyFn,label,head){
      '<td class="r num">'+sum(list,"nights")+'</td><td class="r num">'+baht(sumPay(list))+'</td></tr></tfoot>';
   tbl.innerHTML=h;
 }
+/* =============== เรตค่าเที่ยวใหม่ rv2 (31 ต.ค. 2569 · เจ้าของสั่ง) ===============
+   ที่มา: เจ้าของรู้สึกว่าเรตเดิมไม่เหมาะ — 13 กม. ได้ 300 แต่ 55 กม. ได้ 200 · 95 กับ 190 กม. ได้ 500 เท่ากัน
+   [stated] กติกาที่ตกลง:
+   - ราคาตามขั้นระยะ "ขาเดียว" (ขาไปส่ง ไม่นับจุดแวะ) ใช้กับส่งสินค้า/รับสินค้า
+   - ระยะคิดเฉพาะเมื่อจุดเริ่มและปลายทางตรงกับสถานที่ในสมุด ไม่ตรง = ไม่คิดให้ เจ้าของตัดสินเอง
+     Why: สัญจรชอบปักพิกัดผิด ปล่อยให้หมุดคนขับกำหนดเงินเองไม่ได้
+   - งานวิ่งวน (เช่น ส่งดิน 20/รอบ) คิด ราคาต่อรอบ × จำนวนรอบ ไม่ใช้ตารางระยะ
+   - ค่าแรงรวมต่อเดือน 16,500–20,000 (รวมเบี้ยเลี้ยง) เตือนเฉพาะเจ้าของ ไม่เติม ไม่ตัด
+   - เริ่มใช้ 1 พ.ย. 2569 · งานก่อนวันนั้นคิดแบบเดิม
+   [stated] 31 ต.ค. เจ้าของขอ "ใช้เก่าและใหม่ควบคู่กัน" ช่วงแรก (พนักงานตั้งตัวไม่ทัน) →
+     โหมด trial (ค่าตั้งต้น) = ราคาเดิมยังเติมเหมือนเดิม เรตใหม่โชว์ข้างๆ เจ้าของกดเลือกเอง · live = เติมเรตใหม่ให้เลย
+     + ตาราง "เทียบเรตเดิม–เรตใหม่" ในสรุปสิ้นเดือน
+   ชุดนี้ "เสนอราคา" อย่างเดียว ราคาจริงยังต้องกดยืนยัน → ไม่ต้องแก้ฐานข้อมูล
+   ยังไม่ทำ (ต้องแก้ฐานข้อมูล): ค่ารอ/ปุ่มถึงหน้างาน · คนขับกรอกรอบเอง · ค่าขึ้น-ลงเครื่องจักร · ขาเปล่า/ทางอ้อม */
+var RV2_DEF = {
+  from: "2026-11-01",
+  mode: "trial",
+  bands: [{to:5,price:50},{to:15,price:100},{to:30,price:150},{to:45,price:200},{to:70,price:250},
+          {to:90,price:400},{to:120,price:500},{to:160,price:600},{to:200,price:700}],
+  rounds: [{label:"ส่งดิน", price:20}],
+  payMin: 16500, payMax: 20000
+};
+var RV2_TYPES = {"ส่งสินค้า":1, "รับสินค้า":1};
+function rv2Clean(v){
+  if(!v || typeof v!=="object") return null;
+  var o={ from: (typeof v.from==="string" && /^\d{4}-\d{2}-\d{2}$/.test(v.from)) ? v.from : RV2_DEF.from,
+          mode: v.mode==="live" ? "live" : "trial",
+          bands: [], rounds: [],
+          payMin: num(v.payMin, RV2_DEF.payMin), payMax: num(v.payMax, RV2_DEF.payMax) };
+  (Array.isArray(v.bands)?v.bands:[]).forEach(function(b){
+    var t=parseFloat(b&&b.to), p=parseFloat(b&&b.price);
+    if(t>0 && p>=0) o.bands.push({to:t, price:p});
+  });
+  o.bands.sort(function(a,b){ return a.to-b.to; });
+  (Array.isArray(v.rounds)?v.rounds:[]).forEach(function(r){
+    var L=String((r&&r.label)||"").trim(), p=parseFloat(r&&r.price);
+    if(L && p>0) o.rounds.push({label:L, price:p});
+  });
+  return o;
+}
+function rv2(){ return DB.set.rv2 || RV2_DEF; }
+function rvOn(j){ return !!j && !!j.date && j.date >= rv2().from; }
+/* ระยะขาไปส่ง — ไม่มีจุดแวะ = ระยะตามถนนของงานเลย
+   มีจุดแวะ = ระยะถนนทั้งสาย × (เส้นตรง ต้นทาง→ปลายทาง ÷ เส้นตรงทั้งสาย) แล้วบอกว่า "ประมาณ"
+   Why: ฐานข้อมูลเก็บระยะถนนรวมจุดแวะเป็นก้อนเดียว (road_km) ไม่ได้แยกขา */
+function rvLeg(j){
+  if(!j || !j.start || j.start.lat==null || !j.end || j.end.lat==null) return null;
+  var total=kmOf(j), road=roadOk(j);
+  if(!(total>0)) return null;
+  var hasStops=stopsOf(j).some(function(t){ return t.lat!=null; });
+  if(!hasStops) return {km:Math.round(total*10)/10, est:!road, road:road};
+  var all=routeKm(j), leg=haversine(j.start, j.end);
+  if(!(all>0)) return null;
+  return {km:Math.round(total*leg/all*10)/10, est:true, road:road, stops:true};
+}
+function rvBand(km){
+  var B=rv2().bands, lo=0;
+  for(var i=0;i<B.length;i++){
+    if(km<=B[i].to) return {from:lo, to:B[i].to, price:B[i].price};
+    lo=B[i].to;
+  }
+  return null;
+}
+function rvRound(label){
+  var L=(label||"").trim(); if(!L) return null;
+  var R=rv2().rounds;
+  for(var i=0;i<R.length;i++) if(R[i].label===L) return R[i];
+  return null;
+}
+function kmTxt(n){ return (Math.round(n*10)/10).toFixed(1); }
+function bandTxt(b){ return (b.from>0 ? (Math.floor(b.from)+1) : 0)+"–"+b.to+" กม."; }
+/* คืนสิ่งที่ระบบเสนอให้งานใบนี้ (ไม่แตะงาน)
+   kind: round = คิดเป็นรอบ · band = ตามระยะ · noplace = จุดไม่ตรงสถานที่ · far = ไกลเกินตาราง · nokm = ไม่มีระยะ · off = ไม่ใช้เรตใหม่ */
+function rvSuggest(j, label){
+  if(!rvOn(j) || isCompanyJob(j) || j.flatTrip) return {kind:"off"};
+  var rr=rvRound(label!=null ? label : j.label);
+  if(rr) return {kind:"round", rate:rr.price, label:rr.label};
+  if(!RV2_TYPES[j.type]) return {kind:"off"};
+  var leg=rvLeg(j);
+  if(!leg) return {kind:"nokm"};
+  var b=rvBand(leg.km);
+  var ps=placeOf(j.start), pe=placeOf(j.end);
+  if((DB.places||[]).length && (!ps || !pe))
+    return {kind:"noplace", leg:leg, band:b, ps:ps, pe:pe};
+  if(!b) return {kind:"far", leg:leg, ps:ps, pe:pe};
+  return {kind:"band", leg:leg, band:b, price:b.price, ps:ps, pe:pe};
+}
+/* ราคาที่งานใบนี้ "จะได้" ถ้าใช้เรตใหม่ — ใช้ในตารางลองคิดย้อนหลังเท่านั้น
+   งานคิดเป็นรอบ: ย้อนหลังไม่รู้จำนวนรอบ → ถือว่าราคาเดิม = รอบ × ราคาต่อรอบเดิมอยู่แล้ว ใช้ยอดเดิม */
+function rvSimPay(j){
+  var cur=payOf(j);
+  if(isCompanyJob(j) || j.flatTrip || !RV2_TYPES[j.type] || rvRound(j.label)) return cur;
+  if(j.payMode && j.payMode!=="เที่ยว") return cur;
+  var leg=rvLeg(j); if(!leg) return cur;
+  var b=rvBand(leg.km); if(!b) return cur;
+  return cur - payBase(j) + b.price;
+}
+
+/* ---------- หน้าตั้งค่า ---------- */
+var RV_EDIT=null;
+function rvPaintSettings(){
+  RV_EDIT=JSON.parse(JSON.stringify(rv2()));
+  $("rvFrom").value=RV_EDIT.from; $("rvMode").value=RV_EDIT.mode||"trial";
+  $("rvMin").value=RV_EDIT.payMin; $("rvMax").value=RV_EDIT.payMax;
+  $("scatN-rv").textContent=DB.set.rv2 ? (RV_EDIT.bands.length+" ขั้น") : "ยังไม่บันทึก";
+  rvPaintBands(); rvPaintRounds();
+  var sel=$("rvSimM");
+  if(!sel.options.length) monthOptions(sel, false);
+  var keep=sel.value, prev=(function(){ var d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); return d.getFullYear()+"-"+pad(d.getMonth()+1); })();
+  if(!keep){ for(var i=0;i<sel.options.length;i++) if(sel.options[i].value===prev) sel.value=prev; }
+  sel.onchange=rvPaintSim;
+  rvPaintSim();
+}
+function rvPaintBands(){
+  var host=$("rvBands"); host.innerHTML="";
+  var lo=0;
+  RV_EDIT.bands.forEach(function(b,i){
+    var r=document.createElement("div"); r.className="rvrow";
+    r.innerHTML='<span class="num" style="min-width:64px">'+(lo>0?Math.floor(lo)+1:0)+' –</span>'+
+      '<input type="number" min="1" step="1" value="'+b.to+'" aria-label="ระยะไม่เกิน (กม.)"><span>กม.</span>'+
+      '<input type="number" min="0" step="10" value="'+b.price+'" aria-label="บาทต่อเที่ยว"><span>บาท</span>'+
+      '<button class="btn ghost sm" type="button" aria-label="ลบขั้นนี้">✕</button>';
+    var ins=r.querySelectorAll("input");
+    ins[0].onchange=function(){ b.to=parseFloat(ins[0].value)||b.to; RV_EDIT.bands.sort(function(x,y){ return x.to-y.to; }); rvPaintBands(); };
+    ins[1].oninput=function(){ b.price=parseFloat(ins[1].value)||0; };
+    r.querySelector("button").onclick=function(){ RV_EDIT.bands.splice(i,1); rvPaintBands(); };
+    host.appendChild(r); lo=b.to;
+  });
+}
+function rvPaintRounds(){
+  var host=$("rvRounds"); host.innerHTML="";
+  var labels={};
+  DB.rate.forEach(function(r){ var L=(r.label||"").trim(); if(L) labels[L]=1; });
+  RV_EDIT.rounds.forEach(function(x){ labels[x.label]=1; });
+  var names=Object.keys(labels).sort(function(a,b){ return a.localeCompare(b,"th"); });
+  if(!RV_EDIT.rounds.length) host.innerHTML='<p class="hint" style="margin:0">ยังไม่มีงานคิดเป็นรอบ</p>';
+  RV_EDIT.rounds.forEach(function(x,i){
+    var r=document.createElement("div"); r.className="rvrow";
+    var sel=document.createElement("select"); sel.setAttribute("aria-label","ชื่องาน");
+    sel.innerHTML=names.map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+'</option>'; }).join("");
+    sel.value=x.label;
+    sel.onchange=function(){ x.label=sel.value; };
+    var p=document.createElement("input"); p.type="number"; p.min="0"; p.step="5"; p.value=x.price; p.setAttribute("aria-label","บาทต่อรอบ");
+    p.oninput=function(){ x.price=parseFloat(p.value)||0; };
+    var u=document.createElement("span"); u.textContent="บาท/รอบ";
+    var del=document.createElement("button"); del.className="btn ghost sm"; del.type="button"; del.textContent="✕"; del.setAttribute("aria-label","ลบ");
+    del.onclick=function(){ RV_EDIT.rounds.splice(i,1); rvPaintRounds(); };
+    r.appendChild(sel); r.appendChild(p); r.appendChild(u); r.appendChild(del);
+    host.appendChild(r);
+  });
+}
+/* ตารางเทียบ "ค่าเที่ยวตามที่ใส่จริง" กับ "ถ้าใช้เรตใหม่" ต่อคนขับ — ใช้ในหน้าตั้งค่า (ลองคิดย้อนหลัง) และสรุปสิ้นเดือน */
+function rvCmpHtml(m){
+  var list=DB.job.filter(function(j){ return ym(j.date)===m && j.status==="done" && j.priced; });
+  var worked={}; DB.job.forEach(function(j){ if(ym(j.date)===m && !isCompanyJob(j)) worked[j.emp]=1; });
+  var drv=DB.emp.filter(function(e){ return isDriver(e) && worked[e.id]; })
+                .sort(function(a,b){ return (a.name||"").localeCompare(b.name||"","th"); });
+  var h='<thead><tr><th>คนขับ</th><th class="r">ตามที่ใส่จริง</th><th class="r">ถ้าใช้เรตใหม่</th><th class="r">+ เบี้ยเลี้ยง</th><th class="r">ค่าแรงรวม (เรตใหม่)</th></tr></thead><tbody>';
+  var tO=0,tN=0;
+  drv.forEach(function(e){
+    var L=list.filter(function(j){ return j.emp===e.id; });
+    var o=0,n=0; L.forEach(function(j){ o+=payOf(j); n+=rvSimPay(j); });
+    var al=allowOf(e.id,m), tot=n+al, rg=rvRange(e.id,m), flag="";
+    if(tot<rg.min && m<ym(today())) flag=' <span class="pill t4">ต่ำกว่า '+baht(rg.min)+'</span>';
+    else if(tot>rg.max) flag=' <span class="pill t4">เกิน '+baht(rg.max)+'</span>';
+    tO+=o; tN+=n;
+    h+='<tr><td>'+esc(e.name)+'</td><td class="r num">'+baht(o)+'</td><td class="r num">'+baht(n)+
+       ' <span class="hint">('+(n-o>=0?"+":"")+baht(n-o)+')</span></td><td class="r num">'+baht(al)+
+       '</td><td class="r num" style="font-weight:600">'+baht(tot)+flag+'</td></tr>';
+  });
+  if(!drv.length) h+='<tr><td colspan="5" style="color:var(--ink3)">ไม่มีงานในเดือนนี้</td></tr>';
+  return h+'</tbody><tfoot><tr><td>รวม</td><td class="r num">'+baht(tO)+'</td><td class="r num">'+baht(tN)+'</td><td></td><td></td></tr></tfoot>';
+}
+var RV_SIMNOTE="ลองคิดอย่างเดียว ไม่แก้ราคางานจริง · ใช้ระยะตามถนนของงาน (ยังไม่ตัดงานที่หมุดไม่ตรงสถานที่) · งานคิดเป็นรอบใช้ยอดเดิม";
+function rvPaintSim(){
+  var m=$("rvSimM").value; if(!m) return;
+  var saved=DB.set.rv2; DB.set.rv2=rv2Clean(RV_EDIT)||saved;   /* ลองด้วยค่าที่กำลังแก้ ยังไม่บันทึก */
+  try{ $("rvSim").innerHTML=rvCmpHtml(m); $("rvSimNote").textContent=RV_SIMNOTE; }
+  finally { DB.set.rv2=saved; }
+}
+/* หน้าสรุปสิ้นเดือน (เจ้าของ) — ช่วงทดลองคู่กัน ให้เห็นทุกเดือนว่าเรตใหม่จะต่างจากที่จ่ายจริงเท่าไหร่ */
+function rvPaintCmp(m){
+  var host=$("monCmp"); if(!host) return;
+  if(!isOwner(me) || rv2().mode==="live"){ host.className="hidden"; host.innerHTML=""; return; }
+  host.className="card pad";
+  host.innerHTML='<div style="font-weight:600">เทียบเรตเดิม – เรตใหม่ · '+fmtMonth(m)+' <span class="pill t4">ทดลองคู่กัน</span></div>'+
+    '<p class="hint" style="margin:4px 0 8px">ช่องซ้าย = ยอดตามราคาที่ยืนยันจริง (ใช้จ่ายเงิน) · ช่องขวา = ถ้าทุกใบใช้เรตใหม่ · เห็นเฉพาะเจ้าของ</p>'+
+    '<div class="tablewrap"><table>'+rvCmpHtml(m)+'</table></div><p class="hint" style="margin:6px 0 0">'+RV_SIMNOTE+'</p>';
+}
+/* ช่วงค่าแรงของคนนี้ในเดือน m — เดือนที่จบแล้วและคนนั้นเริ่มงานกลางเดือน = คิดตามสัดส่วนวันเหมือนเบี้ยเลี้ยง
+   เดือนที่ยังไม่จบ = ใช้ช่วงเต็ม (allowDays ของเดือนนี้คือ "วันที่ผ่านไป" ถ้าเอามาหารจะเตือนเกินเพดานมั่ว) */
+function rvRange(empId,m){
+  var R=rv2(), d=(m<ym(today())) ? allowDays(m,empId) : 30, f=Math.min(1, d/30);
+  return {min:Math.round(R.payMin*f), max:Math.round(R.payMax*f), part:f<1, days:d};
+}
+function rvSaveSettings(){
+  if(!isOwner(me)){ toast("ต้องให้เจ้าของเป็นคนตั้งเรต"); return; }
+  RV_EDIT.from=$("rvFrom").value||RV2_DEF.from;
+  RV_EDIT.mode=$("rvMode").value==="live" ? "live" : "trial";
+  RV_EDIT.payMin=parseFloat($("rvMin").value)||0;
+  RV_EDIT.payMax=parseFloat($("rvMax").value)||0;
+  var c=rv2Clean(RV_EDIT);
+  if(!c.bands.length){ toast("ต้องมีอย่างน้อย 1 ขั้น"); return; }
+  if(c.payMax && c.payMin>c.payMax){ toast("ขั้นต่ำต้องไม่เกินเพดาน"); return; }
+  var dup={}, bad="";
+  c.rounds.forEach(function(r){ if(dup[r.label]) bad=r.label; dup[r.label]=1; });
+  if(bad){ toast("งาน \""+bad+"\" ซ้ำในรายการคิดเป็นรอบ"); return; }
+  DB.set.rv2=c; save(); toast("บันทึกเรตแล้ว"); rvPaintSettings();
+}
+
+/* ---------- กล่องในการ์ดรอใส่ราคา ----------
+   คืน {box, apply(label), state()} — apply() เรียกซ้ำได้ทุกครั้งที่ชื่องานเปลี่ยน
+   setPrice(v) = เติมช่องค่าเที่ยว (คนเรียกส่งฟังก์ชันมา เพื่อไม่ผูกกับโครงฟอร์ม) */
+function rvCard(j, setPrice){
+  var box=document.createElement("div"); box.className="rvbox hidden";
+  var st={kind:"off"}, rounds=null, used=false;
+  function live(){ return rv2().mode==="live"; }
+  function line(a,b){ return '<div class="rvl"><span>'+a+'</span><b>'+b+'</b></div>'; }
+  function pname(p){ return p ? "📍 "+esc(p.name) : "❓ ไม่ตรงสถานที่"; }
+  function useBtn(v, txt){ return '<div class="row" style="margin-top:6px"><button class="btn sm '+(used?'ghost':'primary')+'" type="button" data-rvuse="'+v+'">'+(used?'✓ ใช้เรตใหม่แล้ว '+baht(v):txt)+'</button></div>'; }
+  function paint(){
+    box.classList.toggle("hidden", st.kind==="off");
+    box.classList.toggle("q", st.kind==="noplace" || st.kind==="far" || st.kind==="nokm");
+    var h='<div style="font-weight:600; margin-bottom:4px">💰 เรตใหม่ '+(live()?'<span class="hint">(ใช้ตั้งแต่ '+fmtDate(rv2().from)+')</span>':'<span class="pill t4">ทดลองคู่กับเรตเดิม</span>')+'</div>';
+    if(st.kind==="round"){
+      h+='<div class="rvrow"><label class="f" style="width:150px">จำนวนรอบ<input type="number" min="1" max="200" step="1" data-rvn="1" value="'+(rounds||"")+'" placeholder="เช่น 12"></label>'+
+         '<span>× '+baht(st.rate)+' บาท/รอบ</span></div>'+
+         '<div class="hint" data-rvt="1"></div><div data-rvb="1"></div>';
+    } else if(st.kind==="band"){
+      h+=line("ต้นทาง", pname(st.ps))+line("ปลายทาง", pname(st.pe))+
+         line("ระยะขาไปส่ง"+(st.leg.est?" (ประมาณ"+(st.leg.stops?" · ตัดจุดแวะออก":" · เส้นตรง")+")":""), kmTxt(st.leg.km)+" กม.")+
+         line("ขั้น "+bandTxt(st.band), baht(st.price)+" บาท")+
+         (live() ? '<div class="hint">ใส่ให้แล้ว ตรวจแล้วกดยืนยันได้เลย</div>'
+                 : useBtn(st.price, 'ใช้ราคาเรตใหม่ '+baht(st.price))+(used?'':'<div class="hint">ช่องค่าเที่ยวตอนนี้ = ราคาแบบเดิม · กดปุ่มถ้าจะใช้เรตใหม่</div>'));
+    } else if(st.kind==="noplace"){
+      h+=line("ต้นทาง", pname(st.ps))+line("ปลายทาง", pname(st.pe))+
+         '<div class="hint" style="margin-top:4px"><b>ระบบไม่คิดราคาให้ เพราะหมุดไม่ตรงสถานที่ในสมุด</b> — ตั้งชื่อสถานที่ในหน้าตั้งค่า หรือแก้พิกัด แล้วระบบจะคิดให้เอง'+
+         (st.band ? '<br>ถ้าเชื่อหมุดของคนขับ: '+kmTxt(st.leg.km)+' กม. → ขั้น '+bandTxt(st.band)+' = '+baht(st.band.price)+' บาท' : '')+'</div>'+
+         (st.band ? useBtn(st.band.price, 'ใช้ราคา '+baht(st.band.price)+' (ตามหมุดคนขับ)') : '');
+    } else if(st.kind==="far"){
+      h+=line("ระยะขาไปส่ง", kmTxt(st.leg.km)+" กม.")+'<div class="hint">ไกลเกินตาราง (เกิน '+rv2().bands[rv2().bands.length-1].to+' กม.) — ใส่ราคาเอง</div>';
+    } else if(st.kind==="nokm"){
+      h+='<div class="hint">ยังไม่มีระยะทาง (พิกัดไม่ครบ) — ใส่ราคาเอง</div>';
+    }
+    box.innerHTML=h;
+    var n=box.querySelector("[data-rvn]");
+    if(n){
+      var t=box.querySelector("[data-rvt]"), bb=box.querySelector("[data-rvb]");
+      var upd=function(){
+        var was=rounds;
+        rounds=Math.max(0, parseInt(n.value,10)||0);
+        if(was!==rounds && !live()) used=false;
+        var tot=rounds*st.rate;
+        if(live()){
+          t.innerHTML = rounds ? (rounds+' รอบ × '+baht(st.rate)+' = <b>'+baht(tot)+' บาท</b> (ใส่ในช่องค่าเที่ยวให้แล้ว)') : 'กรอกจำนวนรอบ แล้วระบบคูณให้';
+          setPrice(rounds ? tot : ""); used = rounds>0;
+        } else {
+          t.innerHTML = rounds ? (rounds+' รอบ × '+baht(st.rate)+' = <b>'+baht(tot)+' บาท</b>') : 'กรอกจำนวนรอบ แล้วระบบคูณให้';
+          bb.innerHTML = rounds ? useBtn(tot, 'ใช้ '+baht(tot)+' (เรตใหม่)') : '';
+          wire();
+        }
+      };
+      n.oninput=upd; upd();
+    }
+    wire();
+  }
+  function wire(){
+    box.querySelectorAll("[data-rvuse]").forEach(function(u){
+      u.onclick=function(){
+        var v=parseFloat(u.getAttribute("data-rvuse"))||0;
+        setPrice(v); used=true; toast("ใส่ "+baht(v)+" บาทแล้ว ตรวจแล้วกดยืนยัน");
+        var keep=rounds; paint(); if(keep!=null){ var n=box.querySelector("[data-rvn]"); if(n && !n.value) n.value=keep; }
+      };
+    });
+  }
+  return {
+    box: box,
+    apply: function(label){
+      st=rvSuggest(j, label); used=false;
+      if(st.kind==="band" && live()){ setPrice(st.price); used=true; }
+      paint();
+    },
+    state: function(){ return {kind:st.kind, rate:st.rate, rounds:rounds, used:used}; },
+    off: function(){ st={kind:"off"}; paint(); }
+  };
+}
+/* ---------- เตือนช่วงค่าแรงในสรุปสิ้นเดือน (เจ้าของเท่านั้น) ---------- */
+function rvPaintMonth(m, drivers, list){
+  var host=$("monRange"); if(!host) return;
+  if(!isOwner(me) || m < rv2().from.slice(0,7)){ host.classList.add("hidden"); host.innerHTML=""; return; }
+  var cur=ym(today()), done=(m<cur), out=[];
+  drivers.forEach(function(e){
+    var L=list.filter(function(j){ return j.emp===e.id; });
+    var tot=sumPay(L)+allowOf(e.id,m), rg=rvRange(e.id,m);
+    if(tot>rg.max) out.push('⚠️ <b>'+esc(e.name)+'</b> ค่าแรงรวม '+baht(tot)+' <b>เกินเพดาน '+baht(rg.max)+'</b>'+(rg.part?' (คิดตามสัดส่วน '+rg.days+' วัน)':'')+' — ตรวจว่างานเยอะจริงหรือราคาผิด');
+    else if(done && tot<rg.min) out.push('⚠️ <b>'+esc(e.name)+'</b> ค่าแรงรวม '+baht(tot)+' <b>ต่ำกว่าขั้นต่ำ '+baht(rg.min)+'</b>'+(rg.part?' (คิดตามสัดส่วน '+rg.days+' วัน)':'')+' · ขาด '+baht(rg.min-tot));
+  });
+  var R=rv2();
+  host.className="card pad"; host.style.background=out.length?"var(--warn-soft)":"";
+  host.innerHTML='<div style="font-weight:600">ช่วงค่าแรงต่อเดือน '+baht(R.payMin)+'–'+baht(R.payMax)+' <span class="hint">(ค่าเที่ยว+เบี้ยเลี้ยง · เห็นเฉพาะเจ้าของ · เตือนอย่างเดียว)</span></div>'+
+    (out.length ? '<div class="stack" style="gap:4px; margin-top:6px">'+out.map(function(x){ return '<div>'+x+'</div>'; }).join("")+'</div>'
+                : '<div class="hint" style="margin-top:4px">'+(done?'ทุกคนอยู่ในช่วง':'เดือนนี้ยังไม่จบ — เตือนขั้นต่ำเมื่อจบเดือน · ตอนนี้ยังไม่มีใครเกินเพดาน')+'</div>');
+}
+
 function renderWait(){
   renderPendBanner();
   var list=sorted(waiting());
@@ -5470,7 +5828,9 @@ function renderWait(){
                                  : "เลือกงานเดิม หรือกด ＋ พิมพ์ชื่องานใหม่ เพื่อให้ระบบจำราคาไว้ใช้ครั้งหน้า";
       calc();
     }
-    nf.onPick(function(r){ suggest(r); });
+    /* เรตใหม่ (rv2) — วางไว้ใต้ฟอร์ม เติมราคาตามระยะ/รอบให้ */
+    var rvc=rvCard(j, function(v){ pin.value=v; mSel.value="เที่ยว"; calc(); });
+    nf.onPick(function(r){ suggest(r); if(flatW===null) rvc.apply(nf.get()); });
     pin.oninput=calc; nin.oninput=calc; rin.oninput=calc;
     qin.oninput=calc; mSel.onchange=calc;
     suggest();
@@ -5492,6 +5852,7 @@ function renderWait(){
     /* ลงงานทั่วไปทีหลังจะทำให้งานส่งใบนี้ค้างคิวอยู่ (ตอนปิดงานยังไม่เข้าเงื่อนไข)
        เสนอค่าเที่ยวเหมาให้ตรงนี้ เจ้าของกดยืนยันทีเดียวจบ ไม่ต้องจำเรตเอง */
     var flatW=flatTripFor(j);
+    if(flatW===null) rvc.apply(nf.get());
     if(flatW!==null){
       sug.innerHTML = flatW>0
         ? ('วันนี้ '+esc(emp(j.emp).name)+' ลงงานทั่วไปด้วย → <b>ค่าเที่ยวเหมา '+baht(flatW)+' บาท</b> (ใส่ให้แล้ว กดยืนยันได้เลย)')
@@ -5514,18 +5875,22 @@ function renderWait(){
       else if(m==="คิว"){ j.qty=q; j.days=1; }
       else { j.days=1; j.qty=null; }
       j.label=nf.get(); j.price=v; j.priced=true;
+      /* งานคิดเป็นรอบ: ช่องค่าเที่ยว = รอบ × ราคาต่อรอบ · สมุดราคาต้องจำ "ราคาต่อรอบ" ไม่ใช่ยอดรวม */
+      var rvs=rvc.state();
+      if(rvs.kind==="round" && rvs.used && !(rvs.rounds>0)){ toast("กรอกจำนวนรอบก่อน"); return; }
+      var bookP = (rvs.kind==="round" && rvs.used) ? rvs.rate : v;
       if(j.label){
         var r=findRate(j.type,j.label);
         /* จำสินค้า/ปลายทางของงานนี้ไว้ด้วย ครั้งหน้าในช่องเลือกจะได้รู้ว่างานนี้คืองานอะไร */
-        if(r){ r.price=v; r.unit=m; r.at=today(); if(j.mat) r.mat=j.mat; if(j.dest) r.dest=j.dest; }
-        else DB.rate.push({id:uid("r"), type:j.type, label:j.label, price:v, unit:m, at:today(),
+        if(r){ r.price=bookP; r.unit=m; r.at=today(); if(j.mat) r.mat=j.mat; if(j.dest) r.dest=j.dest; }
+        else DB.rate.push({id:uid("r"), type:j.type, label:j.label, price:bookP, unit:m, at:today(),
                            mat:j.mat||"", dest:j.dest||""});
       }
       save(); toast("ใส่ค่าเที่ยวแล้ว "+baht(payOf(j))+" บาท"); go("wait");
     };
     form.appendChild(lab); form.appendChild(labM); form.appendChild(lab2); form.appendChild(labQ);
     form.appendChild(labN); form.appendChild(labR);
-    form.appendChild(ok); form.appendChild(sug); form.appendChild(tot);
+    form.appendChild(rvc.box); form.appendChild(ok); form.appendChild(sug); form.appendChild(tot);
     c.appendChild(form); host.appendChild(c);
   });
 }
@@ -5959,6 +6324,8 @@ function renderMonth(){
   groupTable($("monType"), list, function(j){return j.type;}, function(k){return TYPE_LABEL[k];}, "ประเภทงาน");
   paintCoSplit(m);
   paintOffDays(m, drivers);
+  rvPaintMonth(m, drivers, list);
+  rvPaintCmp(m);
   if(isAutoAbs(m)) $("monHint").innerHTML = "เบี้ยเลี้ยง"+(allowDays(m)>=30?"จ่ายเต็มเดือน":"<b>"+allowNote(m)+"</b>")+
     " · <b>วันที่ไม่มีงานลง = ลา</b> หักวันละ "+baht(DB.set.deduct||0)+" — แก้วันหยุด/วันมาทำงานได้ที่ \"วันหยุด / วันลา\" ด้านล่าง"+
     (monthConfirmed(m)?"":" · <b>ยังไม่ยืนยัน</b>") +
@@ -6439,6 +6806,8 @@ function renderSettings(){
   $("trashBlock").classList.toggle("hidden", !isOwner(me));
   /* ลองดูหน้าจอพนักงาน — เจ้าของเท่านั้น (แอดมินเห็นหน้าตั้งค่าด้วย) */
   $("prvBlock").classList.toggle("hidden", !isOwner(me));
+  $("rvBlock").classList.toggle("hidden", !isOwner(me));
+  if(isOwner(me)) rvPaintSettings();
   devPaintBlock();
   prvPaintSel();
   paintEmpList();
@@ -7770,6 +8139,16 @@ $("rAdd").onclick=function(){
   save(); $("rLabel").value=""; $("rPrice").value=""; $("rDetail").value=""; toast("เพิ่มราคางานแล้ว"); render();
 };
 $("orphScan").onclick=orphScan;
+$("rvSave").onclick=rvSaveSettings;
+$("rvBandAdd").onclick=function(){
+  var last=RV_EDIT.bands.length ? RV_EDIT.bands[RV_EDIT.bands.length-1] : {to:0,price:0};
+  RV_EDIT.bands.push({to:last.to+40, price:last.price+100}); rvPaintBands();
+};
+$("rvRoundAdd").onclick=function(){
+  var L=""; DB.rate.some(function(r){ if(r.label && !rvRound(r.label) && !RV_EDIT.rounds.some(function(x){ return x.label===r.label; })){ L=r.label; return true; } return false; });
+  if(!L){ toast("ไม่มีชื่องานในสมุดราคาให้เลือก — เพิ่มชื่องานในหน้าสมุดราคางานก่อน"); return; }
+  RV_EDIT.rounds.push({label:L, price:20}); rvPaintRounds();
+};
 $("sSave").onclick=function(){
   DB.set.allow=parseFloat($("sAllow").value)||0;
   DB.set.deduct=parseFloat($("sDeduct").value)||0;
