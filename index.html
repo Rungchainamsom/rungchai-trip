@@ -243,6 +243,13 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 #ofuelSum td:first-child{white-space:nowrap}
 .thumb.none{display:grid; place-items:center; background:var(--surface2); color:var(--ink3); font-size:11px; cursor:default}
 
+.g4{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px}
+.g4 button{border:0; border-radius:14px; padding:14px 8px; cursor:pointer; font-family:"Bai Jamjuree","IBM Plex Sans Thai",sans-serif;
+  font-weight:700; font-size:18px; color:#fff; background:var(--accent); display:flex; flex-direction:column; align-items:center; gap:2px; line-height:1.25}
+.g4 button span{font-size:26px; line-height:1.1}
+.g4 button:disabled{opacity:.6}
+.wait-card{border:1.5px solid var(--accent); background:var(--accent-soft); border-radius:var(--r); padding:16px}
+.wait-card .wt{font-family:"IBM Plex Mono",monospace; font-size:40px; font-weight:600; line-height:1.1; margin-top:6px}
 .live-card{border:1.5px solid var(--live); background:var(--live-soft); border-radius:var(--r); padding:16px}
 .dot{width:8px; height:8px; border-radius:50%; background:var(--live); display:inline-block; animation:bp 1.6s infinite}
 @keyframes bp{0%,100%{opacity:1}50%{opacity:.25}}
@@ -466,7 +473,9 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
 
     <section id="v-home" class="view">
       <div id="liveBox" style="margin-top:18px"></div>
-      <button class="btn primary big block" id="btnNew" style="margin-top:14px">＋ เริ่มงานใหม่</button>
+      <button class="btn primary big block hidden" id="btnNew" style="margin-top:14px">＋ เริ่มงานใหม่</button>
+      <!-- 4 ปุ่มเริ่มงาน (2 พ.ย. 2569 — เจ้าของสั่ง แทนปุ่มเริ่มงานใหม่ปุ่มเดียว) · รับสินค้าที่โรงโม่ = ถามเรื่องรอคิว -->
+      <div class="g4 hidden" id="newGrid"></div>
       <div class="sec-title">งานวันนี้ · <span id="todayLabel" class="num"></span></div>
       <div class="tiles" id="homeTiles"></div>
       <div class="card" id="homeJobs" style="margin-top:12px"></div>
@@ -486,7 +495,12 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <button class="btn sm ghost" id="cancelNew">ยกเลิก</button>
       </div>
       <div class="card pad stack" style="margin-top:10px">
-        <div>
+        <div id="waitSumNew" class="hidden card pad" style="box-shadow:none; background:var(--accent-soft); border:1.5px solid var(--accent)"></div>
+        <div id="typePicked" class="row hidden" style="justify-content:space-between">
+          <span class="pill" id="typePickedPill" style="font-size:15px"></span>
+          <button class="btn sm ghost" id="typeChange" type="button">เปลี่ยนงาน</button>
+        </div>
+        <div id="typeBox">
           <div class="hint" style="font-weight:600; color:var(--ink2); margin-bottom:8px">งานอะไร</div>
           <div class="choices" id="typeChoices"></div>
         </div>
@@ -1331,6 +1345,9 @@ function rowJob(r){
     payMode:r.pay_mode||"เที่ยว", days:r.days||1, returnOf:r.return_of||null,
     qty:(r.qty==null?null:num(r.qty,0)), src:r.src||null, srcRef:r.src_ref||null,
     incomplete:!!r.incomplete, incompleteReason:r.incomplete_reason||"", flatTrip:!!r.flat_trip,
+    waitAt:ms(r.wait_at), waitFrom:ms(r.wait_from), waitLat:(r.wait_lat==null?null:num(r.wait_lat,0)),
+    waitLng:(r.wait_lng==null?null:num(r.wait_lng,0)), waitPlace:r.wait_place||null, waitFlag:r.wait_flag||"",
+    waitPay:num(r.wait_pay,0),
     costOwner:(r.cost_owner==="rc"||r.cost_owner==="ts")?r.cost_owner:null,
     start: r.start_at? {lat:r.start_lat, lng:r.start_lng, at:ms(r.start_at)} : null,
     end:   r.end_at?   {lat:r.end_lat,   lng:r.end_lng,   at:ms(r.end_at)}   : null,
@@ -1368,6 +1385,10 @@ var TOROW = {
       qty:((o.qty==null||o.qty==="")?null:Number(o.qty)), src:o.src||null, src_ref:o.srcRef||null,
       incomplete:!!o.incomplete, incomplete_reason:o.incompleteReason||null, flat_trip:!!o.flatTrip,
       cost_owner:o.costOwner||null,
+      /* v42 ค่ารอคิวโรงโม่ — ช่อง wait_* ฐานข้อมูลรับเฉพาะตอน INSERT (คนขับ) · wait_pay เฉพาะเจ้าของ (jobs_guard_money) */
+      wait_at:o.waitAt?iso(o.waitAt):null, wait_from:o.waitFrom?iso(o.waitFrom):null,
+      wait_lat:(o.waitLat==null?null:o.waitLat), wait_lng:(o.waitLng==null?null:o.waitLng),
+      wait_place:o.waitPlace||null, wait_flag:o.waitFlag||null, wait_pay:o.waitPay||0,
       start_lat:o.start?o.start.lat:null, start_lng:o.start?o.start.lng:null, start_at:o.start?iso(o.start.at):null,
       end_lat:o.end?o.end.lat:null, end_lng:o.end?o.end.lng:null, end_at:o.end?iso(o.end.at):null,
       photos_start:o._ps||[], photos_end:o._pe||[] }; },
@@ -2495,7 +2516,8 @@ function findRate(type,label){
   for(var i=0;i<DB.rate.length;i++){ var r=DB.rate[i]; if(r.type===type && r.label.trim()===L) return r; }
   return null;
 }
-/* รายชื่องานเดิมสำหรับช่องเลือก — เรียงงานที่ใช้บ่อยขึ้นก่อน แล้วค่อยงานที่เพิ่งแก้ราคา
+/* รายชื่องานเดิมสำหรับช่องเลือก — เรียงตามตัวอักษรไทย (เจ้าของสั่ง 2 พ.ย. 2569 · เดิมเรียงตามจำนวนครั้งที่ใช้ หายาก)
+   ยังนับ "ใช้ n ครั้ง" ไว้โชว์ท้ายชื่อเหมือนเดิม
    Why นับจากงานจริงทุกครั้งที่วาด ไม่เก็บตัวนับไว้ในสมุดราคา:
      ตัวนับที่เก็บไว้จะเพี้ยนทันทีที่มีคนลบงานหรือกู้คืนงาน นับสดถูกเสมอและของมีไม่กี่ร้อยแถว */
 function rateChoices(type){
@@ -2507,9 +2529,7 @@ function rateChoices(type){
   return DB.rate.filter(function(r){ return r.type===type; })
     .map(function(r){ return {r:r, n:cnt[(r.label||"").trim()]||0}; })
     .sort(function(a,b){
-      if(a.n!==b.n) return b.n-a.n;
-      if((a.r.at||"")!==(b.r.at||"")) return (a.r.at||"")<(b.r.at||"") ? 1 : -1;
-      return (a.r.label||"").localeCompare(b.r.label||"","th");
+      return (a.r.label||"").trim().localeCompare((b.r.label||"").trim(),"th");
     });
 }
 function rateWhat(r){
@@ -3051,6 +3071,18 @@ function buildMatChips(){
   mc.appendChild(add);
 }
 function paintNew(){
+  var W=waitGet(), wb=$("waitSumNew");
+  if(wb){
+    var on=!!W && draft.type==="รับสินค้า";
+    wb.classList.toggle("hidden", !on);
+    if(on) wb.innerHTML='<div class="row" style="justify-content:space-between"><b>⏱️ รอคิว'+(W.name?' '+esc(W.name):'')+'</b>'+
+      '<span class="num" style="font-size:19px; font-weight:600">'+hmTxt(waitMins(W.from||W.at, Date.now(), {open:W.open, close:W.close}))+' ชม.</span></div>'+
+      '<div class="hint">ถึง '+clock(W.at)+' น. → เวลารอหยุดตอนกดเริ่มงาน</div>';
+  }
+  $("typeBox").classList.toggle("hidden", !!draft._picked);
+  $("typePicked").classList.toggle("hidden", !draft._picked);
+  $("typePickedPill").className="pill "+(TYPE_PILL[draft.type]||"");
+  $("typePickedPill").textContent=(TYPE_ICON[draft.type]||"")+" "+(TYPE_LABEL[draft.type]||draft.type);
   var el=$("typeChoices").children;
   for(var i=0;i<el.length;i++) el[i].setAttribute("aria-pressed", el[i].dataset.t===draft.type?"true":"false");
   var hasMat = draft.type==="รับสินค้า" || draft.type==="ส่งสินค้า";
@@ -3113,9 +3145,12 @@ function fillTruckSel(reset){
   if(def) sel.value=def;
   else if(sel.options.length) sel.value=sel.options[sel.options.length-1].value;
 }
-function openNew(){
+function openNew(t){
   if(busyGuard()) return;
   draft.shots=[]; draft.other=""; draft._asNew=false;
+  /* แตะจาก 4 ปุ่มหน้าหลัก = เลือกงานไว้แล้ว ไม่ต้องกดเลือกซ้ำ (มีปุ่ม "เปลี่ยนงาน") */
+  draft._picked=false;
+  if(t && TYPE_LABEL[t]){ draft.type=t; draft._picked=true; }
   $("fOther").value=""; $("night1Val").textContent="0";
   buildMatChips();
   $("fDate").value=today();
@@ -3151,7 +3186,9 @@ function startJob(){
   var tv=$("fTruck").value;
   if(draft.type!=="ทั่วไป" && !tv){ toast("เลือกรถที่ใช้ก่อน"); $("fTruck").focus(); return; }
   /* รับของต่อจากงานส่งที่เพิ่งปิด → ถามก่อนว่าเป็นจุดแวะของงานเดิมไหม (17 ก.ย. 2569) */
-  if(draft.type==="รับสินค้า" && !draft._asNew){
+  var WT = draft.type==="รับสินค้า" ? waitGet() : null;
+  /* กำลังรอคิวโรงโม่ = งานรับสินค้าใบใหม่ของโรงโม่นั้นแน่ๆ ไม่ใช่จุดแวะของงานเดิม */
+  if(draft.type==="รับสินค้า" && !draft._asNew && !WT){
     var prevJob=stopCandidate(tv, $("fDate").value);
     if(prevJob){ askStopOrNew(prevJob); return; }
   }
@@ -3194,6 +3231,11 @@ function startJob(){
   $("btnStart").disabled=true; $("btnStart").textContent="กำลังหาพิกัด…";
   getGeo(function(pos){
     j.start={lat: pos?pos.lat:null, lng: pos?pos.lng:null, at:Date.now()};
+    if(WT){
+      j.waitAt=WT.at; j.waitFrom=WT.from||WT.at; j.waitLat=WT.lat; j.waitLng=WT.lng;
+      j.waitPlace=WT.place||null; j.waitFlag=waitFlagsAtStart(WT, pos); j.waitPay=0;
+      waitSet(null);
+    }
     DB.job.push(j); save();
     $("btnStart").disabled=false;
     toast(pos ? "เริ่มงานแล้ว ปักจุดเริ่มต้นเรียบร้อย" : "เริ่มงานแล้ว (ปักพิกัดไม่ได้ ค่อยปักตอนปิดงาน)");
@@ -3578,7 +3620,190 @@ function routeKm(j){
   for(var i=1;i<pts.length;i++) d+=haversine(pts[i-1], pts[i]);
   return Math.round(d*10)/10;
 }
-function payOf(j){ return payBase(j)+nightPay(j)+stopsPay(j); }
+/* ค่ารอคิวโรงโม่ (v42) — เจ้าของใส่เอง · ต้องตรงกับ total_pay ฝั่งฐานข้อมูล (+ wait_pay) */
+function waitPayOf(j){ return (j && j.waitPay>0) ? j.waitPay : 0; }
+/* =============== ค่ารอคิวโรงโม่ (v42 · 2 พ.ย. 2569 — เจ้าของสั่ง) ===============
+   [stated] ใช้เฉพาะงานรับสินค้าที่โรงโม่ (สถานที่ในสมุดที่ชื่อขึ้นต้น "โรงโม่") · ฟังก์ชันอื่นยังไม่เปิด
+   คนขับแตะ "รับสินค้า" ตอนอยู่ในรัศมีโรงโม่ → เลือก "ยังรอคิว" = เริ่มนับ · กด "ได้ใบชั่งแล้ว" เปิดงาน = หยุดนับ
+   ฟรี 2 ชม. แล้ว 50/ชม. นับเต็มชั่วโมง · สูงสุด 300/วัน/คน · เริ่มนับไม่ก่อนเวลาเปิดโรงโม่ (places.open_t)
+   [stated] คนขับเห็นแค่เวลา ไม่เห็นตัวเลขเงิน · เจ้าของกดยืนยันเงินเอง ระบบไม่บวกให้
+   ห่างโรงโม่เกินรัศมี = ไม่ให้เริ่มนับ · จับ GPS ไม่ได้ = ให้นับแต่ขึ้นธง
+   สถานะรอคิวอยู่ในเครื่องคนขับ (localStorage) จนกว่าจะเปิดงาน — ยังไม่ใช่งาน จึงไม่ขึ้นคลาวด์ */
+var WAIT_KEY="rc-wait-", WAITMEM=null, WAIT_TICK=null;
+var WAIT_FLAG_TXT={nogps:"ตอนกดรอคิวจับ GPS ไม่ได้", acc:"GPS ตอนกดรอคิวไม่แม่น", farstart:"ตอนเริ่มงานไม่ได้อยู่ที่โรงโม่",
+                   fuel:"มีรายการเติมน้ำมันระหว่างรอ", job:"มีงานอื่นระหว่างรอ"};
+function isQuarry(x){ return !!x && /^โรงโม่/.test((x.name||"").trim()); }
+function wvCfg(){ var r=rv2(); return {free:num(r.waitFree,2), rate:num(r.waitRate,50), cap:num(r.waitCap,300)}; }
+function quarryNear(p){
+  if(!p || p.lat==null) return null;
+  var best=null, bd=1e12;
+  (DB.places||[]).forEach(function(x){ if(!isQuarry(x)) return; var d=haversine(p,x)*1000; if(d<bd){ bd=d; best=x; } });
+  return best ? {place:best, d:bd, inside:bd<=best.r} : null;
+}
+function waitGet(){
+  if(!me) return null;
+  if(PRV && PRV.on) return WAITMEM;
+  try{ var s=localStorage.getItem(WAIT_KEY+me.id); return s ? JSON.parse(s) : null; }catch(e){ return WAITMEM; }
+}
+function waitSet(w){
+  WAITMEM=w;
+  if(!me || (PRV && PRV.on)) return;
+  try{ if(w) localStorage.setItem(WAIT_KEY+me.id, JSON.stringify(w)); else localStorage.removeItem(WAIT_KEY+me.id); }catch(e){}
+}
+function hmAt(ts, hm){ var d=new Date(ts), p=(hm||"").split(":"); return new Date(d.getFullYear(), d.getMonth(), d.getDate(), +p[0]||0, +p[1]||0).getTime(); }
+/* เวลาเริ่มนับ = ไม่ก่อนเวลาเปิดโรงโม่ของวันนั้น */
+function waitFromOf(at, pl){ return (pl && pl.open) ? Math.max(at, hmAt(at, pl.open)) : at; }
+/* นาทีที่นับได้ (หยุดที่เวลาปิดโรงโม่ ถ้ามี) */
+function waitMins(from, until, pl){
+  if(!from || !until) return 0;
+  var u=until;
+  if(pl && pl.close){ var c=hmAt(from, pl.close); if(c>from && u>c) u=c; }
+  return Math.max(0, Math.floor((u-from)/60000));
+}
+function hmTxt(mins){ mins=Math.max(0, Math.floor(mins||0)); return Math.floor(mins/60)+":"+pad(mins%60); }
+function waitPaidHrs(mins){ var over=mins-wvCfg().free*60; return over>0 ? Math.ceil(over/60) : 0; }
+function waitPlaceOf(j){ return j && j.waitPlace ? find(DB.places||[], j.waitPlace) : null; }
+function waitMinsOf(j){
+  if(!j || !j.waitAt || !j.start || !j.start.at) return 0;
+  return waitMins(j.waitFrom||j.waitAt, j.start.at, waitPlaceOf(j));
+}
+/* เสนอเงินค่ารอให้เจ้าของ (ไม่แตะงาน) — ตัดเพดานต่อวันจากใบอื่นของคนเดียวกันที่ใส่ค่ารอไปแล้ว */
+function waitSuggest(j){
+  if(!j || !j.waitAt) return null;
+  var c=wvCfg(), mins=waitMinsOf(j), hrs=waitPaidHrs(mins), raw=hrs*c.rate;
+  var other=0;
+  DB.job.forEach(function(o){ if(o.id!==j.id && o.emp===j.emp && o.date===j.date) other+=waitPayOf(o); });
+  var pay=Math.max(0, Math.min(raw, c.cap-other));
+  var flags=(j.waitFlag||"").split(",").filter(Boolean);
+  return {mins:mins, hrs:hrs, raw:raw, pay:pay, other:other, cap:c.cap, flags:flags, pl:waitPlaceOf(j)};
+}
+/* คนอื่นที่รอโรงโม่เดียวกันวันเดียวกัน + ค่าเฉลี่ย 60 วันของโรงโม่นั้น → จับเคสรอนานผิดปกติ */
+function waitCompare(j){
+  var same=[], hist=[], lim=Date.now()-60*864e5;
+  DB.job.forEach(function(o){
+    if(o.id===j.id || !o.waitAt || o.waitPlace!==j.waitPlace) return;
+    var m=waitMinsOf(o); if(!(m>0)) return;
+    if(o.date===j.date) same.push({name:emp(o.emp).name, m:m});
+    if(o.waitAt>=lim) hist.push(m);
+  });
+  var avg=hist.length ? hist.reduce(function(a,b){ return a+b; },0)/hist.length : 0;
+  return {same:same, avg:avg, n:hist.length};
+}
+function waitInfoHtml(j){
+  var w=waitSuggest(j); if(!w) return "";
+  var cmp=waitCompare(j), odd=false, h='';
+  h+='<div><b>⏱️ รอคิว'+(w.pl?' '+esc(w.pl.name):'')+' '+hmTxt(w.mins)+' ชม.</b> '+
+     '<span class="hint">ถึง '+clock(j.waitAt)+' น.'+((j.waitFrom||j.waitAt)>j.waitAt?' · เริ่มนับ '+clock(j.waitFrom)+' น. (โรงโม่เปิด)':'')+
+     ' → เริ่มงาน '+clock(j.start&&j.start.at)+' น.</span></div>';
+  h+='<div class="hint">ฟรี '+wvCfg().free+' ชม. · เกิน → นับ '+w.hrs+' ชม. × '+baht(wvCfg().rate)+' = '+baht(w.raw)+' บาท'+
+     (w.raw>w.pay ? ' · <b>ตัดเพดานวันละ '+baht(w.cap)+' (ใบอื่นวันนี้ใส่ไปแล้ว '+baht(w.other)+')</b>' : '')+'</div>';
+  if(cmp.same.length) h+='<div class="hint">วันเดียวกันที่นี่: '+cmp.same.map(function(x){ return esc(x.name)+' '+hmTxt(x.m); }).join(" · ")+'</div>';
+  if(cmp.n>=3){
+    h+='<div class="hint">ปกติที่นี่รอเฉลี่ย '+hmTxt(cmp.avg)+' ชม. ('+cmp.n+' ครั้ง)</div>';
+    if(w.mins>cmp.avg*2 && w.mins>180) odd=true;
+  }
+  if(cmp.same.length && w.mins>Math.max.apply(null, cmp.same.map(function(x){ return x.m; }))*2 && w.mins>180) odd=true;
+  var fl=w.flags.map(function(f){ return WAIT_FLAG_TXT[f]||f; });
+  if(odd) fl.push("รอนานกว่าปกติมาก");
+  if(fl.length) h+='<div style="color:var(--warn); font-weight:600">⚠️ '+fl.map(esc).join(" · ")+' — ตรวจก่อนจ่าย (เทียบเวลาชั่งเข้าบนตั๋วได้)</div>';
+  return h;
+}
+/* ---------- ฝั่งคนขับ ---------- */
+function geoAcc(cb){
+  if(!navigator.geolocation){ cb(null); return; }
+  var done=false, t=setTimeout(function(){ if(!done){ done=true; cb(null); } }, 15000);
+  navigator.geolocation.getCurrentPosition(
+    function(p){ if(done) return; done=true; clearTimeout(t); cb({lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy||0}); },
+    function(){ if(done) return; done=true; clearTimeout(t); cb(null); },
+    {enableHighAccuracy:true, timeout:12000, maximumAge:0});
+}
+var NEW_TYPES=[["ส่งสินค้า","🚚"],["รับสินค้า","📦"],["ทั่วไป","🧰"],["อื่นๆ","✳️"]];
+function paintNewGrid(show){
+  var g=$("newGrid"); if(!g) return;
+  g.classList.toggle("hidden", !show);
+  if(!show) return;
+  if(!g.children.length){
+    NEW_TYPES.forEach(function(x){
+      var b=document.createElement("button"); b.type="button"; b.dataset.t=x[0];
+      b.innerHTML='<span>'+(TYPE_ICON[x[0]]||x[1])+'</span>'+esc(x[0]==="ทั่วไป"?"งานทั่วไป":(TYPE_LABEL[x[0]]||x[0]));
+      b.onclick=function(){ tapNewType(x[0], b); };
+      g.appendChild(b);
+    });
+  }
+}
+function tapNewType(t, btn){
+  if(busyGuard()) return;
+  if(t!=="รับสินค้า" || !(DB.places||[]).some(isQuarry)){ openNew(t); return; }
+  var keep=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span>⏳</span>กำลังจับพิกัด…';
+  geoAcc(function(pos){
+    btn.disabled=false; btn.innerHTML=keep;
+    var q=pos ? quarryNear(pos) : null;
+    if(pos && q && q.inside && pos.acc<=1000){
+      askChoice({title:"📍 อยู่ที่ "+q.place.name, body:"รับสินค้าที่โรงโม่ — ตอนนี้เป็นแบบไหน",
+        yes:"⏱️ ยังรอคิว — เริ่มนับเวลารอ", no:"🧾 ได้ใบชั่งแล้ว — เริ่มงานเลย",
+        onYes:function(){ waitStart(pos, q.place, ""); }, onNo:function(){ openNew(t); }});
+      return;
+    }
+    if(!pos || pos.acc>1000){
+      askChoice({title:"❓ จับพิกัดไม่ได้", body:"ถ้ากำลังรอคิวที่โรงโม่ เริ่มนับได้ แต่<b>เจ้าของจะตรวจก่อน</b>คิดค่ารอ<br>ออกไปที่โล่งแล้วลองใหม่ จะจับได้ง่ายกว่า",
+        yes:"⏱️ รอคิวที่โรงโม่ — เริ่มนับ (เจ้าของตรวจ)", no:"เริ่มงานรับสินค้าเลย",
+        onYes:function(){ waitStart(pos, (pos && q) ? q.place : null, pos ? "acc" : "nogps"); }, onNo:function(){ openNew(t); }});
+      return;
+    }
+    if(q && q.d<=15000){
+      askChoice({title:"⛔ ยังไม่ถึงโรงโม่", body:"ตอนนี้ห่าง"+esc(q.place.name)+" <b>"+(q.d/1000).toFixed(1)+" กม.</b><br>ยังไม่เริ่มนับเวลารอ — ถึงโรงโม่แล้วค่อยแตะ \"รับสินค้า\" ใหม่",
+        yes:"เริ่มงานรับสินค้าเลย (ไม่ได้รอคิว)", no:"ปิด — ถึงแล้วค่อยกดใหม่",
+        onYes:function(){ openNew(t); }, onNo:function(){}});
+      return;
+    }
+    openNew(t);
+  });
+}
+function waitStart(pos, pl, flag){
+  var at=Date.now();
+  waitSet({at:at, from:waitFromOf(at, pl), lat:pos?pos.lat:null, lng:pos?pos.lng:null,
+           place:pl?pl.id:null, name:pl?pl.name:"", open:pl?pl.open:"", close:pl?pl.close:"", flag:flag||""});
+  toast("เริ่มนับเวลารอคิวแล้ว — โหลดเสร็จได้ใบชั่ง ค่อยกดเริ่มงาน", 3500);
+  render();
+}
+function waitCardHtml(w){
+  var pl={open:w.open, close:w.close};
+  var mins=waitMins(w.from||w.at, Date.now(), pl), before=Date.now()<(w.from||w.at);
+  return '<div class="meta" style="margin:0 0 4px"><span class="pill t3">⏱️ รอคิวโหลด</span></div>'+
+    '<div class="jt" style="font-size:19px">'+(w.name?'📍 '+esc(w.name):'❓ ไม่รู้ว่าโรงโม่ไหน')+'</div>'+
+    '<div class="hint">ถึง '+clock(w.at)+' น.'+(w.flag?'':' · ✓ ตรงโรงโม่')+'</div>'+
+    '<div class="wt">'+hmTxt(mins)+' <span style="font-size:18px">ชม.</span></div>'+
+    ((w.from||w.at)>w.at ? '<div class="hint" style="margin-top:6px; background:var(--surface); border-radius:10px; padding:8px 10px">🕖 โรงโม่เปิด '+esc(w.open)+' น. — <b>เริ่มนับตั้งแต่ '+clock(w.from)+'</b>'+(before?' (ยังไม่ถึงเวลา)':'')+'</div>' : '')+
+    '<div class="hint" style="margin-top:4px">ฟรี '+wvCfg().free+' ชม. แรก</div>'+
+    (w.flag ? '<div class="card pad" style="box-shadow:none; margin-top:8px; background:var(--warn-soft); color:var(--warn)">⚠️ '+esc(WAIT_FLAG_TXT[w.flag]||w.flag)+' — นับเวลาไว้ให้แล้ว <b>เจ้าของจะตรวจก่อนคิดค่ารอ</b></div>' : '');
+}
+function renderWaitCard(box, w){
+  var d=document.createElement("div"); d.className="wait-card"; d.id="waitCard";
+  d.innerHTML=waitCardHtml(w);
+  var b=document.createElement("button"); b.className="btn primary big block"; b.style.marginTop="12px";
+  b.textContent="✓ โหลดเสร็จ ได้ใบชั่งแล้ว — เริ่มงานรับสินค้า";
+  b.onclick=function(){ openNew("รับสินค้า"); };
+  var c=document.createElement("button"); c.className="btn ghost sm block"; c.style.marginTop="8px";
+  c.textContent="ยกเลิก ไม่ได้รอแล้ว";
+  armBtn(c, "กดอีกครั้ง = ยกเลิกการนับเวลารอ", function(){ waitSet(null); toast("ยกเลิกการนับเวลารอแล้ว"); render(); });
+  d.appendChild(b); d.appendChild(c); box.appendChild(d);
+  clearInterval(WAIT_TICK);
+  WAIT_TICK=setInterval(function(){
+    var el=$("waitCard"), ww=waitGet();
+    if(!el || !ww){ clearInterval(WAIT_TICK); WAIT_TICK=null; return; }
+    var keep=[].slice.call(el.querySelectorAll("button"));
+    el.innerHTML=waitCardHtml(ww); keep.forEach(function(x){ el.appendChild(x); });
+  }, 30000);
+}
+function waitFlagsAtStart(w, pos){
+  var f=(w.flag||"").split(",").filter(Boolean);
+  var pl=w.place ? find(DB.places||[], w.place) : null;
+  if(pl && pos && pos.lat!=null && haversine(pos, pl)*1000 > pl.r && f.indexOf("farstart")<0) f.push("farstart");
+  if(DB.fuel.some(function(x){ return x.emp===me.id && x.at && x.at>w.at; })) f.push("fuel");
+  if(DB.job.some(function(x){ return x.emp===me.id && x.at && x.at>w.at; })) f.push("job");
+  return f.join(",");
+}
+function payOf(j){ return payBase(j)+nightPay(j)+stopsPay(j)+waitPayOf(j); }
 /* ค่าแรงงานทั่วไปคิดเป็นรายวัน วันละครั้ง งานทั่วไปงานที่ 2 ของวันเดียวกันจึงเป็น 0
    (เจ้าของเข้าไปแก้ยอดทีหลังได้ ถ้าวันนั้นตกลงจ่ายมากกว่านั้น)
    กติกานี้ต้องตรงกับ jobs_guard_money() ใน DB เป๊ะ ไม่งั้นจอกับคลาวด์จะไม่ตรงกัน */
@@ -3920,7 +4145,8 @@ function fixPending(j){ return (DB.fixOpen && DB.fixOpen[j.id]) || null; }
    **ไม่ผ่านชั้นซิงก์ SNAP** — ยิง REST ตรงแล้วแก้ DB.places ในเครื่อง (ของน้อย เปลี่ยนนานๆ ครั้ง)
    เลือกจุดที่มีชื่อในปุ่มขอแก้พิกัด = ส่ง "พิกัดมาตรฐาน" ของสถานที่ (กม. เท่ากันทุกใบ ราคาเดาแม่นขึ้น) */
 var PLACE_R_DEF=1000;
-function rowPlace(r){ return {id:r.id, name:r.name, lat:num(r.lat,0), lng:num(r.lng,0), r:num(r.radius_m,PLACE_R_DEF)}; }
+function rowPlace(r){ return {id:r.id, name:r.name, lat:num(r.lat,0), lng:num(r.lng,0), r:num(r.radius_m,PLACE_R_DEF),
+                              open:(r.open_t||"").slice(0,5), close:(r.close_t||"").slice(0,5)}; }
 function canEditPlaces(){ return isStaff(me); }
 function sortPlaces(){ (DB.places||[]).sort(function(a,b){ return a.name.localeCompare(b.name,"th"); }); }
 /* สถานที่ที่จุดนี้อยู่ในรัศมี (ถ้าอยู่ในหลายวง เอาวงที่ใกล้สุด) */
@@ -4016,7 +4242,7 @@ function placePatch(x, patch){
   return rest("places?id=eq."+x.id,{method:"PATCH", headers:{Prefer:"return=representation"}, body:patch})
     .then(function(r){
       if(!r || !r.length) throw new Error("[403]");   /* RLS ไม่ให้แก้ = ได้แถวว่างกลับมา ไม่ใช่ error */
-      var y=rowPlace(r[0]); x.name=y.name; x.lat=y.lat; x.lng=y.lng; x.r=y.r; sortPlaces(); return x;
+      var y=rowPlace(r[0]); x.name=y.name; x.lat=y.lat; x.lng=y.lng; x.r=y.r; x.open=y.open; x.close=y.close; sortPlaces(); return x;
     });
 }
 function placeDel(x){
@@ -4703,7 +4929,8 @@ var LOGF={ job_date:"วันที่งาน", emp_id:"คนขับ", tru
   photos_start:"รูปตอนเริ่ม", photos_end:"รูปตอนปิดงาน", start_at:"เวลาเริ่ม", end_at:"เวลาปิดงาน",
   incomplete:"ถ่ายบิลไม่ได้", priced_at:"เวลาที่ใส่ราคา", priced_by:"คนใส่ราคา",
   fuel_date:"วันที่เติม", amount:"จำนวนเงิน", price_per_l:"ราคาต่อลิตร", odo:"เลขไมล์",
-  photos_receipt:"รูปใบเสร็จ", photos_odo:"รูปเลขไมล์", src:"มาจาก", src_ref:"อ้างอิง" };
+  photos_receipt:"รูปใบเสร็จ", photos_odo:"รูปเลขไมล์", src:"มาจาก", src_ref:"อ้างอิง",
+  wait_pay:"ค่ารอคิว", wait_at:"เวลาถึงโรงโม่", wait_flag:"ธงค่ารอ" };
 function logVal(k,v){
   if(v===null || v===undefined || v==="") return "–";
   if(k==="emp_id" || k==="priced_by") return emp(v).name || "ไม่ทราบชื่อ";
@@ -4850,7 +5077,13 @@ function buildJobEdit(j, pan){
         '<input type="number" data-k="nights" min="0" max="30" step="1" value="'+(j.nights||0)+'"></label>' +
       '<label class="f" style="width:118px">คืนละ (บาท)' +
         '<input type="number" data-k="rate" min="0" step="50" value="'+nightRate(j)+'"></label>' +
+      /* งานคิดเป็นรอบ (เช่น ส่งดิน 20/รอบ) — กรอกจำนวนรอบแล้วคูณให้ (ทำใหม่แทน d50042f7 ที่หาย) */
+      '<label class="f hidden" data-k="rlab" style="width:124px"><span data-k="rtxt">จำนวนรอบ</span>' +
+        '<input type="number" data-k="rounds" min="0" max="500" step="1"></label>' +
+      ((j.waitAt || waitPayOf(j)) ? '<label class="f" style="width:124px">ค่ารอ (บาท)' +
+        '<input type="number" data-k="wpay" min="0" max="1000" step="50" value="'+waitPayOf(j)+'"></label>' : '') +
     '</div>' +
+    (j.waitAt ? '<div class="rvbox" style="margin-top:10px">'+waitInfoHtml(j)+'</div>' : '') +
     '<label class="f" style="margin-top:10px">หมายเหตุ (โชว์ใต้ชื่องาน — ใช้แยกงานชื่อซ้ำ)' +
       '<input type="text" data-k="jnote" maxlength="200" placeholder="เช่น ย้ายจากบ้านผือไปหนองแสง · รถติดหล่มต้องลาก" value="'+esc(j.note||"")+'"></label>' +
     '<label class="row" style="gap:9px; margin-top:10px; font-size:15px; color:var(--ink2); align-items:center">' +
@@ -5088,7 +5321,16 @@ function buildJobEdit(j, pan){
     var base = per ? pv*q : pv;
     g("rate").parentNode.style.display = n>0 ? "" : "none";
     var was=payOf(j), sp=stopsPayNow(), ns=stopsOf(j).length;
-    g("tot").innerHTML='<b style="color:var(--ink); font-size:15px">รวมจ่ายงานนี้ '+baht(base+n*rr+sp)+' บาท</b>' +
+    var wv=g("wpay") ? Math.max(0, parseFloat(g("wpay").value)||0) : 0;
+    var rr0=(g("mode").value==="เที่ยว") ? rvRound(nf.get()) : null;
+    g("rlab").classList.toggle("hidden", !rr0);
+    if(rr0){
+      g("rtxt").textContent="จำนวนรอบ (รอบละ "+baht(rr0.price)+")";
+      if(g("rounds").value==="" && pv>0) g("rounds").value=Math.round(pv/rr0.price);
+    }
+    g("tot").innerHTML='<b style="color:var(--ink); font-size:15px">รวมจ่ายงานนี้ '+baht(base+n*rr+sp+wv)+' บาท</b>' +
+      (rr0 && (parseInt(g("rounds").value,10)||0)>0 ? ' ('+g("rounds").value+' รอบ × '+baht(rr0.price)+')' : '') +
+      (wv ? ' + ค่ารอ '+baht(wv) : '') +
       (per ? ' ('+baht(pv)+' × '+q+' '+unitWord()+' = '+baht(base)+')' : '') +
       (n>0 ? ' + ค้างคืน '+n+' × '+baht(rr) : '') +
       (ns ? ' + จุดแวะ '+ns+' จุด '+baht(sp)+' บาท' : '') +
@@ -5105,6 +5347,12 @@ function buildJobEdit(j, pan){
       autoRecvWarn();
   }
   ["price","nights","rate","qty"].forEach(function(k){ g(k).oninput=calc; });
+  if(g("wpay")) g("wpay").oninput=calc;
+  g("rounds").oninput=function(){
+    var rr0=rvRound(nf.get()), n=Math.max(0, parseInt(g("rounds").value,10)||0);
+    if(rr0 && n>0) g("price").value=n*rr0.price;
+    calc();
+  };
   g("mode").onchange=calc;
   g("truck").onchange=function(){
     /* เลือกรถบริษัท = ล้างค่าเที่ยวให้เห็นทันที ไม่ต้องรอไปเจอตอนบันทึก */
@@ -5135,6 +5383,11 @@ function buildJobEdit(j, pan){
     else { j.days=1; j.qty=null; }
     j.nights=Math.max(0, parseInt(g("nights").value,10)||0);
     j.nightRate=Math.max(0, parseFloat(g("rate").value)||0);
+    if(g("wpay")){
+      var wvv=parseFloat(g("wpay").value)||0;
+      if(wvv<0 || wvv>1000){ toast("ค่ารอใส่ได้ 0 ถึง 1,000"); g("wpay").focus(); return; }
+      j.waitPay=wvv;
+    }
     /* กันพลาดชั้นสุดท้าย: ย้ายไปรถบริษัทแล้วยังมีค่าเที่ยวค้างอยู่ = ตัวเลขขัดกับกติกา */
     if(companyPicked() && v>0){
       toast("รถบริษัทไม่มีค่าเที่ยว — ตั้งค่าเที่ยวเป็น 0 ก่อน หรือเลือกรถคันอื่น", 5000);
@@ -5173,7 +5426,11 @@ function buildJobEdit(j, pan){
 function renderLive(){
   var box=$("liveBox"); box.innerHTML="";
   var j=activeJob(me.id);
-  if(!j){ box.innerHTML='<p class="hint" style="margin:0">ยังไม่มีงานที่กำลังทำอยู่</p>'; return; }
+  if(!j){
+    var w=waitGet();
+    if(w){ renderWaitCard(box, w); return; }
+    box.innerHTML='<p class="hint" style="margin:0">ยังไม่มีงานที่กำลังทำอยู่ · แตะงานที่จะเริ่ม</p>'; return;
+  }
   var d=document.createElement("div"); d.className="live-card";
   d.innerHTML=
     '<div class="meta" style="margin:0 0 4px"><span class="pill live"><i class="dot"></i> กำลังทำงาน</span>' +
@@ -5204,6 +5461,7 @@ function renderHome(){
   var act=!!activeJob(me.id);
   $("btnNew").disabled=act;
   $("btnNew").textContent = act ? "ปิดงานที่ค้างอยู่ก่อน" : "＋ เริ่มงานใหม่";
+  paintNewGrid(!act && !waitGet());
 }
 /* เบี้ยเลี้ยงคิดตามวันที่ผ่านไปของเดือน (เจ้าของสั่ง 3 ต.ค. 2569)
    เดือนที่ผ่านไปแล้ว = เต็ม · เดือนนี้ = เต็ม ÷ 30 × วันที่วันนี้ (เช่น 3 ต.ค. = 3,000÷30×3 = 300)
@@ -5437,7 +5695,8 @@ var RV2_DEF = {
   bands: [{to:5,price:50},{to:15,price:100},{to:30,price:150},{to:45,price:200},{to:70,price:250},
           {to:90,price:400},{to:120,price:500},{to:160,price:600},{to:200,price:700}],
   rounds: [{label:"ส่งดิน", price:20}],
-  payMin: 16500, payMax: 20000
+  payMin: 16500, payMax: 20000,
+  waitFree: 2, waitRate: 50, waitCap: 300
 };
 var RV2_TYPES = {"ส่งสินค้า":1, "รับสินค้า":1};
 function rv2Clean(v){
@@ -5445,7 +5704,8 @@ function rv2Clean(v){
   var o={ from: (typeof v.from==="string" && /^\d{4}-\d{2}-\d{2}$/.test(v.from)) ? v.from : RV2_DEF.from,
           mode: v.mode==="live" ? "live" : "trial",
           bands: [], rounds: [],
-          payMin: num(v.payMin, RV2_DEF.payMin), payMax: num(v.payMax, RV2_DEF.payMax) };
+          payMin: num(v.payMin, RV2_DEF.payMin), payMax: num(v.payMax, RV2_DEF.payMax),
+          waitFree: num(v.waitFree, RV2_DEF.waitFree), waitRate: num(v.waitRate, RV2_DEF.waitRate), waitCap: num(v.waitCap, RV2_DEF.waitCap) };
   (Array.isArray(v.bands)?v.bands:[]).forEach(function(b){
     var t=parseFloat(b&&b.to), p=parseFloat(b&&b.price);
     if(t>0 && p>=0) o.bands.push({to:t, price:p});
@@ -5799,6 +6059,7 @@ function renderWait(){
 
     var sug=document.createElement("div"); sug.className="hint"; sug.style.width="100%";
     var tot=document.createElement("div"); tot.className="hint"; tot.style.width="100%";
+    var wbx=null, win=null;   /* ค่ารอคิว (v42) — มีเฉพาะงานที่คนขับกดรอคิวโรงโม่ */
     function unitWord(){ return mSel.value==="วัน" ? "วัน" : (mSel.value==="คิว" ? "คิว" : "เที่ยว"); }
     function calc(){
       var per = mSel.value!=="เที่ยว";
@@ -5809,7 +6070,9 @@ function renderWait(){
       var q = per ? (parseFloat(qin.value)||0) : 1;
       var base = per ? pv*q : pv;
       labR.style.display = n>0 ? "" : "none";
-      tot.innerHTML='<b style="color:var(--ink); font-size:15px">รวมจ่ายงานนี้ '+baht(base+n*rr)+' บาท</b>' +
+      var wv = win ? Math.max(0, parseFloat(win.value)||0) : 0;
+      tot.innerHTML='<b style="color:var(--ink); font-size:15px">รวมจ่ายงานนี้ '+baht(base+n*rr+stopsPay(j)+wv)+' บาท</b>' +
+        (stopsPay(j) ? ' &nbsp;+ ค่าแวะ '+baht(stopsPay(j)) : '') + (wv ? ' &nbsp;+ ค่ารอ '+baht(wv) : '') +
         (per ? ' &nbsp;('+baht(pv)+' × '+q+' '+unitWord()+' = '+baht(base)+')' : '') +
         (n>0 ? ' &nbsp;+ ค้างคืน '+n+' × '+baht(rr)+' = '+baht(n*rr) : '');
     }
@@ -5874,6 +6137,11 @@ function renderWait(){
       if(m==="วัน"){ j.days=Math.min(60, Math.max(1, Math.round(q))); j.qty=null; }
       else if(m==="คิว"){ j.qty=q; j.days=1; }
       else { j.days=1; j.qty=null; }
+      if(win){
+        var wvv=parseFloat(win.value)||0;
+        if(wvv<0 || wvv>1000){ toast("ค่ารอใส่ได้ 0 ถึง 1,000"); win.focus(); return; }
+        j.waitPay=wvv;
+      }
       j.label=nf.get(); j.price=v; j.priced=true;
       /* งานคิดเป็นรอบ: ช่องค่าเที่ยว = รอบ × ราคาต่อรอบ · สมุดราคาต้องจำ "ราคาต่อรอบ" ไม่ใช่ยอดรวม */
       var rvs=rvc.state();
@@ -5890,6 +6158,22 @@ function renderWait(){
     };
     form.appendChild(lab); form.appendChild(labM); form.appendChild(lab2); form.appendChild(labQ);
     form.appendChild(labN); form.appendChild(labR);
+    if(j.waitAt){
+      var ws=waitSuggest(j);
+      wbx=document.createElement("div"); wbx.className="rvbox"; wbx.style.width="100%";
+      wbx.innerHTML=waitInfoHtml(j)+
+        '<div class="row" style="margin-top:6px; align-items:flex-end; gap:8px"><label class="f" style="width:150px">ค่ารอ (บาท)'+
+        '<input type="number" min="0" max="1000" step="50" data-wpay="1"></label>'+
+        (ws.flags.length && ws.pay>0 ? '<button class="btn sm" type="button" data-wuse="1">ใช้ '+baht(ws.pay)+'</button>' : '')+'</div>';
+      win=wbx.querySelector("[data-wpay]");
+      /* มีธง = ไม่เติมให้ เจ้าของตรวจแล้วกดใช้เอง · ไม่มีธง = เติมตามสูตร */
+      win.value = (j.waitPay>0) ? j.waitPay : (ws.flags.length ? 0 : ws.pay);
+      win.oninput=calc;
+      var wu=wbx.querySelector("[data-wuse]");
+      if(wu) wu.onclick=function(){ win.value=ws.pay; calc(); };
+      form.appendChild(wbx);
+      calc();
+    }
     form.appendChild(rvc.box); form.appendChild(ok); form.appendChild(sug); form.appendChild(tot);
     c.appendChild(form); host.appendChild(c);
   });
@@ -6037,13 +6321,14 @@ function slipSheet(e, m){
      แถวในตารางโชว์ payOf(j) ซึ่งรวมจุดแวะอยู่แล้ว ยอดรวมข้างล่างจึงน้อยกว่าผลบวกของแถว
      (เจอ 7 ก.ย. 2569 ใบของสัญจร เดือน ก.ย. รวม 3,700 ทั้งที่แถวบวกกันได้ 3,900)
      **บวกเงินในใบสรุปต้องใช้ฟังก์ชันเดียวกับที่หน้าจอใช้เสมอ อย่าอ่านช่องดิบ** */
-  var base=0, nightTot=0, nightsN=0, stopTot=0, stopN=0, stopJ=0, stopOld=0;
+  var base=0, nightTot=0, nightsN=0, stopTot=0, stopN=0, stopJ=0, stopOld=0, waitTot=0, waitN=0;
   list.forEach(function(j){
     base+=payBase(j); nightTot+=nightPay(j); nightsN+=(j.nights||0);
+    if(waitPayOf(j)>0){ waitTot+=waitPayOf(j); waitN++; }
     stopTot+=stopsPay(j); stopN+=stopsOf(j).length;
     if(stopsOf(j).length){ stopJ++; if(!stopFlat(j)) stopOld++; }
   });
-  var fee=base+nightTot+stopTot, net=fee+allow;
+  var fee=base+nightTot+stopTot+waitTot, net=fee+allow;
 
   var fuelBaht=0, fuelL=0;
   fuels.forEach(function(f){
@@ -6068,6 +6353,12 @@ function slipSheet(e, m){
     /* ค่าแวะแบบเหมาต่องาน (ตั้งแต่ ก.ย. 2569) → รวมเป็นบรรทัดเดียว ไม่แตกยอดรายจุด
        Why: เจ้าของติ 3 ต.ค. — บรรทัด 100 · 100 ทำให้ฝ่ายการเงินเข้าใจว่าจ่าย 200 ทั้งที่เหมาแค่ 100 */
     var SL=stopsOf(j);
+    /* ค่ารอคิว (v42) บรรทัดของตัวเอง ให้บวกลงมาได้ตรงกับยอดรวม */
+    if(waitPayOf(j)>0){
+      var wpl=waitPlaceOf(j);
+      h+='<tr class="sh-stop"><td></td><td></td><td>↳ ค่ารอคิว'+(wpl?' '+esc(wpl.name):'')+' ('+hmTxt(waitMinsOf(j))+' ชม.)</td>'+
+         '<td class="c"></td><td class="r num">'+baht(waitPayOf(j))+'</td><!--D--></tr>';
+    }
     if(SL.length && stopFlat(j)){
       h+='<tr class="sh-stop"><td></td><td></td>' +
          '<td>↳ ค่าแวะรับสินค้า เหมา ('+SL.length+' จุด: '+SL.map(function(t,i){
@@ -6150,6 +6441,7 @@ function slipSheet(e, m){
       '<div class="sh-row sub"><span>ค่างาน</span><span class="num">'+baht(base)+'</span></div>' +
       '<div class="sh-row sub"><span>ค่าค้างคืน '+nightsN+' คืน</span><span class="num">'+baht(nightTot)+'</span></div>' +
       (stopN ? '<div class="sh-row sub"><span>'+(stopOld ? 'ค่าแวะรับสินค้า '+stopN+' จุด' : 'ค่าแวะรับสินค้า เหมา '+stopJ+' งาน'+(stopTot===stopJ*stopRate()?' × '+baht(stopRate()):'')+' (แวะรวม '+stopN+' จุด)')+'</span><span class="num">'+baht(stopTot)+'</span></div>' : '') +
+      (waitN ? '<div class="sh-row sub"><span>ค่ารอคิวโรงโม่ '+waitN+' ครั้ง</span><span class="num">'+baht(waitTot)+'</span></div>' : '') +
       '<div class="sh-row"><span>เบี้ยเลี้ยง</span><b class="num">'+baht(allow)+'</b></div>' +
       '<div class="sh-row sub"><span>'+(anyJob
         ? (allowDays(m,e.id)>=30 ? 'เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0)
@@ -7007,10 +7299,12 @@ function paintPlaces(){
   (DB.places||[]).forEach(function(x,i){
     t+='<div class="card" '+cardCss+'><div><b>📍 '+esc(x.name)+'</b></div>'+
        '<div class="hint">'+(cnt[x.id]||0)+' จุดในงาน · รัศมี '+(x.r>=1000 ? (x.r/1000)+' กม.' : x.r+' ม.')+
-         ' · '+x.lat.toFixed(5)+', '+x.lng.toFixed(5)+'</div>'+
+         ' · '+x.lat.toFixed(5)+', '+x.lng.toFixed(5)+
+         (isQuarry(x) ? ' · ⏱️ '+(x.open ? 'เปิด '+esc(x.open)+(x.close?'–'+esc(x.close):'') : 'ยังไม่ตั้งเวลาเปิด') : '')+'</div>'+
        '<div '+btnRow+'><a class="btn sm ghost" target="_blank" rel="noopener" href="'+esc(mapsPoint(x))+'">🗺️ แผนที่</a>'+
          '<button class="btn sm ghost" data-plren="'+i+'">แก้ชื่อ</button>'+
          '<button class="btn sm ghost" data-plrad="'+i+'">รัศมี</button>'+
+         (isQuarry(x) ? '<button class="btn sm ghost" data-plhrs="'+i+'">เวลาเปิด</button>' : '')+
          '<button class="btn sm ghost" data-plmv="'+i+'">ย้ายพิกัด</button>'+
          '<button class="btn sm ghost" data-pldel="'+i+'">ลบ</button></div></div>';
   });
@@ -7050,6 +7344,22 @@ function paintPlaces(){
         placePatch(x,{radius_m:n}).then(function(){ render(); toast("ตั้งรัศมี "+n+" ม. แล้ว"); })
           .catch(function(e){ toast(placeErr(e)); });
       }, String(x.r));
+    };
+  });
+  /* เวลาเปิด–ปิดโรงโม่ (v42) — ค่ารอเริ่มนับไม่ก่อนเวลาเปิด หยุดที่เวลาปิด */
+  box.querySelectorAll("[data-plhrs]").forEach(function(b){
+    b.onclick=function(){
+      var x=pick("data-plhrs",b); if(!x) return;
+      askText("เวลาเปิด–ปิด \""+x.name+"\"", "เช่น 07:00-21:00 · ไม่มีเวลาปิดใส่แค่ 07:00 · เว้นว่าง = ไม่จำกัด", function(v){
+        v=(v||"").trim();
+        var m=v.match(/^(\d{1,2})[:.](\d{2})\s*(?:[-–]\s*(\d{1,2})[:.](\d{2}))?$/);
+        if(v && !m){ toast("อ่านเวลาไม่ออก ใส่แบบ 07:00-21:00"); return; }
+        function hm(h,mi){ h=+h; mi=+mi; return (h<24 && mi<60) ? pad(h)+":"+pad(mi) : null; }
+        var o=m?hm(m[1],m[2]):null, c=(m&&m[3])?hm(m[3],m[4]):null;
+        if(v && (!o || (m[3] && !c))){ toast("เวลาไม่ถูกต้อง"); return; }
+        placePatch(x,{open_t:o, close_t:c}).then(function(){ render(); toast(o?("ตั้งเวลาเปิด "+o+(c?"–"+c:"")+" แล้ว"):"ล้างเวลาเปิดแล้ว"); })
+          .catch(function(e){ toast(placeErr(e)); });
+      }, x.open ? x.open+(x.close?"-"+x.close:"") : "07:00");
     };
   });
   box.querySelectorAll("[data-plmv]").forEach(function(b){
@@ -8011,7 +8321,8 @@ $("logoutBtn").onclick=function(){
   try{ if(typeof liff!=="undefined" && liff.isLoggedIn && liff.isLoggedIn()) liff.logout(); }catch(e){}
   location.reload();
 };
-$("btnNew").onclick=openNew;
+$("btnNew").onclick=function(){ openNew(); };
+$("typeChange").onclick=function(){ draft._picked=false; paintNew(); };
 $("cancelNew").onclick=function(){ go("home"); };
 $("fDate").onchange=function(){ $("dateLabel").textContent=fmtDate(this.value); };
 $("btnStart").onclick=function(){
