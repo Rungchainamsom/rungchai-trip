@@ -2569,52 +2569,75 @@ function guessRate(j){
         และเจ้าของอยาก "เลือก" ไม่ใช่ "พิมพ์ให้ตรงเป๊ะ" ซึ่งเดิมพิมพ์ผิดตัวเดียว = กลายเป็นงานใหม่
    คืน {box, get, onPick} — box เอาไปแปะในฟอร์ม · get() อ่านชื่องานที่เลือกอยู่
    onPick(fn) เรียก fn(rate|null) ทุกครั้งที่ชื่องานเปลี่ยน ให้ฟอร์มไปเติมราคา/วิธีคิดเอง */
+/* [stated 3 พ.ย. 2569] ช่องค้นหาชื่องาน — พิมพ์แล้วกรองรายการในช่องเลือก (หลายคำ = ต้องเจอทุกคำ ไม่สนช่องว่าง/ตัวพิมพ์)
+   setType(t) = เปลี่ยนประเภทงานในฟอร์มแก้ไขแล้วรายชื่อเปลี่ยนตาม (เดิมค้างรายชื่อของประเภทเก่า ชื่องานที่ต้องการเลยไม่โผล่) */
+function jnNorm(x){ return String(x||"").toLowerCase().replace(/\s+/g,""); }
 function jobNameField(type, initial, caption){
   var box=document.createElement("label"); box.className="f";
   var cap=document.createElement("span"); cap.textContent=caption; box.appendChild(cap);
+  var q=document.createElement("input");
+  q.type="search"; q.placeholder="🔍 พิมพ์ค้นหาชื่องาน เช่น ท่าบ่อ"; q.setAttribute("aria-label","ค้นหาชื่องาน"); q.style.marginBottom="6px";
+  box.appendChild(q);
+  var qh=document.createElement("span"); qh.className="hint"; qh.style.cssText="margin:-2px 0 4px"; box.appendChild(qh);
   var sel=document.createElement("select"); box.appendChild(sel);
   var inp=document.createElement("input");
   inp.type="text"; inp.placeholder="เช่น ส่งบล็อค กุดลิน"; inp.style.marginTop="7px";
   box.appendChild(inp);
   var dtl=document.createElement("span"); dtl.className="hint"; dtl.style.cssText="margin-top:5px; white-space:pre-wrap"; box.appendChild(dtl);
-  var list=rateChoices(type), cb=null, cur=(initial||"").trim();
-  /* รายละเอียดจากสมุดราคา โชว์ใต้ช่องเมื่อเลือกชื่องานที่มีรายละเอียด */
+  var list=[], cb=null, cur=(initial||"").trim();
   function paintDtl(){ var r=null; list.forEach(function(y){ if(y.r.label===sel.value) r=y.r; }); dtl.textContent=(r&&r.detail)?("ℹ️ "+r.detail):""; }
-  var known=list.some(function(x){ return (x.r.label||"").trim()===cur; });
-  var h='<option value="">— ยังไม่เลือก —</option>';
-  list.forEach(function(x){
-    var w=rateWhat(x.r);
-    h+='<option value="'+esc(x.r.label)+'">'+esc(x.r.label)+' — '+baht(x.r.price)+' บ./'+esc(x.r.unit||"เที่ยว") +
-       (w?' · '+esc(w):'') + (x.n?' · ใช้ '+x.n+' ครั้ง':'') + '</option>';
-  });
-  h+='<option value="__new">＋ พิมพ์ชื่องานใหม่</option>';
-  sel.innerHTML=h;
   function showInput(on){ inp.style.display = on ? "" : "none"; }
-  if(cur && known){ sel.value=cur; showInput(false); }
-  else if(cur){ sel.value="__new"; inp.value=cur; showInput(true); }
-  else { sel.value=""; showInput(false); }
-  paintDtl();
+  function optHtml(x){
+    var w=rateWhat(x.r);
+    return '<option value="'+esc(x.r.label)+'">'+esc(x.r.label)+' — '+baht(x.r.price)+' บ./'+esc(x.r.unit||"เที่ยว") +
+       (w?' · '+esc(w):'') + (x.n?' · ใช้ '+x.n+' ครั้ง':'') + '</option>';
+  }
+  /* วาดตัวเลือกใหม่ตามคำค้น · ตัวที่เลือกอยู่ต้องค้างไว้เสมอ ไม่งั้นค่าจะหายตอนพิมพ์ค้น */
+  function paintOpts(){
+    var keep=sel.value, words=q.value.trim().toLowerCase().split(/\s+/).filter(Boolean).map(jnNorm), n=0;
+    var h='<option value="">— ยังไม่เลือก —</option>';
+    list.forEach(function(x){
+      var hay=jnNorm(x.r.label+" "+rateWhat(x.r)+" "+(x.r.detail||""));
+      var hit=words.every(function(w){ return hay.indexOf(w)>=0; });
+      if(hit) n++;
+      if(hit || x.r.label===keep) h+=optHtml(x);
+    });
+    h+='<option value="__new">＋ พิมพ์ชื่องานใหม่</option>';
+    sel.innerHTML=h;
+    sel.value=keep||"";
+    if(sel.value!==keep) sel.value="";
+    qh.textContent = words.length ? (n ? "พบ "+n+" งาน — เลือกในช่องด้านล่าง" : "ไม่พบชื่องานนี้ — เลือก \"＋ พิมพ์ชื่องานใหม่\" ถ้าเป็นงานใหม่") : "";
+  }
+  function loadType(t){
+    type=t; list=rateChoices(type);
+    var known=list.some(function(x){ return (x.r.label||"").trim()===cur; });
+    paintOpts();
+    if(cur && known){ sel.value=cur; showInput(false); }
+    else if(cur){ sel.value="__new"; inp.value=cur; showInput(true); }
+    else { sel.value=""; showInput(false); }
+    paintDtl();
+  }
+  loadType(type);
+  q.oninput=function(){ paintOpts(); };
   sel.onchange=function(){
     paintDtl();
     if(sel.value==="__new"){ showInput(true); inp.focus(); if(cb) cb(null); return; }
     showInput(false); inp.value="";
+    cur=sel.value;
     var hit=null;
     list.forEach(function(y){ if(y.r.label===sel.value) hit=y.r; });
     if(cb) cb(hit);
   };
-  inp.oninput=function(){ if(cb) cb(findRate(type, inp.value)); };
+  inp.oninput=function(){ cur=inp.value.trim(); if(cb) cb(findRate(type, inp.value)); };
   return {
     box: box,
     get: function(){ return (sel.value==="__new" ? inp.value : sel.value).trim(); },
-    /* เลือกชื่องานให้จากโค้ด (ตอนระบบเดาให้) — ไม่ยิง cb เพราะคนเรียกเติมราคาเองอยู่แล้ว
-       คืน false ถ้าชื่อนั้นไม่มีในช่องเลือก คนเรียกจะได้ไม่เติมราคาค้างไว้เฉยๆ */
     set: function(label){
       var L=(label||"").trim(); if(!L) return false;
-      var ok=false;
-      for(var i=0;i<sel.options.length;i++) if(sel.options[i].value===L) ok=true;
-      if(!ok) return false;
-      sel.value=L; showInput(false); inp.value=""; paintDtl(); return true;
+      if(!list.some(function(x){ return x.r.label===L; })) return false;
+      q.value=""; cur=L; paintOpts(); sel.value=L; showInput(false); inp.value=""; paintDtl(); return true;
     },
+    setType: function(t){ cur=(sel.value==="__new" ? inp.value : sel.value).trim(); loadType(t); },
     onPick: function(fn){ cb=fn; }
   };
 }
@@ -5094,7 +5117,7 @@ function buildJobEdit(j, pan){
       '<input type="text" data-k="jnote" maxlength="200" placeholder="เช่น ย้ายจากบ้านผือไปหนองแสง · รถติดหล่มต้องลาก" value="'+esc(j.note||"")+'"></label>' +
     '<label class="row" style="gap:9px; margin-top:10px; font-size:15px; color:var(--ink2); align-items:center">' +
       '<input type="checkbox" data-k="sync" style="width:20px; height:20px; flex:none">' +
-      'อัปเดตราคามาตรฐานในสมุดราคางานด้วย</label>' +
+      'อัปเดตราคามาตรฐานในสมุดราคางานด้วย (ชื่องานใหม่ระบบเพิ่มลงสมุดให้เองอยู่แล้ว)</label>' +
     '<div data-k="stops" style="margin-top:12px"></div>' +
     '<div class="hint" data-k="twarn" style="margin-top:9px"></div>' +
     '<div class="hint" data-k="tot" style="margin-top:9px"></div>' +
@@ -5150,7 +5173,7 @@ function buildJobEdit(j, pan){
     return "";
   }
   paintType();
-  if(g("jtype")) g("jtype").onchange=function(){ paintType(); calc(); };
+  if(g("jtype")) g("jtype").onchange=function(){ paintType(); if(typeof nf!=="undefined" && nf && nf.setType) nf.setType(curType()); calc(); };
   /* ช่องชื่องานตัวเดียวกับหน้ารอใส่ราคา — เลือกงานเดิมแล้วราคา/วิธีคิดเด้งตาม */
   var nf=jobNameField(j.type, j.label, "ชื่องาน (เลือกงานเดิมแล้วราคาเด้งมาให้)");
   nf.box.style.flex="2"; nf.box.style.minWidth="210px";
@@ -5420,10 +5443,12 @@ function buildJobEdit(j, pan){
       if(nt) t.note=nt.value.trim();
     });
     j.priced=true;
-    if(g("sync").checked && lbl){
+    /* [3 พ.ย. 2569] ชื่องานใหม่ = เพิ่มลงสมุดราคาเสมอ (เดิมต้องติ๊กช่อง → ชื่อที่ตั้งไม่ขึ้นให้เลือกในงานถัดไป)
+       ช่องติ๊ก = อัปเดต "ราคา" ของชื่อที่มีอยู่แล้วเท่านั้น */
+    if(lbl){
       var r=findRate(j.type,lbl);
-      if(r){ r.price=v; r.unit=m; r.at=today(); if(j.mat) r.mat=j.mat; if(j.dest) r.dest=j.dest; }
-      else DB.rate.push({id:uid("r"), type:j.type, label:lbl, price:v, unit:m, at:today(),
+      if(r && g("sync").checked){ r.price=v; r.unit=m; r.at=today(); if(j.mat) r.mat=j.mat; if(j.dest) r.dest=j.dest; }
+      else if(!r) DB.rate.push({id:uid("r"), type:j.type, label:lbl, price:v, unit:m, at:today(),
                          mat:j.mat||"", dest:j.dest||""});
     }
     save(); toast("แก้เป็น "+baht(payOf(j))+" บาทแล้ว"); render();
@@ -5933,6 +5958,8 @@ function rvCard(j, setPrice){
          (st.band ? useBtn(st.band.price, 'ใช้ราคา '+baht(st.band.price)+' (ตามหมุดคนขับ)') : '');
     } else if(st.kind==="far"){
       h+=line("ระยะขาไปส่ง", kmTxt(st.leg.km)+" กม.")+'<div class="hint">ไกลเกินตาราง (เกิน '+rv2().bands[rv2().bands.length-1].to+' กม.) — ใส่ราคาเอง</div>';
+    } else if(st.kind==="book"){
+      h+='<div class="hint">งานนี้มีราคาในสมุดแล้ว <b>'+baht(st.rate.price)+' บาท</b> · เรตใหม่คิดได้ '+baht(st.newp)+' (แพงกว่า) → <b>ใช้ราคาเดิม</b></div>';
     } else if(st.kind==="nokm"){
       h+='<div class="hint">ยังไม่มีระยะทาง (พิกัดไม่ครบ) — ใส่ราคาเอง</div>';
     }
@@ -5971,7 +5998,11 @@ function rvCard(j, setPrice){
     box: box,
     apply: function(label){
       st=rvSuggest(j, label); used=false;
+      /* [stated 3 พ.ย. 2569 เจ้าของ: "เกือบทุกงานจ่ายแพงขึ้น"] งานที่มีราคาในสมุดแล้ว เรตใหม่ห้ามเสนอแพงกว่าราคาเดิม */
+      var bk=findRate(j.type, label!=null ? label : j.label), bp=(st.kind==="band") ? st.price : (st.kind==="noplace" && st.band ? st.band.price : null);
+      if(bk && bk.price>0 && (bk.unit||"เที่ยว")==="เที่ยว" && bp!=null && bp>=bk.price) st={kind:"book", rate:bk, newp:bp};
       if(st.kind==="band" && live()){ setPrice(st.price); used=true; }
+      if(st.kind==="book" && live()){ setPrice(st.rate.price); }
       paint();
     },
     state: function(){ return {kind:st.kind, rate:st.rate, rounds:rounds, used:used}; },
@@ -6165,7 +6196,8 @@ function renderWait(){
       if(j.label){
         var r=findRate(j.type,j.label);
         /* จำสินค้า/ปลายทางของงานนี้ไว้ด้วย ครั้งหน้าในช่องเลือกจะได้รู้ว่างานนี้คืองานอะไร */
-        if(r){ r.price=bookP; r.unit=m; r.at=today(); if(j.mat) r.mat=j.mat; if(j.dest) r.dest=j.dest; }
+        /* [3 พ.ย. 2569] ราคาจากปุ่มเรตใหม่ ห้ามเขียนทับราคาเดิมในสมุด (เคยดันขี้ปูน 200→250 · วังป่าวังแข้ 100→200 เงียบๆ) */
+        if(r){ if(!(rvs.used && rvs.kind!=="round")){ r.price=bookP; r.unit=m; r.at=today(); } if(j.mat) r.mat=j.mat; if(j.dest) r.dest=j.dest; }
         else DB.rate.push({id:uid("r"), type:j.type, label:j.label, price:bookP, unit:m, at:today(),
                            mat:j.mat||"", dest:j.dest||""});
       }
