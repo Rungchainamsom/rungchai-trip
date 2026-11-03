@@ -947,7 +947,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="scat-body">
       <div class="card pad grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
         <label class="f" data-money="1">เบี้ยเลี้ยง/เดือน (บาท)<input type="number" id="sAllow" step="100"></label>
-        <label class="f" data-money="1">หักวันขาด วันละ (บาท)<input type="number" id="sDeduct" step="10"></label>
+        <label class="f" data-money="1">หักวันขาด วันละ (บาท) — ใช้กับเดือนก่อน ต.ค. 69<input type="number" id="sDeduct" step="10"><span class="hint">ตั้งแต่ ต.ค. 69 หักวันละ = เบี้ยเลี้ยง ÷ จำนวนวันในเดือน</span></label>
         <label class="f" data-money="1">ค่าค้างคืน/คืน ตั้งต้น (บาท)<input type="number" id="sNight" step="50"></label>
         <label class="f" data-money="1">ค่าแรงงานทั่วไป/วัน (บาท)<input type="number" id="sGeneral" step="50" min="0"></label>
         <label class="f" data-money="1">ค่าเที่ยวเหมา วันที่ลงงานทั่วไป (บาท)<input type="number" id="sGenTrip" step="10" min="0"></label>
@@ -3625,7 +3625,9 @@ function waitPayOf(j){ return (j && j.waitPay>0) ? j.waitPay : 0; }
 /* =============== ค่ารอคิวโรงโม่ (v42 · 2 พ.ย. 2569 — เจ้าของสั่ง) ===============
    [stated] ใช้เฉพาะงานรับสินค้าที่โรงโม่ (สถานที่ในสมุดที่ชื่อขึ้นต้น "โรงโม่") · ฟังก์ชันอื่นยังไม่เปิด
    คนขับแตะ "รับสินค้า" ตอนอยู่ในรัศมีโรงโม่ → เลือก "ยังรอคิว" = เริ่มนับ · กด "ได้ใบชั่งแล้ว" เปิดงาน = หยุดนับ
-   ฟรี 2 ชม. แล้ว 50/ชม. นับเต็มชั่วโมง · สูงสุด 300/วัน/คน · เริ่มนับไม่ก่อนเวลาเปิดโรงโม่ (places.open_t)
+   ฟรี 2 ชม. แล้ว 50/ชม. · [stated 2 พ.ย. 16:13] นับเฉพาะชั่วโมงที่รอครบ (ปัดลง) — เจ้าของกังวลต้นทุน เดิมปัดขึ้น
+   สูงสุด 300/วัน/คน · เริ่มนับไม่ก่อนเวลาเปิดโรงโม่ (places.open_t)
+   [stated] งานที่มีค่าค้างคืน = ไม่มีค่ารอ · ไม่นับข้ามคืน (หยุดที่เวลาปิดโรงโม่ ไม่ได้ตั้งเวลาปิด = หยุดเที่ยงคืน)
    [stated] คนขับเห็นแค่เวลา ไม่เห็นตัวเลขเงิน · เจ้าของกดยืนยันเงินเอง ระบบไม่บวกให้
    ห่างโรงโม่เกินรัศมี = ไม่ให้เริ่มนับ · จับ GPS ไม่ได้ = ให้นับแต่ขึ้นธง
    สถานะรอคิวอยู่ในเครื่องคนขับ (localStorage) จนกว่าจะเปิดงาน — ยังไม่ใช่งาน จึงไม่ขึ้นคลาวด์ */
@@ -3658,10 +3660,11 @@ function waitMins(from, until, pl){
   if(!from || !until) return 0;
   var u=until;
   if(pl && pl.close){ var c=hmAt(from, pl.close); if(c>from && u>c) u=c; }
+  var eod=hmAt(from, "24:00"); if(u>eod) u=eod;   /* ไม่นับข้ามคืน */
   return Math.max(0, Math.floor((u-from)/60000));
 }
 function hmTxt(mins){ mins=Math.max(0, Math.floor(mins||0)); return Math.floor(mins/60)+":"+pad(mins%60); }
-function waitPaidHrs(mins){ var over=mins-wvCfg().free*60; return over>0 ? Math.ceil(over/60) : 0; }
+function waitPaidHrs(mins){ var over=mins-wvCfg().free*60; return over>0 ? Math.floor(over/60) : 0; }
 function waitPlaceOf(j){ return j && j.waitPlace ? find(DB.places||[], j.waitPlace) : null; }
 function waitMinsOf(j){
   if(!j || !j.waitAt || !j.start || !j.start.at) return 0;
@@ -3674,8 +3677,10 @@ function waitSuggest(j){
   var other=0;
   DB.job.forEach(function(o){ if(o.id!==j.id && o.emp===j.emp && o.date===j.date) other+=waitPayOf(o); });
   var pay=Math.max(0, Math.min(raw, c.cap-other));
+  var night=(j.nights||0)>0;
+  if(night) pay=0;   /* ได้ค่าค้างคืนแล้ว = ไม่มีค่ารอ */
   var flags=(j.waitFlag||"").split(",").filter(Boolean);
-  return {mins:mins, hrs:hrs, raw:raw, pay:pay, other:other, cap:c.cap, flags:flags, pl:waitPlaceOf(j)};
+  return {mins:mins, hrs:hrs, raw:raw, pay:pay, other:other, cap:c.cap, flags:flags, pl:waitPlaceOf(j), night:night};
 }
 /* คนอื่นที่รอโรงโม่เดียวกันวันเดียวกัน + ค่าเฉลี่ย 60 วันของโรงโม่นั้น → จับเคสรอนานผิดปกติ */
 function waitCompare(j){
@@ -3695,8 +3700,9 @@ function waitInfoHtml(j){
   h+='<div><b>⏱️ รอคิว'+(w.pl?' '+esc(w.pl.name):'')+' '+hmTxt(w.mins)+' ชม.</b> '+
      '<span class="hint">ถึง '+clock(j.waitAt)+' น.'+((j.waitFrom||j.waitAt)>j.waitAt?' · เริ่มนับ '+clock(j.waitFrom)+' น. (โรงโม่เปิด)':'')+
      ' → เริ่มงาน '+clock(j.start&&j.start.at)+' น.</span></div>';
-  h+='<div class="hint">ฟรี '+wvCfg().free+' ชม. · เกิน → นับ '+w.hrs+' ชม. × '+baht(wvCfg().rate)+' = '+baht(w.raw)+' บาท'+
-     (w.raw>w.pay ? ' · <b>ตัดเพดานวันละ '+baht(w.cap)+' (ใบอื่นวันนี้ใส่ไปแล้ว '+baht(w.other)+')</b>' : '')+'</div>';
+  h+='<div class="hint">ฟรี '+wvCfg().free+' ชม. · นับเฉพาะชั่วโมงที่รอครบ → '+w.hrs+' ชม. × '+baht(wvCfg().rate)+' = '+baht(w.raw)+' บาท'+
+     (w.night ? ' · <b>มีค่าค้างคืน → ไม่คิดค่ารอ</b>' :
+      (w.raw>w.pay ? ' · <b>ตัดเพดานวันละ '+baht(w.cap)+' (ใบอื่นวันนี้ใส่ไปแล้ว '+baht(w.other)+')</b>' : ''))+'</div>';
   if(cmp.same.length) h+='<div class="hint">วันเดียวกันที่นี่: '+cmp.same.map(function(x){ return esc(x.name)+' '+hmTxt(x.m); }).join(" · ")+'</div>';
   if(cmp.n>=3){
     h+='<div class="hint">ปกติที่นี่รอเฉลี่ย '+hmTxt(cmp.avg)+' ชม. ('+cmp.n+' ครั้ง)</div>';
@@ -5481,26 +5487,35 @@ function startDayIn(empId,m){
   if(sm>m) return 99;
   return parseInt(s.slice(8,10),10);
 }
+/* [stated 3 พ.ย. 2569] ตั้งแต่ ต.ค. 2569: เบี้ยเลี้ยงหาร "จำนวนวันในเดือน" (เดิม ÷30) และหักวันลา = เบี้ยเลี้ยง ÷ วันในเดือน ต่อวัน
+   (เลิกใช้ "หักวันละ 100" กับเดือนตั้งแต่ ต.ค.) · เดือนก่อน ต.ค. คิดแบบเดิมทุกอย่าง (ปิดยอดจ่ายไปแล้ว)
+   ยอดรวม = ปัดเป็นบาทครั้งเดียวตอนท้าย: เบี้ยเลี้ยง × (วันที่คิด − วันลา) ÷ วันในเดือน
+   ต้องตรงกับ tha_driver_earnings (rungchai_v43_allow_dim.sql) เป๊ะ */
+function allowDen(m){ return isAutoAbs(m) ? dimOf(m) : 30; }
+function dedRate(m){ return isAutoAbs(m) ? (DB.set.allow||0)/dimOf(m) : (DB.set.deduct||0); }
 function allowDays(m,empId){
   var t=today(), cur=ym(t);
   if(m>cur) return 0;
-  var dim=dimOf(m), d=(m<cur) ? dim : parseInt(t.slice(8,10),10);
+  var dim=dimOf(m), den=allowDen(m), d=(m<cur) ? dim : parseInt(t.slice(8,10),10);
   var sd=startDayIn(empId,m);
-  if(sd<=1) return d>=dim ? 30 : Math.min(30,d);
-  return Math.max(0, Math.min(30, d-sd+1));
+  if(sd<=1) return d>=dim ? den : Math.min(den,d);
+  return Math.max(0, Math.min(den, d-sd+1));
 }
 function allowBase(m,empId){
-  var full=DB.set.allow||0, d=allowDays(m,empId);
-  return d>=30 ? full : Math.round(full/30*d);
+  var full=DB.set.allow||0, d=allowDays(m,empId), den=allowDen(m);
+  return d>=den ? full : Math.round(full/den*d);
 }
 function allowOf(empId,m){
-  return Math.max(0, allowBase(m,empId) - absentCount(empId,m)*(DB.set.deduct||0));
+  if(!isAutoAbs(m)) return Math.max(0, allowBase(m,empId) - absentCount(empId,m)*(DB.set.deduct||0));
+  var full=DB.set.allow||0, den=allowDen(m), d=allowDays(m,empId), n=absentCount(empId,m);
+  if(d>=den && !n) return full;
+  return Math.max(0, Math.round(full*Math.max(0,d-n)/den));
 }
 function allowNote(m,empId){
-  var d=allowDays(m,empId), sd=startDayIn(empId,m);
-  if(d>=30) return "เต็มเดือน";
-  if(sd>1) return (sd>31 ? "ยังไม่ถึงวันเริ่มงาน" : "เริ่มงานวันที่ "+sd+" คิด "+d+" วัน")+" ("+baht(DB.set.allow||0)+" ÷ 30 × "+d+")";
-  return "คิดถึงวันที่ "+d+" ("+baht(DB.set.allow||0)+" ÷ 30 × "+d+")";
+  var d=allowDays(m,empId), sd=startDayIn(empId,m), den=allowDen(m);
+  if(d>=den) return "เต็มเดือน";
+  if(sd>1) return (sd>31 ? "ยังไม่ถึงวันเริ่มงาน" : "เริ่มงานวันที่ "+sd+" คิด "+d+" วัน")+" ("+baht(DB.set.allow||0)+" ÷ "+den+" × "+d+")";
+  return "คิดถึงวันที่ "+d+" ("+baht(DB.set.allow||0)+" ÷ "+den+" × "+d+")";
 }
 /* =============== วันลาอัตโนมัติ (v34 · 3 ต.ค. 2569 — เจ้าของสั่ง) ===============
    ตั้งแต่ ต.ค. 2569: วันไหนไม่มีงานลงเลย = ลา หักเบี้ยเลี้ยงวันละ DB.set.deduct
@@ -5574,7 +5589,7 @@ function paintOffDays(m, drivers){
   var p=m.split("-"), first=new Date(parseInt(p[0],10), parseInt(p[1],10)-1, 1).getDay();
   var h='<div class="hint" style="margin:0 0 4px">'+(conf
       ? '<b style="color:var(--ok)">✅ ยืนยันแล้ว</b> เมื่อ '+logWhen(conf.at)
-      : '<b style="color:var(--warn)">⏳ ยังไม่ยืนยัน</b> — ไม่มีงานลง = ลา หักวันละ '+baht(DB.set.deduct||0)+' บาท')+'</div>';
+      : '<b style="color:var(--warn)">⏳ ยังไม่ยืนยัน</b> — ไม่มีงานลง = ลา หักวันละ '+baht(dedRate(m))+' บาท ('+baht(DB.set.allow||0)+' ÷ '+dimOf(m)+')')+'</div>';
   h+='<div style="font-weight:600; margin-top:8px">วันหยุดบริษัท <span class="hint" style="font-weight:400">'+(own?'แตะวันที่เพื่อตั้ง/ยกเลิก (ไม่หักเงินทุกคน) · ตั้งล่วงหน้าได้':'')+'</span></div>';
   h+='<div class="offcal">'+["อา","จ","อ","พ","พฤ","ศ","ส"].map(function(x){ return '<div class="h">'+x+'</div>'; }).join("");
   for(var i=0;i<first;i++) h+='<div></div>';
@@ -5587,7 +5602,7 @@ function paintOffDays(m, drivers){
   if(!drivers.length) h+='<p class="hint">ยังไม่มีคนขับที่มีงานเดือนนี้</p>';
   drivers.forEach(function(e){
     var L=noJobDays(e.id,m), n=L.filter(function(x){ return !x.work; }).length;
-    h+='<div style="margin-top:8px"><b>'+esc(e.name)+'</b> <span class="hint">ลา '+n+' วัน · หัก '+baht(n*(DB.set.deduct||0))+' บาท</span>'+
+    h+='<div style="margin-top:8px"><b>'+esc(e.name)+'</b> <span class="hint">ลา '+n+' วัน · หัก '+baht(allowBase(m,e.id)-allowOf(e.id,m))+' บาท</span>'+
        '<div class="row" style="gap:6px; flex-wrap:wrap; margin-top:5px">'+
        (L.length ? L.map(function(x){
          return '<button type="button" class="offchip '+(x.work?'wk':'lv')+'" data-wk="'+e.id+'|'+x.date+'"'+(own?'':' disabled')+
@@ -5869,7 +5884,7 @@ function rvPaintCmp(m){
 /* ช่วงค่าแรงของคนนี้ในเดือน m — เดือนที่จบแล้วและคนนั้นเริ่มงานกลางเดือน = คิดตามสัดส่วนวันเหมือนเบี้ยเลี้ยง
    เดือนที่ยังไม่จบ = ใช้ช่วงเต็ม (allowDays ของเดือนนี้คือ "วันที่ผ่านไป" ถ้าเอามาหารจะเตือนเกินเพดานมั่ว) */
 function rvRange(empId,m){
-  var R=rv2(), d=(m<ym(today())) ? allowDays(m,empId) : 30, f=Math.min(1, d/30);
+  var R=rv2(), den=allowDen(m), d=(m<ym(today())) ? allowDays(m,empId) : den, f=Math.min(1, d/den);
   return {min:Math.round(R.payMin*f), max:Math.round(R.payMax*f), part:f<1, days:d};
 }
 function rvSaveSettings(){
@@ -6171,6 +6186,12 @@ function renderWait(){
       win.oninput=calc;
       var wu=wbx.querySelector("[data-wuse]");
       if(wu) wu.onclick=function(){ win.value=ws.pay; calc(); };
+      /* ใส่ค่าค้างคืนในการ์ดนี้ = ไม่มีค่ารอ (เจ้าของสั่ง 2 พ.ย.) · เอาค้างคืนออก = คืนค่าตามสูตร */
+      nin.oninput=function(){
+        var nn=parseInt(nin.value,10)||0;
+        if(nn>0) win.value=0; else if(!(parseFloat(win.value)>0) && !ws.flags.length) win.value=Math.max(0, Math.min(ws.raw, ws.cap-ws.other));
+        calc();
+      };
       form.appendChild(wbx);
       calc();
     }
@@ -6444,10 +6465,10 @@ function slipSheet(e, m){
       (waitN ? '<div class="sh-row sub"><span>ค่ารอคิวโรงโม่ '+waitN+' ครั้ง</span><span class="num">'+baht(waitTot)+'</span></div>' : '') +
       '<div class="sh-row"><span>เบี้ยเลี้ยง</span><b class="num">'+baht(allow)+'</b></div>' +
       '<div class="sh-row sub"><span>'+(anyJob
-        ? (allowDays(m,e.id)>=30 ? 'เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0)
+        ? (allowDays(m,e.id)>=allowDen(m) ? 'เบี้ยเลี้ยงเต็มเดือน '+baht(DB.set.allow||0)
             : (startDayIn(e.id,m)>1 ? 'เบี้ยเลี้ยงตั้งแต่วันเริ่มงาน '+fmtDate(e.startDate)+' = '+allowDays(m,e.id)+' วัน' : 'เบี้ยเลี้ยงถึงวันที่ '+allowDays(m,e.id))+
-              ' = '+baht(DB.set.allow||0)+' ÷ 30 × '+allowDays(m,e.id)+' = '+baht(allowBase(m,e.id)))+
-          (ab ? ' − '+(isAutoAbs(m)?'ลา':'ขาดงาน')+' '+ab+' วัน × '+baht(DB.set.deduct||0)+' = '+baht(ab*(DB.set.deduct||0)) : '') +
+              ' = '+baht(DB.set.allow||0)+' ÷ '+allowDen(m)+' × '+allowDays(m,e.id)+' = '+baht(allowBase(m,e.id)))+
+          (ab ? ' − '+(isAutoAbs(m)?'ลา':'ขาดงาน')+' '+ab+' วัน × '+baht(dedRate(m))+' = '+baht(allowBase(m,e.id)-allowOf(e.id,m)) : '') +
           (isAutoAbs(m) && ab ? ' (วันที่ '+leaveDays(e.id,m).map(function(x){ return x.d; }).join(", ")+')' : '') +
           (isAutoAbs(m) && !monthConfirmed(m) ? ' · ⚠️ ยังไม่ยืนยันวันหยุดของเดือนนี้' : '')
         : 'เดือนนี้ไม่มีงานเลย จึงไม่คิดเบี้ยเลี้ยง')+'</span><span></span></div>' +
@@ -6610,16 +6631,16 @@ function renderMonth(){
     tile("เบี้ยเลี้ยง", baht(totAllow), drivers.length+" คนที่มีงานเดือนนี้") +
     tile("ค่าค้างคืนรวม", baht(list.reduce(function(s,j){ return s+nightPay(j); },0)), sum(list,"nights")+" คืน (ราคาต่อคืนแยกตามงาน)");
   $("monHint").innerHTML = (isAdmin(me)
-      ? "เบี้ยเลี้ยง"+(allowDays(m)>=30?"จ่ายเต็มเดือน":"<b>"+allowNote(m)+"</b>")+" หักเฉพาะวันที่ขาดงาน — <b>ช่องวันขาดต้องให้เจ้าของเป็นคนกรอก</b>"
-      : "เบี้ยเลี้ยง"+(allowDays(m)>=30?"จ่ายเต็มเดือน":"<b>"+allowNote(m)+"</b>")+" หักเฉพาะวันที่ขาดงาน — กรอกวันขาดในตารางได้เลย") +
+      ? "เบี้ยเลี้ยง"+(allowDays(m)>=allowDen(m)?"จ่ายเต็มเดือน":"<b>"+allowNote(m)+"</b>")+" หักเฉพาะวันที่ขาดงาน — <b>ช่องวันขาดต้องให้เจ้าของเป็นคนกรอก</b>"
+      : "เบี้ยเลี้ยง"+(allowDays(m)>=allowDen(m)?"จ่ายเต็มเดือน":"<b>"+allowNote(m)+"</b>")+" หักเฉพาะวันที่ขาดงาน — กรอกวันขาดในตารางได้เลย") +
     (skipped ? ' · <b>ไม่แสดง '+skipped+' คนที่ไม่มีงานในเดือนนี้ (ไม่คิดเบี้ยเลี้ยงให้)</b>' : "");
   groupTable($("monType"), list, function(j){return j.type;}, function(k){return TYPE_LABEL[k];}, "ประเภทงาน");
   paintCoSplit(m);
   paintOffDays(m, drivers);
   rvPaintMonth(m, drivers, list);
   rvPaintCmp(m);
-  if(isAutoAbs(m)) $("monHint").innerHTML = "เบี้ยเลี้ยง"+(allowDays(m)>=30?"จ่ายเต็มเดือน":"<b>"+allowNote(m)+"</b>")+
-    " · <b>วันที่ไม่มีงานลง = ลา</b> หักวันละ "+baht(DB.set.deduct||0)+" — แก้วันหยุด/วันมาทำงานได้ที่ \"วันหยุด / วันลา\" ด้านล่าง"+
+  if(isAutoAbs(m)) $("monHint").innerHTML = "เบี้ยเลี้ยง"+(allowDays(m)>=allowDen(m)?"จ่ายเต็มเดือน":"<b>"+allowNote(m)+"</b>")+
+    " · <b>วันที่ไม่มีงานลง = ลา</b> หักวันละ "+baht(dedRate(m))+" ("+baht(DB.set.allow||0)+" ÷ "+dimOf(m)+") — แก้วันหยุด/วันมาทำงานได้ที่ \"วันหยุด / วันลา\" ด้านล่าง"+
     (monthConfirmed(m)?"":" · <b>ยังไม่ยืนยัน</b>") +
     (skipped ? ' · <b>ไม่แสดง '+skipped+' คนที่ไม่มีงานในเดือนนี้ (ไม่คิดเบี้ยเลี้ยงให้)</b>' : "");
 }
