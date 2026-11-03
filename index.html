@@ -108,9 +108,13 @@ label.f{display:flex; flex-direction:column; gap:6px; font-size:14px; color:var(
 html{overflow-x:hidden}
 body{overflow-x:clip; max-width:100%}
 select{max-width:100%; text-overflow:ellipsis}
-input[type=text],input[type=number],input[type=date],select,textarea{
+input[type=text],input[type=number],input[type=date],input[type=search],select,textarea{
   width:100%; padding:12px 13px; font-size:16px; background:var(--surface); color:var(--ink);
-  border:1px solid var(--line); border-radius:10px}
+  border:1px solid var(--line); border-radius:10px; box-sizing:border-box}
+/* ช่องกรอกทุกแบบสูงเท่ากัน (3 พ.ย. 2569 — เจ้าของทัก "ขนาดกรอบไม่ตรงกัน" select สูงไม่เท่า input) */
+input[type=text],input[type=number],input[type=date],input[type=search],select{height:48px; line-height:1.2}
+/* ช่องในตาราง grid ชิดล่างเสมอ ป้ายยาว 2 บรรทัดก็ไม่ดันช่องให้เหลื่อมกัน */
+.grid > label.f > input:first-of-type, .grid > label.f > select:first-of-type{margin-top:auto}
 textarea{min-height:58px; resize:vertical}
 .btn{border:1px solid var(--line); background:var(--surface); color:var(--ink);
      padding:11px 15px; border-radius:10px; cursor:pointer; font-weight:500; font-size:15px; text-decoration:none;
@@ -947,7 +951,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
       <div class="scat-body">
       <div class="card pad grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
         <label class="f" data-money="1">เบี้ยเลี้ยง/เดือน (บาท)<input type="number" id="sAllow" step="100"></label>
-        <label class="f" data-money="1">หักวันขาด วันละ (บาท) — ใช้กับเดือนก่อน ต.ค. 69<input type="number" id="sDeduct" step="10"><span class="hint">ตั้งแต่ ต.ค. 69 หักวันละ = เบี้ยเลี้ยง ÷ จำนวนวันในเดือน</span></label>
+        <label class="f" data-money="1">หักวันขาด วันละ (บาท) *<input type="number" id="sDeduct" step="10"></label>
         <label class="f" data-money="1">ค่าค้างคืน/คืน ตั้งต้น (บาท)<input type="number" id="sNight" step="50"></label>
         <label class="f" data-money="1">ค่าแรงงานทั่วไป/วัน (บาท)<input type="number" id="sGeneral" step="50" min="0"></label>
         <label class="f" data-money="1">ค่าเที่ยวเหมา วันที่ลงงานทั่วไป (บาท)<input type="number" id="sGenTrip" step="10" min="0"></label>
@@ -956,6 +960,7 @@ select.month{width:auto; padding:9px 12px; font-size:15px}
         <label class="f">ราคาน้ำมันถังท่าทราย/ลิตร (บาท)<input type="number" id="sTankPrice" step="0.01" min="0"></label>
         <label class="f">คุณภาพรูปที่เก็บ<select id="sImgq"><option>ประหยัด</option><option>ปกติ</option><option>ชัด</option></select></label>
         <label class="f" style="justify-content:flex-end"><span style="visibility:hidden">.</span><button class="btn primary" id="sSave">บันทึก</button></label>
+        <p class="hint" style="grid-column:1/-1; margin:0">* หักวันขาด วันละ ใช้กับเดือนก่อน ต.ค. 69 · ตั้งแต่ ต.ค. 69 หักวันละ = เบี้ยเลี้ยง ÷ จำนวนวันในเดือน</p>
         <p class="hint" id="imgStat" style="grid-column:1/-1; margin:0"></p>
       </div>
       </div></div>
@@ -2585,7 +2590,7 @@ function jobNameField(type, initial, caption){
   box.appendChild(inp);
   var dtl=document.createElement("span"); dtl.className="hint"; dtl.style.cssText="margin-top:5px; white-space:pre-wrap"; box.appendChild(dtl);
   var list=[], cb=null, cur=(initial||"").trim();
-  function paintDtl(){ var r=null; list.forEach(function(y){ if(y.r.label===sel.value) r=y.r; }); dtl.textContent=(r&&r.detail)?("ℹ️ "+r.detail):""; }
+  function paintDtl(){ var r=null; list.forEach(function(y){ if(y.r.label===sel.value) r=y.r; }); dtl.textContent=(r&&r.detail)?("ℹ️ "+r.detail):""; dtl.style.display=dtl.textContent?"":"none"; }
   function showInput(on){ inp.style.display = on ? "" : "none"; }
   function optHtml(x){
     var w=rateWhat(x.r);
@@ -2607,6 +2612,7 @@ function jobNameField(type, initial, caption){
     sel.value=keep||"";
     if(sel.value!==keep) sel.value="";
     qh.textContent = words.length ? (n ? "พบ "+n+" งาน — เลือกในช่องด้านล่าง" : "ไม่พบชื่องานนี้ — เลือก \"＋ พิมพ์ชื่องานใหม่\" ถ้าเป็นงานใหม่") : "";
+    qh.style.display = qh.textContent ? "" : "none";   /* ช่องว่างไม่กินที่ ช่องเลือกจะได้ตรงแนวกับช่องอื่น */
   }
   function loadType(t){
     type=t; list=rateChoices(type);
@@ -6080,6 +6086,20 @@ function renderWait(){
     var form=document.createElement("div"); form.className="row"; form.style.alignItems="flex-end";
     var nf=jobNameField(j.type, j.label, "ชื่องาน (เลือกงานเดิมแล้วราคาเด้งมาให้)");
     var lab=nf.box; lab.style.flex="2"; lab.style.minWidth="210px";
+    /* [stated 3 พ.ย. 2569] แก้ประเภทงานได้จากหน้ารอใส่ราคา (รับ/ส่ง/อื่นๆ) — เดิมต้องยืนยันราคาก่อนแล้วไปกดแก้ไข
+       ยังไม่เขียนลงงานจนกดยืนยันราคา · ระหว่างนี้คำนวณราคาเสนอด้วยประเภทใหม่ชั่วคราว */
+    var labT=null, tSel=null, tWarn=null;
+    if(j.type==="ส่งสินค้า" || j.type==="รับสินค้า" || j.type==="อื่นๆ"){
+      labT=document.createElement("label"); labT.className="f"; labT.style.width="140px";
+      labT.innerHTML='ประเภทงาน<select><option value="ส่งสินค้า">ส่งสินค้า</option><option value="รับสินค้า">รับสินค้า</option><option value="อื่นๆ">อื่นๆ</option></select>';
+      tSel=labT.querySelector("select"); tSel.value=j.type;
+      tWarn=document.createElement("div"); tWarn.className="hint"; tWarn.style.width="100%";
+    }
+    function asType(fn){
+      if(!tSel || tSel.value===j.type) return fn();
+      var o=j.type, od=j.dest; j.type=tSel.value; if(j.type!=="รับสินค้า") j.dest="";
+      try{ return fn(); } finally { j.type=o; j.dest=od; }
+    }
     var lab2=document.createElement("label"); lab2.className="f"; lab2.style.width="150px";
     lab2.innerHTML='ค่าเที่ยว (บาท)<input type="number" step="50" min="0" placeholder="0">';
     var pin=lab2.querySelector("input");
@@ -6139,7 +6159,7 @@ function renderWait(){
     }
     /* เรตใหม่ (rv2) — วางไว้ใต้ฟอร์ม เติมราคาตามระยะ/รอบให้ */
     var rvc=rvCard(j, function(v){ pin.value=v; mSel.value="เที่ยว"; calc(); });
-    nf.onPick(function(r){ suggest(r); if(flatW===null) rvc.apply(nf.get()); });
+    nf.onPick(function(r){ asType(function(){ suggest(r); if(flatW===null) rvc.apply(nf.get()); }); });
     pin.oninput=calc; nin.oninput=calc; rin.oninput=calc;
     qin.oninput=calc; mSel.onchange=calc;
     suggest();
@@ -6193,6 +6213,7 @@ function renderWait(){
       var rvs=rvc.state();
       if(rvs.kind==="round" && rvs.used && !(rvs.rounds>0)){ toast("กรอกจำนวนรอบก่อน"); return; }
       var bookP = (rvs.kind==="round" && rvs.used) ? rvs.rate : v;
+      if(tSel && tSel.value!==j.type){ j.type=tSel.value; if(j.type!=="รับสินค้า") j.dest=""; }
       if(j.label){
         var r=findRate(j.type,j.label);
         /* จำสินค้า/ปลายทางของงานนี้ไว้ด้วย ครั้งหน้าในช่องเลือกจะได้รู้ว่างานนี้คืองานอะไร */
@@ -6203,7 +6224,19 @@ function renderWait(){
       }
       save(); toast("ใส่ค่าเที่ยวแล้ว "+baht(payOf(j))+" บาท"); go("wait");
     };
-    form.appendChild(lab); form.appendChild(labM); form.appendChild(lab2); form.appendChild(labQ);
+    form.appendChild(lab); if(labT) form.appendChild(labT); form.appendChild(labM); form.appendChild(lab2); form.appendChild(labQ);
+    if(tWarn) form.appendChild(tWarn);
+    if(tSel) tSel.onchange=function(){
+      nf.setType(tSel.value);
+      asType(function(){ suggest(); if(flatW===null) rvc.apply(nf.get()); });
+      var f=rcFactory(), back=false;
+      if(tSel.value==="ส่งสินค้า" && f && !stopsOf(j).length && j.start && j.end && j.start.lat!=null && j.end.lat!=null){
+        var r=(f.r||1000)/1000; back = haversine(j.end,f)<=r && haversine(j.start,f)>r;
+      }
+      tWarn.innerHTML = tSel.value===j.type ? "" :
+        ('เปลี่ยนประเภท <b>'+esc(TYPE_LABEL[j.type]||j.type)+' → '+esc(TYPE_LABEL[tSel.value]||tSel.value)+'</b> (บันทึกตอนกดยืนยันราคา)'+
+         (back ? '<br><b style="color:var(--accent)">⚠️ งานนี้ไปจบที่โรงงานรุ่งชัย ระบบจะเปลี่ยนกลับเป็น "รับสินค้า" ให้เองตอนบันทึก</b>' : ''));
+    };
     form.appendChild(labN); form.appendChild(labR);
     if(j.waitAt){
       var ws=waitSuggest(j);
