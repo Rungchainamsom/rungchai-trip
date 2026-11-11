@@ -5965,7 +5965,9 @@ function rvCard(j, setPrice){
     } else if(st.kind==="far"){
       h+=line("ระยะขาไปส่ง", kmTxt(st.leg.km)+" กม.")+'<div class="hint">ไกลเกินตาราง (เกิน '+rv2().bands[rv2().bands.length-1].to+' กม.) — ใส่ราคาเอง</div>';
     } else if(st.kind==="book"){
-      h+='<div class="hint">งานนี้มีราคาในสมุดแล้ว <b>'+baht(st.rate.price)+' บาท</b> · เรตใหม่คิดได้ '+baht(st.newp)+' (แพงกว่า) → <b>ใช้ราคาเดิม</b></div>';
+      h+='<div class="hint">งานนี้มีราคาในสมุดแล้ว <b>'+baht(st.rate.price)+' บาท</b> · เรตใหม่คิดได้ '+baht(st.newp)+(st.newp>st.rate.price?' (แพงกว่า)':' (เท่ากัน)')+' → <b>ใช้ราคาเดิม</b></div>'+
+         /* [stated 11 พ.ย. 2569 เจ้าของ: "ก่อนหน้านี้กล่องแสดงราคาใหม่มาเลย ให้ฉันกดยืนยัน · อันนี้ต้องแก้เป็นราคาใหม่เองทุกครั้ง"] เรตใหม่แพงกว่าสมุด = มีปุ่มกดใช้เรตใหม่ (ไม่เขียนทับสมุด — ดูบรรทัด r.price ใน confirm) */
+         (st.newp>st.rate.price ? useBtn(st.newp, 'ใช้ราคาเรตใหม่ '+baht(st.newp)) : '');
     } else if(st.kind==="nokm"){
       h+='<div class="hint">ยังไม่มีระยะทาง (พิกัดไม่ครบ) — ใส่ราคาเอง</div>';
     }
