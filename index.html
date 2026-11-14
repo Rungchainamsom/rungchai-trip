@@ -2024,29 +2024,86 @@ function bootstrap(){
 }
 
 /* ---------- ขอลิงก์ชั่วคราวให้รูปทุกใบ (ถังปิด เปิดตรงๆ ไม่ได้) ---------- */
+/* 14 พ.ย. 2569 (เจ้าของสั่ง): ตอนเปิดแอปขอลิงก์รูปเฉพาะ 7 วันล่าสุด
+   + งานที่ยังไม่ปิด/ยังไม่ใส่ราคา (หน้ารอใส่ราคาต้องเห็นบิลเสมอ ไม่ว่าเก่าแค่ไหน)
+   รูปเก่ากว่านั้นขอทีหลังตอนรายการนั้นโผล่บนจอจริง (lazySign ใน jobList/fuelList)
+   ไฟล์ในถังไม่ถูกแตะเลย · Supabase รับได้ครั้งละไม่เกิน 1000 path จึงแบ่งยิงทีละ 500 */
+var SIGNED={};    /* path → ลิงก์ชั่วคราว */
+var SIGN_TRIED={};/* path ที่ขอไปแล้ว (ได้หรือไม่ได้ก็ตาม) กันวนขอซ้ำไม่จบ */
+var PHOTO_DAYS=7;
+function signPaths(paths){
+  var uniq=[], seen={};
+  paths.forEach(function(p){ if(p && !seen[p] && !SIGN_TRIED[p]){ seen[p]=1; uniq.push(p); } });
+  if(!uniq.length) return Promise.resolve();
+  uniq.forEach(function(p){ SIGN_TRIED[p]=1; });
+  var chunks=[]; for(var ci=0; ci<uniq.length; ci+=500) chunks.push(uniq.slice(ci,ci+500));
+  return Promise.all(chunks.map(function(ch){
+    return fetch(CFG.url+"/storage/v1/object/sign/"+CFG.bucket,{
+      method:"POST", headers:sbHead(),
+      body: JSON.stringify({expiresIn:43200, paths:ch})
+    }).then(function(r){ return r.json(); }).then(function(l){
+      (Array.isArray(l)?l:[]).forEach(function(x){
+        var u=x.signedURL||x.signedUrl;
+        if(u) SIGNED[x.path]=CFG.url+"/storage/v1"+u;
+      });
+    }).catch(function(){ /* ก้อนนี้พังก็เสียแค่ก้อนนี้ */ });
+  }));
+}
+/* จำไว้ว่าลิงก์ชั่วคราวใบนี้มาจาก path ไหนในถัง — ตอนหมุนรูปต้องรู้ว่าจะบันทึกทับใคร */
+function signFill(ps){
+  return (ps||[]).map(function(p){ var u=SIGNED[p]; if(u) ROTPATH[u]=p; return u; }).filter(Boolean);
+}
+function hasLocalShot(arr){ return (arr||[]).some(function(s){ return String(s).indexOf("data:")===0; }); }
+function jobPaths(j, out){
+  (j._ps||[]).forEach(function(p){out.push(p);}); (j._pe||[]).forEach(function(p){out.push(p);});
+  stopsOf(j).forEach(function(t){ (t._p||[]).forEach(function(p){out.push(p);}); });
+}
+function fuelPaths(f, out){
+  (f._pr||[]).forEach(function(p){out.push(p);}); (f._po||[]).forEach(function(p){out.push(p);});
+}
+/* ใส่ลิงก์ให้รายการ · ข้ามช่องที่มีรูปเพิ่งถ่ายค้างอยู่ (data:) ไม่งั้นรูปที่ยังไม่ซิงก์จะหายจากจอ */
+function applyJobShots(j){
+  if(!hasLocalShot(j.shots)) j.shots=signFill(j._ps);
+  if(!hasLocalShot(j.shotsEnd)) j.shotsEnd=signFill(j._pe);
+  stopsOf(j).forEach(function(t){ if(!hasLocalShot(t.shots)) t.shots=signFill(t._p); });
+}
+function applyFuelShots(f){
+  if(!hasLocalShot(f.shots)) f.shots=signFill(f._pr);
+  if(!hasLocalShot(f.odoShots)) f.odoShots=signFill(f._po);
+}
 function signPhotos(){
+  SIGNED={}; SIGN_TRIED={};    /* เปิดแอป/ดึงข้อมูลใหม่ = ขอลิงก์อายุ 12 ชม. ชุดใหม่ */
+  var cut=shift(today(), -(PHOTO_DAYS-1));
+  var jobs=DB.job.filter(function(j){ return (j.date||"")>=cut || !j.priced || j.status!=="done"; });
+  var fuels=DB.fuel.filter(function(f){ return (f.date||"")>=cut; });
   var paths=[];
-  DB.job.forEach(function(j){ (j._ps||[]).forEach(function(p){paths.push(p);}); (j._pe||[]).forEach(function(p){paths.push(p);}); });
-  DB.fuel.forEach(function(f){ (f._pr||[]).forEach(function(p){paths.push(p);}); (f._po||[]).forEach(function(p){paths.push(p);}); });
-  (DB.stop||[]).forEach(function(t){ (t._p||[]).forEach(function(p){paths.push(p);}); });
+  jobs.forEach(function(j){ jobPaths(j,paths); });
+  fuels.forEach(function(f){ fuelPaths(f,paths); });
   if(!paths.length){ return Promise.resolve(); }
-  return fetch(CFG.url+"/storage/v1/object/sign/"+CFG.bucket,{
-    method:"POST", headers:sbHead(),
-    body: JSON.stringify({expiresIn:43200, paths:paths})
-  }).then(function(r){ return r.json(); }).then(function(list){
-    var map={};
-    (list||[]).forEach(function(x){
-      var u=x.signedURL||x.signedUrl;
-      if(u) map[x.path]=CFG.url+"/storage/v1"+u;
-    });
-    /* จำไว้ว่าลิงก์ชั่วคราวใบนี้มาจาก path ไหนในถัง — ตอนหมุนรูปต้องรู้ว่าจะบันทึกทับใคร */
-    function fill(ps){
-      return (ps||[]).map(function(p){ var u=map[p]; if(u) ROTPATH[u]=p; return u; }).filter(Boolean);
-    }
-    DB.job.forEach(function(j){ j.shots=fill(j._ps); j.shotsEnd=fill(j._pe); });
-    DB.fuel.forEach(function(f){ f.shots=fill(f._pr); f.odoShots=fill(f._po); });
-    (DB.stop||[]).forEach(function(t){ t.shots=fill(t._p); });
+  return signPaths(paths).then(function(){
+    jobs.forEach(applyJobShots);
+    fuels.forEach(applyFuelShots);
   }).catch(function(){ /* เปิดรูปไม่ได้ ไม่ควรทำให้ทั้งแอปพัง */ });
+}
+/* เรียกจาก jobList/fuelList: รายการเก่าที่ยังไม่มีลิงก์ → ขอเฉพาะชุดที่อยู่บนจอ แล้ววาดใหม่ */
+var LAZY_T=null, LAZY_J=[], LAZY_F=[];
+function lazySign(jobs, fuels){
+  var need=[];
+  (jobs||[]).forEach(function(j){ var ps=[]; jobPaths(j,ps);
+    if(ps.some(function(p){ return !SIGNED[p] && !SIGN_TRIED[p]; })){ LAZY_J.push(j); need=need.concat(ps); } });
+  (fuels||[]).forEach(function(f){ var ps=[]; fuelPaths(f,ps);
+    if(ps.some(function(p){ return !SIGNED[p] && !SIGN_TRIED[p]; })){ LAZY_F.push(f); need=need.concat(ps); } });
+  if(!need.length || LAZY_T) return;
+  LAZY_T=setTimeout(function(){
+    var js=LAZY_J, fs=LAZY_F, ps=[];
+    LAZY_J=[]; LAZY_F=[];
+    js.forEach(function(j){ jobPaths(j,ps); }); fs.forEach(function(f){ fuelPaths(f,ps); });
+    signPaths(ps).then(function(){
+      LAZY_T=null;
+      js.forEach(applyJobShots); fs.forEach(applyFuelShots);
+      render();
+    }).catch(function(){ LAZY_T=null; });
+  }, 50);
 }
 
 /* ---------- หมุนรูป (เจ้าของเลือกวิธีนี้ 1 ก.ย. 2569) ----------
@@ -3971,6 +4028,7 @@ var SUSP_ONLY=false;
 function jobList(host,list,showEmp){
   host.innerHTML="";
   if(!list.length){ host.innerHTML='<div class="pad hint">ยังไม่มีรายการ</div>'; return; }
+  lazySign(list, null);
   var SUS=isStaff(me) ? suspectAll() : {};
   list.forEach(function(j){
     var row=document.createElement("div"); row.className="job";
@@ -7879,6 +7937,7 @@ function fuelLock(on){
 function fuelList(host,list,showEmp){
   host.innerHTML="";
   if(!list.length){ host.innerHTML='<div class="pad hint">ยังไม่มีรายการ</div>'; return; }
+  lazySign(null, list);
   list.forEach(function(f){
     var row=document.createElement("div"); row.className="job";
     /* รูปใบเสร็จ + รูปเลขไมล์ แยกให้เห็นทั้งสองใบ (20 ต.ค. 2569 — เจ้าของขอ)
