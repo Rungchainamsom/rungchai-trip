@@ -2605,26 +2605,62 @@ function rateWhat(r){
    Why ตัดใบที่ km<=0 ทิ้ง: ใบที่ GPS ไม่ติดจะ km=0 กันหมด เอามาเทียบแล้วชนกันมั่ว
    คืน null เมื่อไม่ชัด (เจอมากกว่า 1 ชื่องานในระยะใกล้กัน) — ไม่เดามั่ว ให้เจ้าของเลือกเอง */
 var GUESS_KM = 3;
+/* [stated 21 พ.ย. 2569 เจ้าของ: "ทำไมไม่ขึ้นชื่องานที่ถูกต้อง พร้อมราคา ฉันต้องมากดเองทุกครั้ง" → เลือกทาง ข]
+   ขั้นที่ 1 จับคู่จาก "เส้นทาง" = สถานที่ต้นทาง + สถานที่ปลายทาง (สมุดสถานที่) + สินค้า
+     Why: ระยะ ±3 กม. แยกปลายทางไม่ออกและพลาดง่ายเมื่อคนขับปักหมุดคลาด · ตอนนี้มีสมุดสถานที่แล้ว รู้ชื่อจุดจริง
+   ขั้นที่ 2 (สำรอง) ระยะเส้นตรง ±3 กม. แบบเดิม — ใช้เฉพาะใบที่หมุดต้นทางหรือปลายทางไม่ตรงสถานที่ไหน
+     ถ้ารู้ทั้งสองจุดแต่ยังไม่เคยมีงานเส้นนี้ → ไม่เดาจากระยะ (เส้นอื่นที่ระยะเท่ากันคือคนละงาน)
+   กติกาเดิมคงไว้: เจอมากกว่า 1 ชื่อ = ไม่เดา · ราคาเอาจากสมุดราคางาน · เติมแค่ในช่องกรอก ไม่บันทึกจนเจ้าของกดยืนยัน */
+var GUESS_PC={};
+function gPlace(o, w){
+  var p=o && o[w]; if(!p || p.lat==null || p.lng==null) return null;
+  var k=w+"|"+p.lat+","+p.lng+"|"+(DB.places||[]).length;
+  if(!(k in GUESS_PC)) GUESS_PC[k]=placeOf(p);
+  return GUESS_PC[k];
+}
+function gMat(x){ return String(x||"").replace(/\s+/g,"").toLowerCase(); }
 function guessRate(j){
   if(!j || (j.label||"").trim()) return null;
+  var mat=gMat(j.mat); if(!mat) return null;
+  function base(o){
+    if(!o || o.id===j.id) return false;
+    if(!o.priced || o.flatTrip || isCompanyJob(o)) return false;
+    if(o.type!==j.type) return false;
+    if(gMat(o.mat)!==mat) return false;
+    return !!(o.label||"").trim();
+  }
+  function pick(hit, keys, how, extra){
+    if(keys.length!==1) return null;
+    var r=findRate(j.type, keys[0]);
+    if(!r || !(r.price>0)) return null;
+    var o={ rate:r, n:hit[keys[0]], how:how };
+    for(var k in extra) o[k]=extra[k];
+    return o;
+  }
+  var ps=gPlace(j,"start"), pe=gPlace(j,"end");
+  if(ps && pe){
+    var hit={}, keys=[];
+    DB.job.forEach(function(o){
+      if(!base(o)) return;
+      var a=gPlace(o,"start"), b=gPlace(o,"end");
+      if(!a || !b || a.id!==ps.id || b.id!==pe.id) return;
+      var L=o.label.trim();
+      if(!hit[L]){ hit[L]=0; keys.push(L); }
+      hit[L]++;
+    });
+    return pick(hit, keys, "place", {ps:ps, pe:pe});
+  }
   var km=j.km; if(km==null || !(km>0)) return null;
-  var mat=(j.mat||"").trim(); if(!mat) return null;
-  var hit={}, keys=[];
+  var hit2={}, keys2=[];
   DB.job.forEach(function(o){
-    if(!o || o.id===j.id) return;
-    if(!o.priced || o.flatTrip || isCompanyJob(o)) return;
-    if(o.type!==j.type) return;
-    if((o.mat||"").trim()!==mat) return;
+    if(!base(o)) return;
     if(o.km==null || !(o.km>0)) return;
     if(Math.abs(o.km-km)>GUESS_KM) return;
-    var L=(o.label||"").trim(); if(!L) return;
-    if(!hit[L]){ hit[L]=0; keys.push(L); }
-    hit[L]++;
+    var L=o.label.trim();
+    if(!hit2[L]){ hit2[L]=0; keys2.push(L); }
+    hit2[L]++;
   });
-  if(keys.length!==1) return null;
-  var r=findRate(j.type, keys[0]);
-  if(!r || !(r.price>0)) return null;
-  return { rate:r, n:hit[keys[0]] };
+  return pick(hit2, keys2, "km", {});
 }
 /* ช่องกรอกชื่องาน = ช่องเลือกงานเดิม + ช่องพิมพ์ชื่อใหม่ (โผล่เมื่อกด ＋ พิมพ์ชื่องานใหม่)
    Why ใช้ <select> ไม่ใช่ datalist: บนมือถือ datalist บางเบราว์เซอร์ไม่ขึ้นรายการเลย
@@ -6233,8 +6269,10 @@ function renderWait(){
       var gw=rateWhat(g.rate);
       sug.innerHTML='<b style="color:var(--ink)">งานเดิม: '+esc(g.rate.label)+'</b> · ' +
         baht(g.rate.price)+' บาท/'+esc(g.rate.unit||"เที่ยว")+
-        ' <span class="pill t3">ระบบใส่ให้</span><br>จับคู่จากสินค้า '+esc(j.mat||"")+
-        ' + ระยะเส้นตรง '+j.km.toFixed(1)+' กม. ใกล้กับงานเดิม '+g.n+' ใบ' +
+        ' <span class="pill t3">ระบบใส่ให้</span><br>' +
+        (g.how==="place"
+          ? 'จับคู่จากเส้นทาง 📍'+esc(g.ps.name)+' → 📍'+esc(g.pe.name)+' + สินค้า '+esc(j.mat||"")+' · เคยใช้ชื่องานนี้ '+g.n+' ใบ'
+          : 'จับคู่จากสินค้า '+esc(j.mat||"")+' + ระยะเส้นตรง '+j.km.toFixed(1)+' กม. ใกล้กับงานเดิม '+g.n+' ใบ') +
         (gw && gw!==(j.mat||"") ? ' · ปกติ '+esc(gw) : '')+' — ตรวจแล้วกดยืนยันได้เลย';
       calc();
     }
